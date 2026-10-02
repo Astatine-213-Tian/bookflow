@@ -53,6 +53,34 @@ def _load_translations(translations_dir: Path, chapter_id: str) -> dict[int, str
     }
 
 
+def translated_chapter_blocks(chapter: dict[str, Any], data: dict[str, Any]) -> list[str]:
+    """Keep both paragraph streams intact, interleaved at reviewed alignment boundaries."""
+    groups = data.get("groups")
+    if groups is None:
+        groups = [{"english_indices": [x["index"]], "paragraphs": [x["zh"]]}
+                  for x in data.get("translations", []) if x.get("zh")]
+    else:
+        expected = [x["index"] for x in chapter["paragraphs"]]
+        if [i for g in groups for i in g["english_indices"]] != expected:
+            raise ValueError("Grouped translation does not cover English exactly once")
+        if any(not g["english_indices"] or not g["paragraphs"] or
+               not all(p.strip() for p in g["paragraphs"]) for g in groups):
+            raise ValueError("Empty alignment group")
+    endings = {g["english_indices"][-1]: g["paragraphs"] for g in groups}
+    parts: list[str] = []
+    inside_group = False
+    for block in _chapter_blocks(chapter):
+        if block["type"] != "content" and inside_group and data.get("groups"):
+            raise ValueError("Alignment crosses a source scene separator")
+        if block.get("html"):
+            parts.append(str(block["html"]))
+        if block["type"] == "content":
+            index = int(block["index"])
+            inside_group = index not in endings
+            parts.extend(_translation_paragraph(p) for p in endings.get(index, []))
+    return parts
+
+
 def build_bilingual_epub(
     *,
     snapshot_dir: Path,
@@ -68,16 +96,9 @@ def build_bilingual_epub(
     chapters = []
     for order, chapter_id in enumerate(snapshot_chapter_ids(manifest), 1):
         chapter = load_chapter(snapshot_dir, manifest, chapter_id)
-        translations = _load_translations(translations_dir, chapter_id)
-        parts = []
-        for block in _chapter_blocks(chapter):
-            block_html = str(block.get("html") or "")
-            if block_html:
-                parts.append(block_html)
-            if block.get("type") == "content":
-                zh = translations.get(int(block["index"]))
-                if zh:
-                    parts.append(_translation_paragraph(zh))
+        translation_path = translations_dir / f"{chapter_id}.json"
+        data = json.loads(translation_path.read_text()) if translation_path.exists() else {}
+        parts = translated_chapter_blocks(chapter, data)
         chapters.append(
             Chapter(
                 str(chapter.get("title") or f"Chapter {order:03d}"), html_blocks=parts

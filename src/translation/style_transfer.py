@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 from src.crawler.snapshot import (
     load_chapter,
@@ -519,6 +519,7 @@ def run_structured_attempt(
     timeout_seconds: int,
     codex_bin: str,
     attempt: int,
+    result_validator: Callable[[dict[str, Any], dict[str, Any]], list[str]] = base_result_errors,
 ) -> dict[str, Any]:
     started_at = utc_now()
     validation_errors: list[str] = []
@@ -606,7 +607,7 @@ def run_structured_attempt(
                 else:
                     if isinstance(parsed, dict):
                         result = parsed
-                        validation_errors.extend(base_result_errors(request, result))
+                        validation_errors.extend(result_validator(request, result))
                     else:
                         validation_errors.append("response is not a JSON object")
     record = {

@@ -17,6 +17,7 @@ from src.translation.style_transfer import (
     validate_style_transfer_provenance,
 )
 from src.translation.validation import validate_and_merge
+from src.translation.positive_scene import is_positive_run, validate_positive_run
 
 
 def load_config(path: Path) -> dict[str, Any]:
@@ -49,6 +50,8 @@ def prepare_translation_run(
     config: dict[str, Any],
     run_dir: Path | None = None,
 ) -> Path:
+    if (config.get("translation") or {}).get("method") == "direct_scene_positive":
+        raise ValueError("This book uses direct positive scenes; use book-translate scene-positive with a reuse baseline")
     snapshot_dir = snapshot_dir.expanduser().resolve()
     run_dir = (run_dir or default_run_dir(snapshot_dir, config)).expanduser()
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -90,6 +93,8 @@ def validate_translation_run(
     snapshot_dir: Path | None = None,
 ) -> dict[str, Any]:
     run_dir = run_dir.expanduser().resolve()
+    if is_positive_run(run_dir):
+        return validate_positive_run(run_dir, config=config, snapshot_dir=snapshot_dir)
     summary = validate_and_merge(run_dir, allow_missing=allow_missing)
     if config is not None:
         sentence_summary = protect_sentence_translations(
@@ -143,6 +148,11 @@ def build_epub_from_run(
     output: Path | None,
 ) -> Path:
     run_dir = run_dir.expanduser().resolve()
+    if is_positive_run(run_dir):
+        validate_positive_run(run_dir, config=config, snapshot_dir=snapshot_dir)
+        return build_bilingual_epub(snapshot_dir=snapshot_dir,
+            translations_dir=run_dir / "translations", output=output,
+            title=str(config.get("title") or ""), author=str(config.get("author") or ""))
     validate_and_merge(run_dir, allow_missing=False)
     if is_author_style_transfer_run(run_dir):
         validate_style_transfer_provenance(run_dir)

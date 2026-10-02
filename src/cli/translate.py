@@ -8,6 +8,7 @@ from typing import Any
 from src.runtime.progress import ProgressLogger, configure_progress
 from src.translation.codex_cli import run_missing_prompts_with_model_fallback
 from src.translation.comments import write_glossary_comment_evidence
+from src.translation.positive_scene import run_positive_scenes
 from src.translation.pipeline import (
     build_epub_from_run,
     default_run_dir,
@@ -310,6 +311,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verbose", action="store_true")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    p_positive = sub.add_parser("scene-positive", help="Direct positive scenes, source QA and non-rewriting bilingual alignment")
+    p_positive.add_argument("snapshot", type=Path)
+    p_positive.add_argument("--config", type=Path, required=True)
+    p_positive.add_argument("--run-dir", type=Path, required=True)
+    p_positive.add_argument("--baseline-snapshot", type=Path, required=True)
+    p_positive.add_argument("--baseline-run", type=Path, required=True)
+
     p_comments = sub.add_parser(
         "comment-evidence",
         help="Extract authoritative reply threads for glossary review",
@@ -409,7 +417,7 @@ def main(argv: list[str] | None = None) -> int:
     p_all.add_argument("--semantic-qa-overwrite", action="store_true")
     p_all.add_argument("-o", "--output", type=Path)
     sub.metavar = (
-        "{comment-evidence,prepare,run,transfer-style,validate,semantic-qa,"
+        "{scene-positive,comment-evidence,prepare,run,transfer-style,validate,semantic-qa,"
         "build-epub,all}"
     )
 
@@ -418,6 +426,13 @@ def main(argv: list[str] | None = None) -> int:
     progress = ProgressLogger()
 
     try:
+        if args.command == "scene-positive":
+            summary = run_positive_scenes(snapshot_dir=args.snapshot, run_dir=args.run_dir,
+                config=load_config(args.config), baseline_snapshot=args.baseline_snapshot,
+                baseline_run=args.baseline_run)
+            progress.info(f"validated {len(summary['chunks'])} positive scenes; reused {summary['reused_chapters']} chapters")
+            return 0
+
         if args.command == "comment-evidence":
             config = load_config(args.config)
             output_path = args.output or (

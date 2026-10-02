@@ -181,9 +181,12 @@
     },
     "Fire-Bearing Warrior": {
       "zh": "持火人",
-      "note": "author reply in chapter 6 comments confirms 持火人 in the Choros priest/oracle context",
+      "note": "author reply in chapter 6 comments confirms 持火人 in the Choros priest/oracle context; 2026-10-01 fresh Chapter 000 source revises the English label to Flameguard Paladin; same Chinese retained.",
       "confidence": "high",
-      "source_comment": "216721704"
+      "source_comment": "216721704",
+      "aliases": [
+        "Flameguard Paladin"
+      ]
     },
     "Choros fire-bearer": {
       "zh": "绰罗斯传火者",
@@ -217,9 +220,12 @@
     },
     "Sacred Flame": {
       "zh": "圣焰",
-      "note": "宗教核心概念，需固定译名以保持经文语气。",
+      "note": "宗教核心概念，需固定译名以保持经文语气。; 2026-10-01 fresh Chapter 000 source revises the English label to Holy Flame; same Chinese retained.",
       "confidence": "high",
-      "source_chunk": "01_001"
+      "source_chunk": "01_001",
+      "aliases": [
+        "Holy Flame"
+      ]
     },
     "Judgement": {
       "zh": "审判",
@@ -428,8 +434,8 @@
       "source_chunk": "04_005"
     },
     "astrologer": {
-      "zh": "星象师",
-      "note": "车文身份称谓，需与后文保持一致。",
+      "zh": "占星师",
+      "note": "车文身份称谓，需与后文保持一致。 用户于 2026-10-02 指定统一译为“占星师”，不用“星象师”。",
       "confidence": "medium",
       "source_chunk": "04_005"
     },
@@ -1942,6 +1948,111 @@
       "note": "Chapter 028 中的狼族部落所在地域，地名；依据英文暂译，尚无作者中文确认。",
       "confidence": "medium",
       "source_chunk": "30_006"
+    },
+    "Silent Lake": {
+      "zh": "寂静湖",
+      "note": "第029章首次出现的命名湖泊，永恒之门所在之处；按英文暂译，尚无作者中文确认。",
+      "confidence": "medium",
+      "source_chunk": "31_001"
+    },
+    "Broodmother": {
+      "zh": "虫母",
+      "note": "2026年中秋番外的虫巢母体；依据本次英文正文暂译，尚无作者中文确认。",
+      "confidence": "medium",
+      "source_chunk": "32_001"
+    },
+    "Crystal Core": {
+      "zh": "晶核",
+      "note": "2026年中秋番外促成人类进化的能量体；依据本次英文正文暂译，尚无作者中文确认。",
+      "confidence": "medium",
+      "source_chunk": "32_002",
+      "aliases": [
+        "crystal cores"
+      ]
+    },
+    "psychic": {
+      "zh": "精神力者",
+      "note": "仅指2026年中秋番外与武士配对的人员身份；形容词 psychic 仍译精神或精神力；依据本次英文正文暂译，尚无作者中文确认。",
+      "confidence": "medium",
+      "source_chunk": "32_002",
+      "aliases": [
+        "psychics"
+      ]
+    },
+    "Stormface Mountain": {
+      "zh": "暴风山",
+      "note": "2026年中秋番外开篇虫巢战役的地点；依据本次英文正文暂译，尚无作者中文确认。",
+      "confidence": "medium",
+      "source_chunk": "32_002"
+    },
+    "Lalin": {
+      "zh": "拉林",
+      "note": "2026年中秋番外 Lalin rescue mission 名称中的专名；依据本次英文正文暂译，尚无作者中文确认。",
+      "confidence": "medium",
+      "source_chunk": "32_002"
+    },
+    "Far Mountain": {
+      "zh": "远山",
+      "note": "2026年中秋番外后半虫巢战役的地点；依据本次英文正文暂译，尚无作者中文确认。",
+      "confidence": "medium",
+      "source_chunk": "32_010"
+    },
+    "umbrella phasmid": {
+      "zh": "伞形竹节虫",
+      "note": "2026年中秋番外携带孢子并会爆炸的虫类；依据本次英文正文暂译，尚无作者中文确认。",
+      "confidence": "medium",
+      "source_chunk": "32_011",
+      "aliases": [
+        "umbrella phasmids"
+      ]
+    },
+    "collapse needle": {
+      "zh": "坍缩针",
+      "note": "2026年中秋番外封存高度压缩引力场的武器；依据本次英文正文暂译，尚无作者中文确认。",
+      "confidence": "medium",
+      "source_chunk": "32_012"
+    },
+    "earth crystal core": {
+      "zh": "大地晶核",
+      "note": "2026年中秋番外被虫母吞入体内的晶核；依据本次英文正文暂译，尚无作者中文确认。",
+      "confidence": "medium",
+      "source_chunk": "32_014"
+    },
+    "Black Mountain": {
+      "zh": "黑山",
+      "note": "2026年中秋番外结尾待建立新聚居地的地区；依据本次英文正文暂译，尚无作者中文确认。",
+      "confidence": "medium",
+      "source_chunk": "32_016"
+    },
+    "Longreach River Plain": {
+      "zh": "长延河平原",
+      "note": "第030章熊爵童年迷路的平原；依据本次英文正文暂译，尚无作者中文确认。",
+      "confidence": "medium",
+      "source_chunk": "33_004"
+    },
+    "Sea-Shattering Campaign": {
+      "zh": "碎海战役",
+      "note": "第030章提到的一百七十年前的战争；依据本次英文正文暂译，尚无作者中文确认。",
+      "confidence": "medium",
+      "source_chunk": "33_005"
+    },
+    "Ashlar Town": {
+      "zh": "方石镇",
+      "note": "第030章前往孤山途中投宿的城镇；依据本次英文正文暂译，尚无作者中文确认。",
+      "confidence": "medium",
+      "source_chunk": "33_006"
+    },
+    "Wind City": {
+      "zh": "风城",
+      "note": "第030章前往孤山途中投宿的城市；依据本次英文正文暂译，尚无作者中文确认。",
+      "confidence": "medium",
+      "source_chunk": "33_006"
+    },
+    "Abai": {
+      "zh": "阿柏",
+      "note": "Author Risk explicitly confirms Chinese name in Chapter 031 reply to Abai name question.",
+      "confidence": "high",
+      "source_comment": "226417297"
     }
   },
   "sentence_translations": [

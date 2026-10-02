@@ -2,19 +2,20 @@
   "title": "永恒之门",
   "author": "顾雪柔",
   "style_name": "非天夜翔/顾雪柔",
-  "source_context": "Use the English chapter text as the semantic authority. Produce a neutral Chinese translation, regenerate it with the validated author-style method, then validate the styled text against English. The Chinese reference corpus supplies only audited style evidence; do not claim exact original recovery.",
+  "source_context": "English is semantic authority. Direct scene translation with the user-selected positive examples, followed by source-only semantic/glossary review and non-rewriting bilingual alignment.",
   "glossary_path": "book_specs/eternal_gate/glossary.json",
   "run_dir": "generated/translation_runs/eternal_gate",
   "pipeline": {
     "passes": [
-      "neutral_translation",
-      "content_plan_combined_full_regeneration",
-      "semantic_qa"
+      "direct_scene_positive",
+      "semantic_glossary_review",
+      "non_rewriting_alignment"
     ]
   },
   "translation": {
     "chunk_size": 30,
-    "context_paragraphs": 5
+    "context_paragraphs": 5,
+    "method": "direct_scene_positive"
   },
   "style_transfer": {
     "method": "content_plan_combined_full_regeneration",
@@ -57,5 +58,18 @@
       "gpt-5.4"
     ],
     "timeout_seconds": 300
+  },
+  "scene_positive": {
+    "asset_path": "generated/author_styles/feitianyexiang/direct_scene_positive.v1.json",
+    "asset_file_sha256": "2a897fa3e86fa4a7682e49fd6e9bb3ddde033e5281564acb7fd7bb9995ff6ebb",
+    "prompt_path": "book_specs/author_styles/feitianyexiang/direct_scene_positive.prompt.md",
+    "prompt_file_sha256": "c97e705136cf5686cc15c279e100171dd39c54496683314b6587cce3f58fcaa1",
+    "target_words": 230,
+    "context_paragraphs": 2,
+    "model": "gpt-5.6-sol",
+    "review_model": "gpt-5.6-terra",
+    "reasoning_effort": "high",
+    "timeout_seconds": 900,
+    "workers": 6
   }
 }
