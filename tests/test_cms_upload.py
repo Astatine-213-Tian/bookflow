@@ -355,6 +355,7 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
             tempfile.TemporaryDirectory() as directory,
             patch("src.notion.upload.ensure_work", new=AsyncMock()),
             patch("src.notion.upload.ensure_views", new=AsyncMock()),
+            patch("src.notion.presentation.ensure_volume_colors", new=AsyncMock()),
             patch("notion_books.NotionBooks.ensure_options", new=AsyncMock()),
             patch("notion_books.NotionBooks.document", document),
             patch("notion_books.NotionBooks.rows", read_rows),

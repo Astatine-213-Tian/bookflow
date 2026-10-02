@@ -150,6 +150,15 @@ For other editions or explicitly requested local archive repairs:
 - Search Jinjiang by exact `dc:creator`, match the exact `dc:title` on that
   author catalog, and use the established Jinjiang publication date by default.
   A verified Jinjiang date replaces a conflicting local or KadoKado date.
+- Use the same lookup's `table_of_contents` for Jinjiang volume names and
+  chapter boundaries. For local EPUBs, obtain it with
+  `book-enrich-metadata <epub> --check --report <path>`; prepared crawls retain
+  it in `metadata_report`. Volume rows come from the directory's HTML
+  structure (`.volumnfont`), regardless of their wording. Compare every
+  returned group and its chapter identities/order with the selected edition
+  before assigning Notion `所属标题` or rebuilding navigation. Record edition
+  mismatches and `table_of_contents_error` explicitly; a metadata match alone
+  does not verify the volume structure.
 - Use KadoKado only when the Jinjiang author/title lookup completed without a
   defensible match. Do not use KadoKado merely because Jinjiang was temporarily
   unreachable.

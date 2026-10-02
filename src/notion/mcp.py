@@ -252,6 +252,24 @@ class MCPTools:
         return value
 
 
+async def finish_write(tools, name: str, arguments: dict) -> dict:
+    """Wait for one MCP operation; never retry an uncertain write."""
+    result = await tools.call(name, arguments | {"allow_async": False})
+    if result.get("object") != "async_task":
+        return result
+    task_id = result.get("id")
+    while True:
+        status = result.get("status")
+        if status == "succeeded":
+            return result["result"]
+        if status not in {"queued", "running"}:
+            raise ValueError(f"Notion operation failed: {result.get('error', status)}")
+        if not task_id:
+            raise ValueError("Notion asynchronous operation omitted its identity")
+        await asyncio.sleep(1)
+        result = await tools.call("notion-get-async-task", {"task_id": task_id})
+
+
 @asynccontextmanager
 async def connect(store: TokenStore, *, login: bool = False) -> AsyncIterator[MCPTools]:
     if not login and (not store.data.get("tokens") or not store.data.get("client")):

@@ -80,7 +80,9 @@ def main(argv: list[str] | None = None) -> int:
     parser_names = [parser.name for parser in PARSERS]
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "target", nargs="?", help="Book URL, or site-specific id with --parser"
+        "target",
+        nargs="?",
+        help="Book URL, site-specific id, local EPUB/TXT, or prepared source.json",
     )
     parser.add_argument(
         "--mode",
@@ -111,7 +113,26 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--author",
-        help="With --search, pass an author hint to providers that support it",
+        help="Search author hint, or the author of a local TXT without a header",
+    )
+    parser.add_argument("--title", help="Title for a local TXT without a header")
+    parser.add_argument(
+        "--run-dir",
+        type=Path,
+        help="Local preparation artifacts and reviewed source.json",
+    )
+    parser.add_argument(
+        "--chapter-aliases",
+        type=Path,
+        help="Reviewed local chapter title -> official title JSON",
+    )
+    parser.add_argument(
+        "--keep-outline",
+        action="store_true",
+        help="Preserve the local edition's outline",
+    )
+    parser.add_argument(
+        "--cover-url", help="Public PNG/JPEG cover URL for a local Notion import"
     )
     parser.add_argument(
         "--limit", type=int, default=10, help="Maximum search results/previews to show"
@@ -183,24 +204,50 @@ def main(argv: list[str] | None = None) -> int:
         requested_formats(output_options)
     except ValueError as error:
         parser.error(str(error))
-    if args.author and not args.search:
+    local = bool(args.target and not args.search and Path(args.target).is_file())
+    if args.author and not args.search and not local:
         parser.error("--author can only be used with --search")
+    if not local and (
+        args.title
+        or args.run_dir
+        or args.chapter_aliases
+        or args.keep_outline
+        or args.cover_url
+    ):
+        parser.error("Local edition options require an existing local file")
 
     try:
-        target, parser_name = select_search_target(args, progress)
-        spec = find_parser(target, parser_name)
-        progress.info(f"using parser: {spec.name}")
-        result = ingest(
-            target,
-            parser=spec,
-            output_options=output_options,
-            crawl_options=CrawlOptions(
-                delay=args.delay,
-                request_interval=args.request_interval,
-                headless=args.headless,
-                concurrency=args.concurrency,
-            ),
-        )
+        if local:
+            import json
+            from src.workflows.local import ingest_local
+
+            result = ingest_local(
+                Path(args.target),
+                output_options,
+                run_dir=args.run_dir,
+                title=args.title or "",
+                author=args.author or "",
+                chapter_aliases=json.loads(args.chapter_aliases.read_text())
+                if args.chapter_aliases
+                else None,
+                use_jjwxc_outline=not args.keep_outline,
+                cover_url=args.cover_url,
+            )
+        else:
+            target, parser_name = select_search_target(args, progress)
+            spec = find_parser(target, parser_name)
+            progress.info(f"using parser: {spec.name}")
+            result = ingest(
+                target,
+                parser=spec,
+                output_options=output_options,
+                crawl_options=CrawlOptions(
+                    delay=args.delay,
+                    request_interval=args.request_interval,
+                    headless=args.headless,
+                    concurrency=args.concurrency,
+                ),
+            )
 
         epub_path = result.epub_path
         title: str | None = None

@@ -35,6 +35,8 @@ from src.runtime.files import digest, write_json
 
 def source_digest(book: dict) -> str:
     source = {k: book[k] for k in ("metadata", "sections", "chapters", "extras")}
+    if "volume_colors" in book:
+        source["volume_colors"] = book["volume_colors"]
     return digest(json.dumps(source, ensure_ascii=False, sort_keys=True).encode())
 
 
@@ -85,6 +87,10 @@ async def upload_row(
         raise ValueError("CMS extra readback has the wrong work relation")
     item["verified"] = True
     write_json(state, book)
+    all_items = [*book["chapters"].values(), *book["extras"]]
+    verified = sum(bool(row.get("verified")) for row in all_items)
+    if verified % 20 == 0 or verified == len(all_items):
+        print(f"Uploaded and read back: {verified}/{len(all_items)}", flush=True)
 
 
 async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
@@ -127,6 +133,9 @@ async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
             raise ValueError(
                 "CMS rows differ from the import checkpoint; reconcile before appending"
             )
+    from src.notion.presentation import ensure_volume_colors
+
+    await ensure_volume_colors(book, state, tools=tools)
     await reader.ensure_options(
         book["chapters_data_source_id"],
         {FIELDS["parent_title"]: [p for _, p in entries]},
@@ -194,6 +203,10 @@ async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
         from src.notion.cover import upload_cover
 
         await upload_cover(book, state, tools=tools)
+    elif book.get("cover_url"):
+        from src.notion.presentation import attach_public_cover
+
+        await attach_public_cover(book, state, tools=tools)
     book["uploaded"] = True
     write_json(state, book)
 
@@ -202,8 +215,17 @@ def upload_source(
     source: dict,
     *,
     cover_bytes: bytes | None = None,
+    cover_url: str | None = None,
     config_path: Path = CONFIG,
 ) -> Path:
+    if cover_bytes and cover_url:
+        raise ValueError("Choose a local cover asset or a public cover URL")
+    if cover_url:
+        from src.notion.presentation import public_cover
+
+        cover_bytes_for_hash = public_cover(cover_url)
+    else:
+        cover_bytes_for_hash = cover_bytes
     config = json.loads(config_path.read_text())
     catalog = config["databases"]["works"]["data_source_id"]
     key = digest((catalog + source["identifier"]).encode())[:16]
@@ -213,8 +235,11 @@ def upload_source(
         fingerprint = source_digest(source)
         if state.exists():
             book = json.loads(state.read_text())
-            if book.get("source_sha256") != fingerprint or book.get("cover_sha256") != (
-                digest(cover_bytes) if cover_bytes else None
+            if (
+                book.get("source_sha256") != fingerprint
+                or book.get("cover_sha256")
+                != (digest(cover_bytes_for_hash) if cover_bytes_for_hash else None)
+                or book.get("cover_url") != cover_url
             ):
                 raise ValueError(
                     "Crawl changed since this draft import; reconcile it with the saved checkpoint and Notion edits"
@@ -226,8 +251,12 @@ def upload_source(
                 storage=STORAGE,
                 catalog_id=catalog,
                 source_sha256=fingerprint,
-                cover_sha256=digest(cover_bytes) if cover_bytes else None,
+                cover_sha256=digest(cover_bytes_for_hash)
+                if cover_bytes_for_hash
+                else None,
             )
+            if cover_url:
+                book["cover_url"] = cover_url
             if cover_bytes:
                 from src.notion.cover import validate_cover
 

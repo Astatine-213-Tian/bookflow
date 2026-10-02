@@ -8,6 +8,7 @@ from typing import Iterable
 from bs4 import BeautifulSoup
 
 from src.content.models import Chapter, Volume
+from src.content.outline import ordered_members
 
 SPACE_RE = re.compile(r"[ \t\u3000]+")
 BLANK_RE = re.compile(r"\n{3,}")
@@ -125,3 +126,23 @@ def write_txt(
         ),
         encoding="utf-8",
     )
+
+
+def write_prepared_txt(book: dict, out_path: Path) -> None:
+    """Render already prepared blocks without another cleanup or deduplication."""
+    metadata = book["metadata"]
+    chapters = [book["chapters"][m] for m in ordered_members(book["sections"])] + book[
+        "extras"
+    ]
+    sections = [metadata["title"], "作者：" + metadata["creator"]]
+    sections.extend(
+        "\n".join(
+            [
+                chapter["title"],
+                *["".join(r["text"] for r in b["runs"]) for b in chapter["blocks"]],
+            ]
+        )
+        for chapter in chapters
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text("\n\n".join(sections) + "\n", encoding="utf-8")

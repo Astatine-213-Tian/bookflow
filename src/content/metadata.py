@@ -35,4 +35,12 @@ def enrich_source(book: dict, *, lookup: MetadataLookup | None = None) -> dict:
         data.update(
             series=source.series or "", series_position=source.series_position or ""
         )
-    return {"status": "matched", "provider": source.provider, "url": source.source}
+    return {
+        "status": "matched",
+        "provider": source.provider,
+        "url": source.source,
+        "table_of_contents": source.table_of_contents.to_dict()
+        if source.table_of_contents is not None
+        else None,
+        "table_of_contents_error": source.table_of_contents_error,
+    }

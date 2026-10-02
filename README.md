@@ -79,6 +79,11 @@ uv run book-to-epub doupocangqiong --parser quanben --output-format epub -o book
 
 ## Ingest For Reading And Training
 
+For existing EPUB/TXT files, use the [local edition workflow](docs/local-editions.md):
+`book-prepare` prepares the supplied source, and `book-notion upload`
+uploads it through the shared package and MCP. `book-ingest FILE --mode ...`
+also accepts local editions; book-specific review decisions are JSON data.
+
 Use `book-ingest` for the normal end-to-end workflow. It crawls the source once,
 writes every selected destination: local EPUB, editable Notion draft and/or
 TXT. It validates EPUB output and upserts only the requested TXT entry in the
@@ -109,6 +114,18 @@ EPUB output defaults to `books/<author>/<title>.epub`. TXT output defaults to
 `research/datasets/raw/<author>/<title>.txt`. Dataset metadata is resolved from
 the maintained Jinjiang research crawl when available, then falls back to Codex
 classification unless `--no-codex-classify` is passed.
+
+For an existing EPUB, the Jinjiang metadata query also retrieves official
+volume titles and chapter order:
+
+```bash
+uv run book-enrich-metadata books/作者/书名.epub --check --report generated/metadata.json
+```
+
+The report's `table_of_contents` follows Jinjiang's HTML volume rows, including
+arbitrary names such as prologues and epilogues. Compare it with the selected
+edition before changing chapter grouping. Retrieval failures appear in
+`table_of_contents_error`; `--check` leaves the EPUB unchanged.
 
 For standalone dataset maintenance, use targeted commands:
 

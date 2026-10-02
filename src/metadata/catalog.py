@@ -13,7 +13,7 @@ import requests
 from bs4 import BeautifulSoup, Tag
 from opencc import OpenCC
 
-from src.metadata.jjwxc import parse_article_type
+from src.metadata.jjwxc import JjwxcContents, parse_article_type, parse_jjwxc_contents
 
 DEFAULT_PRIMARY_SUBJECT = "耽美"
 
@@ -101,6 +101,8 @@ class SourceMetadata:
     series: str | None = None
     series_position: int | None = None
     series_verified: bool = False
+    table_of_contents: JjwxcContents | None = None
+    table_of_contents_error: str | None = None
 
 
 @dataclass
@@ -117,6 +119,8 @@ class MetadataEnrichmentReport:
     publication_date: str | None = None
     backup: Path | None = None
     error: str | None = None
+    table_of_contents: JjwxcContents | None = None
+    table_of_contents_error: str | None = None
 
     @property
     def changed(self) -> bool:
@@ -136,6 +140,10 @@ class MetadataEnrichmentReport:
             "publication_date": self.publication_date,
             "backup": str(self.backup) if self.backup else None,
             "error": self.error,
+            "table_of_contents": self.table_of_contents.to_dict()
+            if self.table_of_contents is not None
+            else None,
+            "table_of_contents_error": self.table_of_contents_error,
         }
 
     def format_text(self) -> str:
@@ -148,6 +156,11 @@ class MetadataEnrichmentReport:
             line += f"; date={self.publication_date}"
         if self.error:
             line += f"; error={self.error}"
+        if self.table_of_contents is not None:
+            named_volumes = sum(bool(volume.title) for volume in self.table_of_contents.volumes)
+            line += f"; volumes={named_volumes} chapters={self.table_of_contents.chapter_count}"
+        if self.table_of_contents_error:
+            line += f"; contents unavailable: {self.table_of_contents_error}"
         return line
 
 
@@ -372,6 +385,15 @@ class MetadataLookup:
             return None
         return self._find_kadokado(package)
 
+    def find_author_homepage(self, author: str) -> str | None:
+        """Return the Jinjiang homepage for a uniquely matched author name."""
+        author_id = self._find_jjwxc_author_id(author)
+        if author_id is None:
+            return None
+        if not author_id.isdigit():
+            raise ValueError("Jinjiang author identity must be numeric")
+        return f"https://www.jjwxc.net/oneauthor.php?authorid={author_id}"
+
     def _find_jjwxc_author_id(self, author: str) -> str | None:
         if author in self.author_ids:
             return self.author_ids[author]
@@ -414,14 +436,28 @@ class MetadataLookup:
         if len(matches) != 1:
             return None
         candidate = matches[0]
-        source = f"https://m.jjwxc.net/book2/{candidate.novel_id}"
+        source = f"https://www.jjwxc.net/onebook.php?novelid={candidate.novel_id}"
         description = package.description
+        contents = None
+        contents_error = "Jinjiang work is locked; directory unavailable" if candidate.locked else None
         if not candidate.locked:
             book_html = _response_text(
-                self.session.get(source, timeout=self.timeout),
+                self.session.get(
+                    f"https://m.jjwxc.net/book2/{candidate.novel_id}",
+                    timeout=self.timeout,
+                ),
                 "gb18030",
             )
             description = parse_jjwxc_description(book_html) or description
+            try:
+                contents_html = _response_text(
+                    self.session.get(source, timeout=self.timeout), "gb18030"
+                )
+                contents = parse_jjwxc_contents(contents_html, novel_id=candidate.novel_id)
+            except (ValueError, requests.RequestException) as error:
+                # Keep verified book metadata, but never mistake a failed read for
+                # a book with no volume headings.
+                contents_error = f"{type(error).__name__}: {error}"
         parsed_type = parse_article_type(candidate.raw_type)
         subjects = package.subjects
         if parsed_type and parsed_type.genre and parsed_type.time_area:
@@ -446,6 +482,8 @@ class MetadataLookup:
             series=candidate.series,
             series_position=candidate.series_position,
             series_verified=True,
+            table_of_contents=contents,
+            table_of_contents_error=contents_error,
         )
 
     def _find_kadokado(

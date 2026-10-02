@@ -40,6 +40,8 @@ mise exec -- uv run --with /absolute/path/to/notion-books python -m unittest dis
 
 ```bash
 uv run book-notion login
+uv run book-notion upload --source generated/book_import/source.json
+uv run book-notion verify --state generated/notion_cms_sources/HASH/import.json
 uv run book-ingest "作品URL" --mode notion
 uv run book-ingest "作品URL" --mode epub -o books/作者/书名.epub
 uv run book-ingest "作品URL" --mode epub --mode notion --mode txt
@@ -104,6 +106,13 @@ uv run book-notion resume --state generated/notion_cms_sources/<来源摘要>/im
   `cover_uploaded: true` 并移除 `cover_pending`，确认未附加才清除该标记重试。
 
 不同目标库之间不能复用导入检查点。
+
+本地 EPUB/TXT 的内容准备、卷标签颜色、公开 URL 封面和
+`recover-template` 模板恢复使用[本地版本导入流程](local-editions.md)中的固定命令。
+`book-notion upload` 接收已审查的共享 source.json；无需每次编写上传脚本。
+新建作者时，通过晋江作者检索查找唯一匹配的主页；找到后在同一次创建中
+填写「晋江主页」URL，并回读验证。检索失败会中止创建，明确无匹配才留空。
+已存在的作者直接复用；导入检查点保留新建作者的主页，供恢复和验证使用。
 已上传内容在 Notion 中编辑；重新抓取本地版则选择 `--mode epub`。
 
 ## 排版约定

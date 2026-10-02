@@ -39,7 +39,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Enrich EPUB content.opf metadata from Jinjiang, with "
-            "KadoKado used only when Jinjiang has no verified match."
+            "KadoKado used only when Jinjiang has no verified match. "
+            "The report also includes Jinjiang volume titles and chapter order."
         )
     )
     parser.add_argument("paths", nargs="+", type=Path)
@@ -51,7 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--report",
         type=Path,
-        help="Write the complete machine-readable JSON report to this path.",
+        help="Write metadata and the official Jinjiang table of contents as JSON.",
     )
     parser.add_argument(
         "--no-backup",

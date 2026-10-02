@@ -5,12 +5,34 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from notion_books import CATALOG_SCHEMA, FIELDS, NotionBooks, work_properties
+from notion_books import (
+    CATALOG_SCHEMA,
+    FIELDS,
+    NotionBooks,
+    NotionError,
+    work_properties,
+)
 
+from src.metadata.catalog import MetadataLookup
 from src.runtime.files import write_json
 
 CONFIG = Path("book_specs/notion/config.json")
 STORAGE = "cms-chapter-database-v1"
+AUTHOR_HOMEPAGE = "晋江主页"
+
+
+async def verify_author_homepage(
+    reader: NotionBooks, id: str, name: str, url: str, data_source: str
+) -> None:
+    page = await reader.page(id)
+    if (
+        page.data_source_id != data_source
+        or page.properties.get(FIELDS["authors"]) != name
+        or page.properties.get(AUTHOR_HOMEPAGE) != url
+    ):
+        raise ValueError(
+            "Author homepage readback differs; reconcile the existing author"
+        )
 
 
 def chapter_entries(book: dict) -> list[tuple[str, str]]:
@@ -101,6 +123,14 @@ async def ensure_work(book: dict, path: Path, config: dict, *, tools) -> None:
         if len(found) > 1:
             raise ValueError("Multiple authors share this name; resolve identity first")
         if found:
+            if homepage := book.get("author_jjwxc_urls", {}).get(name):
+                await verify_author_homepage(
+                    reader,
+                    found[0]["id"],
+                    name,
+                    homepage,
+                    config["databases"]["authors"]["data_source_id"],
+                )
             ids.append(found[0]["id"])
             if book.get("pending_author") == name:
                 book.pop("pending_author")
@@ -110,12 +140,34 @@ async def ensure_work(book: dict, path: Path, config: dict, *, tools) -> None:
             raise ValueError(
                 "An author create response was lost; reconcile before retrying"
             )
+        homepages = book.setdefault("author_jjwxc_urls", {})
+        if name not in homepages:
+            homepages[name] = await asyncio.to_thread(
+                MetadataLookup().find_author_homepage, name
+            )
+            write_json(path, book)
+        properties = {FIELDS["authors"]: name}
+        if homepage := homepages[name]:
+            field = states["authors"]["properties"].get(AUTHOR_HOMEPAGE, {})
+            if field.get("type") != "url" or field.get("read_only"):
+                raise ValueError(
+                    "Author catalog requires a writable 晋江主页 URL field"
+                )
+            properties[AUTHOR_HOMEPAGE] = homepage
         book["pending_author"] = name
         write_json(path, book)
         id = await reader.create_page(
             config["databases"]["authors"]["data_source_id"],
-            {FIELDS["authors"]: name},
+            properties,
         )
+        if homepage:
+            await verify_author_homepage(
+                reader,
+                id,
+                name,
+                homepage,
+                config["databases"]["authors"]["data_source_id"],
+            )
         ids.append(id)
         book.pop("pending_author")
         write_json(path, book)
@@ -141,12 +193,19 @@ async def ensure_work(book: dict, path: Path, config: dict, *, tools) -> None:
 
 async def ensure_views(book: dict, path: Path, config: dict, *, tools) -> None:
     for _ in range(30):
-        source = await NotionBooks(tools).discover(
-            book["work_id"],
-            [config["databases"]["works"]["data_source_id"]],
-            config["databases"]["extras"]["data_source_id"],
-            view_policy="editorial",
-        )
+        try:
+            source = await NotionBooks(tools).discover(
+                book["work_id"],
+                [config["databases"]["works"]["data_source_id"]],
+                config["databases"]["extras"]["data_source_id"],
+                view_policy="editorial",
+            )
+        except NotionError as error:
+            # Template duplication can temporarily return an incomplete read.
+            if str(error) != "Notion response is truncated":
+                raise
+            await asyncio.sleep(2)
+            continue
         found = {
             "chapters_view_id": source["chapters_view"],
             "chapters_data_source_id": source["chapters_data_source"],
@@ -162,4 +221,8 @@ async def ensure_views(book: dict, path: Path, config: dict, *, tools) -> None:
             write_json(path, book)
             return
         await asyncio.sleep(2)
-    raise ValueError("Book template is not ready; resume this checkpoint later")
+    raise ValueError(
+        "Book template is not ready; resume this checkpoint later. "
+        "For a confirmed empty book, recover through MCP with: "
+        f"uv run book-notion recover-template --state {path}"
+    )

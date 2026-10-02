@@ -711,6 +711,35 @@ def _normalize_chinese_numeral_zero(
     return text
 
 
+def _normalize_dialogue_attribution(
+    text: str,
+    *,
+    member: str,
+    report: NormalizationReport,
+) -> str:
+    changes = 0
+
+    def replace(match: re.Match[str]) -> str:
+        nonlocal changes
+        # This opening mark must actually be closing an existing quotation.
+        # Otherwise a valid quoted sentence containing “说” can look like an
+        # attribution, and reversing its marks corrupts subsequent dialogue.
+        prefix = text[: match.start()]
+        if prefix.count("“") - prefix.count("”") != 1:
+            return match.group()
+        changes += 1
+        return (
+            match["close_punct"] + "”" + match["attribution"]
+            + match["resume_punct"] + "“"
+        )
+
+    normalized = DIALOGUE_ATTRIBUTION_RE.sub(replace, text)
+    report.record_change(
+        "dialogue_quote_direction_fixed", member, changes, text, normalized
+    )
+    return normalized
+
+
 def _normalize_contextual_quote_directions(
     text: str,
     *,
@@ -1571,11 +1600,8 @@ def _normalize_plain_text(
         member=member,
         report=report,
     )
-    text = _apply_regex(
+    text = _normalize_dialogue_attribution(
         text,
-        DIALOGUE_ATTRIBUTION_RE,
-        r"\g<close_punct>”\g<attribution>\g<resume_punct>“",
-        kind="dialogue_quote_direction_fixed",
         member=member,
         report=report,
     )

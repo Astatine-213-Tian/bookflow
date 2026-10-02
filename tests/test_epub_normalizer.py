@@ -484,6 +484,29 @@ class EpubNormalizerTests(unittest.TestCase):
                 1,
             )
 
+    def test_dialogue_containing_speech_verbs_keeps_balanced_quotes(self) -> None:
+        passages = [
+            "“先确认。”她点头，“如果，我说如果，”她接着说，“那就明天。”",
+            "“大家听着，”他笑了，“我知道该怎么解释，”他说完便起身，“到此为止。”",
+        ]
+        with tempfile.TemporaryDirectory() as temp:
+            epub_path = Path(temp) / "balanced-dialogue.epub"
+            self._write_fixture(
+                epub_path,
+                "<html><head><title>第1章 小P孩</title></head><body>"
+                "<h2>第1章 小P孩</h2>"
+                + "".join(f"<p>{p}</p>" for p in passages)
+                + "</body></html>",
+            )
+            normalize_epub(epub_path)
+            with zipfile.ZipFile(epub_path) as archive:
+                chapter = archive.read("EPUB/chap_01_001.xhtml").decode()
+            for passage in passages:
+                self.assertIn(passage, chapter)
+            second = normalize_epub(epub_path, apply=False)
+            self.assertEqual(second.total_changes, 0)
+            self.assertFalse(second.issues)
+
     def test_known_split_han_words_are_joined_before_ambiguous_space_review(
         self,
     ) -> None:

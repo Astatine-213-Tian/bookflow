@@ -8,6 +8,8 @@ separate interfaces.
 flowchart LR
     CLI[CLI] --> Workflow[Ingest workflow]
     Workflow --> Crawler[Crawler and search]
+    Workflow --> Edition[Local EPUB or TXT]
+    Edition --> Content
     Crawler --> Raw[CrawledBook]
     Raw --> Content[Source preparation]
     Content --> Draft[Prepared book]
@@ -47,6 +49,36 @@ contracts and services, never back into `cli/`. Production does not import the
 independent `research/` project. `tests/test_architecture.py` checks the module
 boundaries and keeps renderers separate from source cleanup and remote services.
 
+## Runnable stages
+
+| Stage | Maintained command | Owner |
+| --- | --- | --- |
+| Web collection and selected outputs | `book-ingest URL --mode ...` | `workflows/ingest.py` |
+| Local source preparation | `book-prepare FILE` | `workflows/local.py`, `epub/source.py`, `content/text_source.py` |
+| Unified local import | `book-ingest FILE --mode ...` | `workflows/local.py` |
+| Metadata and official directory | `book-enrich-metadata` | `metadata/`, `epub/metadata.py` |
+| Archive cleanup and review | `book-normalize` | `epub/maintenance.py` |
+| Prepared-source upload | `book-notion upload --source source.json` | `notion/upload.py` |
+| Readback and recovery | `book-notion verify`, `resume`, `recover-template` | `notion/verification.py`, `upload.py`, `recovery.py` |
+
+The local adapter reads the complete EPUB navigation/spine or explicit TXT
+chapter structure into the shared contract. `content/edition_outline.py` aligns
+Jinjiang chapter identities and accepts reviewed edition aliases as data. The
+workflow owns copying, maintenance and report persistence; output
+modules receive prepared content. See [local-editions.md](local-editions.md) for
+the staged commands and review requirements. Generated run folders contain data
+and evidence, not the maintained implementation of book import.
+
+The standard workflow accepts one supplied source. Comparing alternative
+editions is a separate user-requested task, available through `book-compare`;
+it reports differences without preparing, selecting an import input or uploading.
+
+Notion chapter CRUD, schema inspection and content codecs continue through
+`notion-books`. Import-specific presentation policy and template recovery use
+the authenticated MCP transport for select-color statements, external covers
+and `apply_template`, with checkpointed writes and subsequent readback. These
+commands do not control a browser or replace the package's chapter operations.
+
 ## Contracts and output selection
 
 `CrawlOptions` contains request/browser controls. A provider returns a
@@ -72,6 +104,12 @@ Blocks carry kind, rich-text runs, heading level and optional alignment.
 Renderers follow these properties without interpreting phrases in the prose.
 The reading CSS lives in `content/styles.py`; H3 is `1.1em`, independent of
 alignment. Covers are thumbnail assets without a separate reading page.
+
+The Jinjiang metadata lookup also returns its official table of contents,
+grouped by the HTML volume-heading rows. Prepared-source `metadata_report`
+and EPUB enrichment reports retain that structure and any retrieval error.
+It is source evidence for edition alignment; the OPF metadata writer does not
+rewrite chapter navigation or assign Notion parent titles.
 
 Notion stores prepared chapters in the book-owned database and independent
 extras in the shared library. Notion schema and recovery details live in

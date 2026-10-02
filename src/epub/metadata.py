@@ -359,6 +359,8 @@ def enrich_epub_metadata(
             after=desired.to_dict(),
             source_url=source.source,
             publication_date=source.date,
+            table_of_contents=source.table_of_contents,
+            table_of_contents_error=source.table_of_contents_error,
         )
         if not changes or not apply:
             return report

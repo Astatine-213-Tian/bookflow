@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
+
+from bs4 import BeautifulSoup
 
 
 TIME_AREAS = ("近代现代", "古色古香", "架空历史", "幻想未来")
@@ -39,6 +41,108 @@ class JjwxcTypeMetadata:
     time_area: str
     genre: str
     source: str
+
+
+@dataclass(frozen=True)
+class JjwxcChapter:
+    number: int
+    title: str
+    url: str | None
+
+
+@dataclass(frozen=True)
+class JjwxcVolume:
+    title: str
+    chapters: tuple[JjwxcChapter, ...]
+
+
+@dataclass(frozen=True)
+class JjwxcContents:
+    source: str
+    volumes: tuple[JjwxcVolume, ...]
+
+    @property
+    def chapter_count(self) -> int:
+        return sum(len(volume.chapters) for volume in self.volumes)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "source": self.source,
+            "chapter_count": self.chapter_count,
+            "volumes": [
+                {
+                    "title": volume.title,
+                    "chapters": [asdict(chapter) for chapter in volume.chapters],
+                }
+                for volume in self.volumes
+            ],
+        }
+
+
+def parse_jjwxc_contents(html: str, *, novel_id: str) -> JjwxcContents:
+    """Read volume boundaries from directory rows, never from title wording."""
+    if not novel_id.isdigit():
+        raise ValueError("Jinjiang contents require a numeric novel ID")
+    soup = BeautifulSoup(html, "html.parser")
+    # itemprop is a token list: the latest row is `chapter newestChapter`.
+    chapter_rows = soup.select('tr[itemprop~="chapter"]')
+    if not chapter_rows:
+        raise ValueError("Jinjiang page has no readable chapter directory")
+    table = chapter_rows[0].find_parent("table")
+    if table is None or any(row.find_parent("table") is not table for row in chapter_rows):
+        raise ValueError("Jinjiang chapter directory has an ambiguous table structure")
+    groups: list[tuple[str, list[JjwxcChapter]]] = []
+    previous_number = 0
+    for row in table.find_all("tr"):
+        if row.find_parent("table") is not table:
+            continue
+        is_chapter = "chapter" in row.get("itemprop", "").split()
+        marker = row.select_one(".volumnfont")
+        if marker is not None and marker.find_parent("tr") is row and not is_chapter:
+            title = marker.get_text(" ", strip=True)
+            if not title:
+                raise ValueError("Jinjiang directory contains an empty volume title")
+            groups.append((title, []))
+            continue
+        if not is_chapter:
+            continue
+        first_cell = row.find("td", recursive=False)
+        number_text = first_cell.get_text(strip=True) if first_cell else ""
+        if not number_text.isdigit() or int(number_text) <= previous_number:
+            raise ValueError("Jinjiang chapter numbers are missing, duplicated, or out of order")
+        number = int(number_text)
+        headline = row.select_one('[itemprop~="headline"]')
+        if headline is None:
+            raise ValueError(f"Jinjiang chapter {number} has no headline")
+        link = next(
+            (node for node in headline.select('a[itemprop~="url"]') if node.get_text(strip=True)),
+            None,
+        )
+        title = (link if link is not None else headline).get_text(" ", strip=True)
+        if not title:
+            raise ValueError(f"Jinjiang chapter {number} has an empty title")
+        url = None
+        if link is not None:
+            for attribute in ("href", "rel"):
+                value = link.get(attribute, "")
+                if isinstance(value, list):
+                    value = " ".join(value)
+                query = parse_qs(urlparse(value).query)
+                chapter_id = query.get("chapterid", [""])[0]
+                if not chapter_id:
+                    continue
+                if not chapter_id.isdigit() or query.get("novelid") != [novel_id]:
+                    raise ValueError(f"Jinjiang chapter {number} links to an unexpected work")
+                url = f"https://www.jjwxc.net/onebook.php?novelid={novel_id}&chapterid={chapter_id}"
+                break
+        if not groups:
+            groups.append(("", []))
+        groups[-1][1].append(JjwxcChapter(number, title, url))
+        previous_number = number
+    return JjwxcContents(
+        source=f"https://www.jjwxc.net/onebook.php?novelid={novel_id}",
+        volumes=tuple(JjwxcVolume(title, tuple(chapters)) for title, chapters in groups),
+    )
 
 
 def novel_id_from_url(value: str) -> str:

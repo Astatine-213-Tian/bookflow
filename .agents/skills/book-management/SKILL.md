@@ -10,6 +10,14 @@ local EPUB, a Notion draft, TXT, or any combination of these.
 
 ## Choose the Task
 
+- **Import a local EPUB/TXT edition:** follow
+  [local-editions.md](../../../docs/local-editions.md). Use `book-prepare` for
+  preparation and `book-notion upload`/`verify` for the reviewed source,
+  or `book-ingest FILE` for the combined workflow. Keep book-specific decisions
+  in reviewed JSON; extend the owning module when a reusable stage is missing.
+- **Compare local editions when the user requests it:** use the independent
+  [comparison tool](../../../docs/local-editions.md#compare-editions-only-when-requested).
+  Standard imports start from the supplied source and require no version comparison.
 - **Add or reacquire a book:** follow the acquisition steps below.
 - **Source unsupported, incomplete or broken:** read [providers.md](references/providers.md),
   implement or repair the provider, then resume acquisition if a book output was requested.
