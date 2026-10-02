@@ -53,4 +53,6 @@ uv run book-notion resume --state generated/notion_cms_sources/<来源摘要>/im
 
 作者定义或用户确认的「番外卷」属于正文，保留来源卷名、顺序和连续章节编号。
 独立番外才放共享库。迁移前先核对完整正文，避免同一内容重复收录。
-图片来源依照用户要求由 Codex 识读并校对，再写入可编辑正文。
+图片来源先按 [Codex 图片转录流程](../.agents/skills/book-management/references/image-transcription.md)
+完成并行独立识读、逐字核对和边界检查，保留原始转录；输出副本须经过共享格式规则
+（包括引号方向、中英文及数字间距），再写入可编辑正文并按格式化副本完整回读校验。

@@ -1,5 +1,25 @@
 # Book Formatting and EPUB Repair
 
+## Source Text Normalization
+
+Apply the same text formatting before Notion, EPUB or TXT output regardless of
+source, including Codex image transcriptions. Keep raw source evidence separately;
+use a formatted copy for output unless the user explicitly requests verbatim text.
+Reuse `src/content/normalization.py` (`normalize_member`) as the crawl preparation
+workflow does; do not implement separate quote or spacing rules for images.
+
+- Correct contextually clear quotation direction, for example `“哦。“` -> `“哦。”`.
+  Review unresolved findings with neighboring paragraphs; preserve valid nested
+  and multi-paragraph quotations and Latin apostrophes.
+- Apply the mixed-width spacing rules below by default, for example `S级` ->
+  `S 级` and `成功率是100%` -> `成功率是 100%`. Keep Chinese punctuation flush.
+- Review the full before/after diff for unintended wording or paragraph changes.
+  Formatting does not authorize guessing words, rewriting prose or correcting
+  uncertain source typos. Rescan after normalization and require an unchanged
+  second pass, then compare the complete output readback with the formatted copy.
+- For existing Notion content, start from a fresh fetch and patch only the
+  reviewed differences; preserve edits made since the original transcription.
+
 ## Local Archive Rule
 
 For an explicitly requested local EPUB repair, patch the archive and keep every reader-visible surface in sync:
@@ -177,7 +197,9 @@ For other editions or explicitly requested local archive repairs:
 
 ## Mixed-Width Spacing Rules
 
-- When the user asks for proper spacing between full-width Chinese and half-width characters, scan parsed visible text across the whole EPUB for the complete defect family, not only the cited example.
+- During source preparation or a requested spacing repair, scan all target visible
+  text for the complete defect family, not only the cited example. For EPUBs,
+  inspect parsed text across the whole requested archive scope.
 - Insert exactly one ASCII space at a direct boundary between a Han character and a half-width Latin letter, Greek letter, or Arabic digit in either direction, for example:
   - `主星VCU07` -> `主星 VCU07`
   - `E7头顶` -> `E7 头顶`

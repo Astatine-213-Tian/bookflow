@@ -1,6 +1,6 @@
 ---
 name: book-management
-description: Add, find, update, or repair books in epub-creator-from-web. Use for choosing sources, crawling to local EPUB, Notion drafts and/or TXT, targeted training-dataset exports, adding or fixing crawler providers, and correcting book formatting or metadata. Dataset export is an output choice in the shared book workflow.
+description: Add, find, update, or repair books in epub-creator-from-web. Use for choosing sources, transcribing book or extra text from images with Codex vision, crawling to local EPUB, Notion drafts and/or TXT, targeted training-dataset exports, adding or fixing crawler providers, and correcting book formatting or metadata. Dataset export is an output choice in the shared book workflow.
 ---
 
 # Book Management
@@ -19,6 +19,10 @@ local EPUB, a Notion draft, TXT, or any combination of these.
   [comparison tool](../../../docs/local-editions.md#compare-editions-only-when-requested).
   Standard imports start from the supplied source and require no version comparison.
 - **Add or reacquire a book:** follow the acquisition steps below.
+- **Transcribe supplied text images:** read
+  [image-transcription.md](references/image-transcription.md). Use Codex vision
+  and parallel independent readings, then apply the shared formatting rules before
+  writing and verifying the requested outputs.
 - **Source unsupported, incomplete or broken:** read [providers.md](references/providers.md),
   implement or repair the provider, then resume acquisition if a book output was requested.
   A provider-development-only task ends with its fixture and CLI checks.

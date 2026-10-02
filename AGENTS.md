@@ -1,5 +1,15 @@
 # Repository Guidelines
 
+## Image Transcription
+
+Transcribe supplied text images directly with Codex vision; never use traditional
+OCR tools or services, including for drafts or fallback. For multiple images,
+spawn parallel Codex agents with small batches and independently read every region
+twice. Follow the [image transcription workflow](.agents/skills/book-management/references/image-transcription.md)
+for long-image crops, coverage tracking and discrepancy resolution. Keep the raw
+transcription, then apply the shared formatting rules before output and readback,
+including quote direction and Chinese/Latin/digit spacing.
+
 ## Eternal Gate Updates
 
 For “update eternal gate” / “更新永恒之门”, use this workflow:
