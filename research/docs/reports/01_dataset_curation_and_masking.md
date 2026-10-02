@@ -25,7 +25,49 @@ such as removing an ineligible book, are made explicitly in the raw manifest bef
 cleanup is rerun. Run this stage and verify residue scans before generating masked
 or unmasked chunks.
 
-## Current Result
+## Core narrative revision (2026-09-25)
+
+The current research TXT excludes complete synopsis (`简介`/`文案`), bonus-story
+(`番外`, including TOC-labelled bonus volumes and `特典`), and afterword (`后记`)
+sections. Removing only their headings is insufficient: their prose must also
+be excluded before chunking and fitting the mask vocabulary. Narrative epilogues
+(`尾声`) remain part of the main story.
+
+`workflows.corpus_sections` aligns the source EPUB's TOC ancestry to the existing
+TXT using heading/opening-paragraph matches. Punctuation and whitespace differences
+are ignored for alignment only; EPUB prose never replaces TXT prose. TXT-only
+exports use explicit headings and, where available, an author notice that the main
+story has ended and subsequent chapters are extras. Interspersed bonus chapters
+end at the next main-story section. Unmatched EPUB entries are recorded for review.
+
+The policy identifier is `core_narrative_sections_v1`. Each cleaned manifest row
+records removed spans, their hashes/counts, source EPUB hash, and alignment
+exceptions. Span coordinates refer to normalized raw lines, are one-based, and
+include both endpoints. Raw TXT and reader EPUB files remain unchanged.
+
+The revised corpus retains 198 books from 50 authors, with 122,342,394 cleaned CJK
+characters (previously 128,555,875). The section pass excludes 1,829 spans totaling
+6,530,117 CJK characters; this is not the net reduction, because the prior cleaner
+already removed some front matter and applied separate decontamination rules.
+All 198 books still meet the 50k threshold, and 195 meet the 120k threshold.
+
+Verification includes 115 passing research tests, unchanged hashes for all 394
+source files/manifest entries, 14 real-corpus chapter-boundary checks, and retained
+fictional game/video descriptions containing the word `简介`. The 27 input bindings
+of the previous iteration-5 pilot also match the preserved snapshot when resolved
+through `generated/corpus_cleanup_20260925/historical_input_mapping.json`.
+
+Existing book-level split roles are preserved during rebuilds; newly ineligible
+books are excluded and new books require explicit assignment. The mask plan binds
+the cleaned text hashes, preventing reuse after another cleanup revision.
+
+The local pre-cleanup corpus and all seven chunk views are preserved under
+`generated/corpus_cleanup_20260925/before/`. Historical experiment scores, including
+iteration 5, describe their frozen pre-cleanup inputs; they are not re-evaluations
+on this revised corpus. See the current generated cleaning/chunk reports for the
+new counts and the local cleanup verification report for source-integrity checks.
+
+## Pre-revision result
 
 - Manifest books: 198
 - TXT files present: 198

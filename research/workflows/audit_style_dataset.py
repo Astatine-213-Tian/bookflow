@@ -12,6 +12,8 @@ from typing import Any, Iterable, Mapping
 
 import ahocorasick
 
+from workflows.corpus_sections import SECTION_CLEANING_VERSION, remove_noncore_sections
+
 
 CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 CJK_RUN_RE = re.compile(r"[\u4e00-\u9fff]+")
@@ -25,9 +27,7 @@ CHAPTER_RE = re.compile(
     r"|引子"
     r"|序章"
     r"|序"
-    r"|番外"
     r"|尾声"
-    r"|后记"
     r")\b"
 )
 TITLE_PREFIX_RE = re.compile(r"^\s*(?:书名|作品|小说|文名|标题)[:：]")
@@ -344,10 +344,11 @@ def filter_body_lines(lines: list[str]) -> list[str]:
     return filtered
 
 
-def cleaned_text(raw_text: str, *, title: str) -> tuple[str, dict[str, Any]]:
+def cleaned_text(raw_text: str, *, title: str, epub_path: Path | None = None) -> tuple[str, dict[str, Any]]:
     lines = normalize_lines(raw_text)
-    body_start = find_body_start(lines, title)
-    body_lines = filter_body_lines(lines[body_start:])
+    core_lines, section_meta = remove_noncore_sections(lines, epub_path=epub_path)
+    body_start = find_body_start(core_lines, title)
+    body_lines = filter_body_lines(core_lines[body_start:])
     unnormalized = "\n".join(body_lines).strip()
     normalized = normalize_punctuation(unnormalized)
     cleaned = normalized + "\n" if normalized else ""
@@ -357,6 +358,7 @@ def cleaned_text(raw_text: str, *, title: str) -> tuple[str, dict[str, Any]]:
         "dropped_leading_lines": body_start,
         "punctuation_normalization": PUNCTUATION_NORMALIZATION_VERSION,
         "punctuation_normalized": normalized != unnormalized,
+        **section_meta,
     }
 
 
@@ -748,6 +750,8 @@ def select_mask_terms(
         "schema_version": 3,
         "masking_policy": MASKING_POLICY_VERSION,
         "provenance": {
+            "section_cleaning": SECTION_CLEANING_VERSION,
+            "source_clean_hashes": {record_key(record): record.get("clean_sha256", "") for record in records},
             "fit_split": "train",
             "fit_book_count": len(fit_book_ids),
             "fit_book_ids": fit_book_ids,
@@ -953,7 +957,8 @@ def book_record(row: dict[str, Any], dataset_root: Path, output_text_root: Path)
     title = str(row.get("title") or txt_path.stem)
     exists = txt_path.exists()
     raw = read_text(txt_path) if exists else ""
-    cleaned, clean_meta = cleaned_text(raw, title=title) if exists else ("", {})
+    epub_path = resolve_manifest_path(str(row["source_epub"]), dataset_root) if row.get("source_epub") else None
+    cleaned, clean_meta = cleaned_text(raw, title=title, epub_path=epub_path) if exists else ("", {})
     detected_authors = source_author_headers(raw, title=title) if exists else []
     author_conflicts = [value for value in detected_authors if value != author]
     raw_cjk = cjk_len(raw)
@@ -1192,6 +1197,24 @@ def split_books(records: list[dict[str, Any]], target_author: str) -> dict[str, 
     return splits
 
 
+def preserve_split_roles(records: list[dict[str, Any]], previous: dict[str, Any]) -> dict[str, Any]:
+    """A cleaning revision must not promote held-out or excluded books to train."""
+    roles = split_lookup(previous)
+    result: dict[str, list[dict[str, Any]]] = {key: [] for key in previous}
+    result.setdefault("excluded", [])
+    for record in records:
+        if not record["exists"]:
+            continue
+        role = roles.get((str(record["author"]), str(record["title"])), "excluded")
+        reason = ""
+        if not is_primary_eligible(record):
+            role, reason = "excluded", "ineligible_after_cleaning"
+        elif role == "excluded":
+            reason = "preserved_exclusion_or_unassigned_new_book"
+        result[role].append(split_entry(record, reason))
+    return result
+
+
 def split_entry(item: dict[str, Any], reason: str = "") -> dict[str, Any]:
     return {
         "author": item["author"],
@@ -1324,6 +1347,7 @@ def chunk_record(
         "article_type": record.get("article_type") or "",
         "quality_flags": record.get("quality_flags") or [],
         "punctuation_normalization": record.get("punctuation_normalization") or "",
+        "section_cleaning": record.get("section_cleaning") or "",
         "cross_book_decontamination": record.get("cross_book_decontamination") or "",
         "masking_policy": MASKING_POLICY_VERSION,
         "text": view_text,
@@ -1368,6 +1392,7 @@ def generate_chunk_views(
         list(mask_plan.get("global_terms", {}).get("entity_terms_v2") or [])
     )
     summary: dict[str, Any] = {
+        "section_cleaning": SECTION_CLEANING_VERSION,
         "dataset_root": str(dataset_root),
         "chunk_target_cjk": chunk_target_cjk,
         "chunk_min_cjk": chunk_min_cjk,
@@ -1634,6 +1659,8 @@ def main() -> int:
             if record.get("exists")
         } != {CROSS_BOOK_DECONTAMINATION_VERSION}:
             raise ValueError("Cannot rebuild masking artifacts from stale cleaned texts")
+        if {record.get("section_cleaning") for record in records if record.get("exists")} != {SECTION_CLEANING_VERSION}:
+            raise ValueError("Cannot rebuild masking artifacts before non-core section cleanup")
         if args.stage == "mask":
             split_names = split_lookup(splits)
             if args.include_excluded_chunks:
@@ -1677,6 +1704,13 @@ def main() -> int:
         mask_plan = json.loads(mask_plan_path.read_text(encoding="utf-8"))
         if mask_plan.get("masking_policy") != MASKING_POLICY_VERSION:
             raise ValueError("Cannot rebuild chunks from a stale mask plan")
+        bound_hashes = mask_plan.get("provenance", {}).get("source_clean_hashes", {})
+        roles = split_lookup(splits)
+        for record in records:
+            if not record.get("exists") or (not args.include_excluded_chunks and roles.get((record["author"], record["title"]), "excluded") == "excluded"):
+                continue
+            if bound_hashes.get(record_key(record)) != record.get("clean_sha256"):
+                raise ValueError("Cannot rebuild chunks from a mask plan fitted before the current cleanup")
         chunk_summary = generate_chunk_views(
             records,
             splits,
@@ -1716,9 +1750,14 @@ def main() -> int:
     records = [book_record(row, dataset_root, text_root) for row in manifest]
     stale_cleaned_files_removed = prune_stale_cleaned_texts(text_root, records)
     passage_decontamination = decontaminate_cross_book_passages(records)
-    splits = split_books(records, clean_author(args.target_author))
+    split_path = output_dir / "splits.json"
+    previous_splits = json.loads(split_path.read_text(encoding="utf-8")) if split_path.exists() else None
+    splits = preserve_split_roles(records, previous_splits) if previous_splits else split_books(records, clean_author(args.target_author))
     summary = summarize(records, splits)
     summary["cross_book_decontamination"] = passage_decontamination
+    summary["section_cleaning"] = SECTION_CLEANING_VERSION
+    summary["removed_section_count"] = sum(len(record.get("removed_sections", [])) for record in records)
+    summary["removed_section_cjk_count"] = sum(record.get("removed_section_cjk_count", 0) for record in records)
     duplicates = duplicate_report(records)
 
     (output_dir / "raw_manifest_snapshot.json").write_text(

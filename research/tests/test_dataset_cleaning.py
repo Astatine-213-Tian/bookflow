@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 from workflows.audit_style_dataset import (
@@ -15,8 +16,95 @@ from workflows.audit_style_dataset import (
     is_concentration_rescue_candidate,
     mask_terms,
     normalize_punctuation,
+    preserve_split_roles,
     select_mask_terms,
 )
+
+
+class NoncoreSectionTests(unittest.TestCase):
+    def test_removes_complete_sections_and_resumes_main_story(self) -> None:
+        source = "样书\n作者：甲\n\n简介\n介绍文字。\n\n第1章\n主线甲。\n\n第2章 番外\n支线甲。\n\n支线乙。\n\n第3章\n主线乙。\n\n后记\n写作感想。"
+        cleaned, metadata = cleaned_text(source, title="样书")
+        self.assertEqual(cleaned, "主线甲。\n\n主线乙。\n")
+        self.assertEqual([item["kind"] for item in metadata["removed_sections"]], ["synopsis", "extra", "afterword"])
+
+    def test_mentions_inside_prose_and_narrative_epilogue_survive(self) -> None:
+        source = "第1章\n他说以后记得带伞。\n她写了一段人物简介。\n他们谈起番外的结局。\n【简介：虚构的游戏画面。】\n简介：虚构的视频描述。\n后记：虚构的视频评论。\n\n尾声\n春天再次来临。"
+        cleaned, _ = cleaned_text(source, title="样书")
+        self.assertIn("以后记得带伞", cleaned)
+        self.assertIn("人物简介", cleaned)
+        self.assertIn("谈起番外", cleaned)
+        self.assertIn("春天再次来临", cleaned)
+        self.assertIn("游戏画面", cleaned)
+        self.assertIn("视频描述", cleaned)
+        self.assertIn("视频评论", cleaned)
+
+    def test_no_chapter_intro_is_removed_to_end_and_numbered_extra_is_not_kept(self) -> None:
+        cleaned, _ = cleaned_text("样书\n\n简介\n介绍甲。\n\n介绍乙。", title="样书")
+        self.assertEqual(cleaned, "")
+        cleaned, _ = cleaned_text("第1章\n故事。\n\n第2章番外·雨夜\n支线。", title="样书")
+        self.assertEqual(cleaned, "故事。\n")
+
+    def test_toc_inheritance_and_repaired_heading_alignment(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            epub = Path(directory) / "sample.epub"
+            with zipfile.ZipFile(epub, "w") as archive:
+                archive.writestr("toc.ncx", '''<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/"><navMap>
+<navPoint><navLabel><text>正文</text></navLabel><content src="main.xhtml"/></navPoint>
+<navPoint><navLabel><text>番外卷</text></navLabel><content src="extra.xhtml"/>
+<navPoint><navLabel><text>雨夜</text></navLabel><content src="extra.xhtml"/></navPoint></navPoint>
+<navPoint><navLabel><text>第3章</text></navLabel><content src="resume.xhtml"/></navPoint>
+</navMap></ncx>''')
+                for name, heading, body in [
+                    ("main", "第1章", "主线甲。"),
+                    ("extra", "雨夜", "这是一段足够长的虚构开场文字用于验证旧文本的准确定位。"),
+                    ("resume", "第3章", "主线乙。"),
+                ]:
+                    archive.writestr(f"{name}.xhtml", f"<html><body><h1>{heading}</h1><p>{body}</p></body></html>")
+            raw = "第1章\n主线甲。\n\n第2章 旧标题\n这是一段足够长的虚构开场文字用于验证旧文本的准确定位。\n\n第3章\n主线乙。"
+            original = epub.read_bytes()
+            cleaned, metadata = cleaned_text(raw, title="样书", epub_path=epub)
+            self.assertEqual(cleaned, "主线甲。\n\n主线乙。\n")
+            self.assertEqual(metadata["section_boundary_provenance"]["matched_section_count"], 3)
+            self.assertEqual(metadata["section_boundary_provenance"]["unmatched"], [])
+            self.assertEqual(epub.read_bytes(), original)
+            # A later EPUB title cleanup must not erase the TXT's extra label.
+            raw_extra = raw.replace("第1章", "第1章 番外")
+            cleaned, _ = cleaned_text(raw_extra, title="样书", epub_path=epub)
+            self.assertNotIn("主线甲", cleaned)
+
+    def test_explicit_end_notice_excludes_unlabelled_tail_chapters(self) -> None:
+        source = "第1章\n正文故事。\n作者有话要说：正文正式宣告完结，接下来有番外。\n\n第2章\n额外故事。\n\n第3章\n生日故事。"
+        cleaned, metadata = cleaned_text(source, title="样书")
+        self.assertEqual(cleaned, "正文故事。\n")
+        self.assertEqual(metadata["section_boundary_provenance"]["terminal_extras_notice_line"], 3)
+        cleaned, _ = cleaned_text("第1章\n正文故事。\n后记（无情节）\n写作感想。", title="样书")
+        self.assertEqual(cleaned, "正文故事。\n")
+
+    def test_afterword_alignment_without_blank_separator(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            epub = Path(directory) / "sample.epub"
+            with zipfile.ZipFile(epub, "w") as archive:
+                archive.writestr("toc.ncx", '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/"><navMap><navPoint><navLabel><text>后记</text></navLabel><content src="after.xhtml"/></navPoint></navMap></ncx>')
+                archive.writestr("after.xhtml", '<html><body><h1>后记</h1><p>这是虚构的写作感想，用于测试。</p><p>另一段虚构的写作感想，也需要去掉。</p></body></html>')
+            main = "\n".join(["第1章"] + [f"正文故事保留第{index}段。" for index in range(20)])
+            source = main + "\n新修版后记\n这是虚构的写作感想, 用于测试。\n另一段虚构的写作感想, 也需要去掉。"
+            cleaned, metadata = cleaned_text(source, title="样书", epub_path=epub)
+            self.assertIn("正文故事保留第19段", cleaned)
+            self.assertNotIn("感想", cleaned)
+            self.assertNotIn("后记", cleaned)
+            self.assertEqual(metadata["section_boundary_provenance"]["unmatched"], [])
+
+    def test_cleanup_cannot_reassign_heldout_books_by_new_lengths(self) -> None:
+        records = [dict(author="甲", title=title, exists=True, clean_cjk_count=count,
+                        clean_txt_path=f"{title}.txt", quality_flags=[])
+                   for title, count in [("训练", 80000), ("验证", 70000), ("测试", 90000), ("缩水", 1000)]]
+        previous = {"train": [{"author": "甲", "title": "训练"}],
+                    "dev": [{"author": "甲", "title": "验证"}],
+                    "test": [{"author": "甲", "title": "测试"}, {"author": "甲", "title": "缩水"}], "excluded": []}
+        result = preserve_split_roles(records, previous)
+        for role, title in [("train", "训练"), ("dev", "验证"), ("test", "测试"), ("excluded", "缩水")]:
+            self.assertEqual([entry["title"] for entry in result[role]], [title])
 
 
 class DatasetPunctuationNormalizationTests(unittest.TestCase):

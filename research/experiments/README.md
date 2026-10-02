@@ -1,6 +1,6 @@
 # Transfer Experiments
 
-This directory contains the maintained code for four numbered transfer studies
+This directory contains the maintained code for ten numbered transfer studies
 and one unnumbered post-transfer validation package. Read the matching canonical
 report before rerunning a numbered experiment: the report defines its data,
 frozen decisions, observed results, and limitations.
@@ -20,6 +20,12 @@ uv run python -m experiments.validation.meter.benchmark_content_resistant_meter 
 | [`iteration2/`](iteration2/README.md) | Do aligned neutral-to-author pairs improve transfer? | [Iteration 2 report](../docs/reports/04_transfer_iteration2_aligned_pairs.md) |
 | [`iteration3/`](iteration3/README.md) | Do constrained edits, microcards, or reranking avoid fidelity loss? | [Iteration 3 report](../docs/reports/05_transfer_iteration3_constrained_rerank.md) |
 | [`iteration4/`](iteration4/README.md) | Does English-grounded full regeneration work better? | [Iteration 4 report](../docs/reports/06_transfer_iteration4_full_regeneration.md) |
+| [`iteration5/`](iteration5/README.md) | Do real parallel examples and scene-scale reconstruction improve resemblance to held-out author Chinese? | [Iteration 5 report](../docs/reports/07_transfer_iteration5_real_parallel_scene_pilot.md) |
+| [`iteration6/`](iteration6/README.md) | Can a seeded bank of clear wording corrections improve direct translation? | [Iteration 6 report](../docs/reports/08_transfer_iteration6_sampled_wording_bank.md) |
+| [`iteration7/`](iteration7/README.md) | How do the same four methods compare across 50 fresh source-visible passages? | [Iteration 7 report](../docs/reports/09_transfer_iteration7_expanded_reading.md) |
+| [`iteration8/`](iteration8/README.md) | How do the four methods compare in a fixed 48-passage, six-book allocation? | [Iteration 8 report](../docs/reports/10_transfer_iteration8_balanced_reading.md) |
+| [`iteration9/`](iteration9/README.md) | Does structural editing with patch QA improve the previous local-editing pipeline, starting from identical drafts on 48 fresh scenes? | [Iteration 9 report](../docs/reports/11_transfer_iteration9_paired_structural_editing.md) |
+| [`iteration10/`](iteration10/README.md) | Which of the unchanged direct and positive-example methods does the reader prefer across 48 fresh scenes? | [Iteration 10 report](../docs/reports/12_transfer_iteration10_direct_positive_reading.md) |
 | [`validation/`](validation/README.md) | Does the transfer meter survive content controls, and how did the selected prompt method behave in application? | Diagnostic evidence; not a numbered transfer iteration |
 | [`shared/`](shared/README.md) | Stable path and hashing primitives with no experiment policy | Not a study |
 

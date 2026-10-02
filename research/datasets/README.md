@@ -22,6 +22,15 @@ views consumed by experiments. All are derived by
 splits from `generated/style_research/corpus/splits.json`; chapters from one book
 must not cross train, development, and test roles.
 
+The current `core_narrative_sections_v1` cleaning policy removes complete 简介/文案,
+番外 (including TOC bonus-volume descendants and 特典), and 后记 sections before
+chunking. It retains main-story chapters following interspersed extras and narrative
+尾声. Use the cleaned copies and derived views for training, never the raw exports.
+Removal spans and source alignment evidence are in `cleaned_manifest.json`.
+Rebuilds preserve existing book split roles and refit the mask vocabulary on the
+cleaned training books. Pre-cleanup views are archived locally under
+`generated/corpus_cleanup_20260925/before/`; prior scores remain historical.
+
 The current masking contract fits its global 12,000-term content vocabulary on
 training books only, applies that fixed vocabulary to every split, and optionally
 adds per-book terms selected without author labels. `train_global_masked` is the

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>两种翻译方法 · 48 组匿名对照</title><link rel="stylesheet" href="/reader.css"><script src="/reader.js" defer></script></head>
+<body><header>
+<div class="title-row"><h1>两种翻译方法 · 匿名对照</h1><span id="progress" role="status">正在载入…</span><button id="export">导出反馈</button></div>
+<p class="intro">每组看原文与两版译文，选更贴近作者的一版，也可以选差不多或都不理想。比较的是上一轮的“直接场景翻译”和“加正面例子翻译”，编号按组打乱。</p>
+<div class="toolbar"><label>阅读范围 <select id="scope"><option value="first12">前 12 组</option><option value="remaining36">后 36 组</option><option value="all" selected>全部 48 组</option></select></label>
+<label>作品 <select id="book"><option value="all">全部六本</option><option>乱世为王</option><option>相见欢</option><option>星盘重启</option><option>江湾路七号男子宿舍</option><option>定海浮生录</option><option>天宝伏妖录</option></select></label>
+<button id="prev">← 上一组</button><label>样本 <select id="sample"></select></label><button id="next">下一组 →</button>
+<label><input id="highlight" type="checkbox" checked> 高亮措辞差异</label></div>
+<nav id="directory" aria-label="样本目录"></nav></header>
+<main><p id="notice" role="status"></p><h2 id="sampleTitle"></h2>
+<p class="legend"><mark>高亮</mark>是两版之间的局部文字变化，不代表哪版正确。人名、术语不同不必作为选择依据；英文版本本身也可能有增删。原文按对应范围节选，边界可能在句中。</p>
+<div class="comparison-scroll"><div class="comparison"><section class="original" aria-label="作者中文原文"><div class="candidate-head"><h3>作者中文原文</h3><p>对应节选 · 始终展开</p></div><div id="author" class="prose"></div></section><div id="candidates"></div></div></div>
+<section class="feedback"><div class="feedback-actions"><button id="allTie">两个差不多</button><button id="none">都不理想</button><button id="skip">暂时跳过</button><button id="clear">清除选择</button><strong id="saveStatus" role="status">尚未选择</strong></div>
+<label for="note">备注（可选，自动保存）</label><textarea id="note" rows="2" placeholder="例如：A 的动作更利落；B 还是解释太多"></textarea></section>
+<p id="checkpoint" class="checkpoint" hidden>前 12 组已反馈完。可以先停在这里，也可以切换到“后 36 组”继续；两种方法和全部样本已提前固定。</p>
+</main><footer>六本书各 8 组，共 48 组新片段。前 12 组每本书各 2 组。A/B 编号按组分配，不固定代表某个方法。点击即保存到本机，可改选或导出；前两轮反馈独立保留，不计入本轮。</footer></body></html>

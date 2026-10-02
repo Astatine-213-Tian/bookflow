@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>译文对照与偏好反馈</title><link rel="stylesheet" href="/reader.css"><script src="/reader.js" defer></script></head>
+<body><header>
+<div class="title-row"><h1>四个版本，同排对照</h1><span id="progress">正在载入…</span><button id="export">导出反馈</button></div>
+<div class="toolbar"><label>批次 <select id="batch"><option value="new50">新增 50 组</option><option value="legacy6">原来的 6 组</option></select></label>
+<button id="prev">← 上一组</button><label>样本 <select id="sample"></select></label><button id="next">下一组 →</button>
+<label><input id="highlight" type="checkbox" checked> 高亮措辞差异</label><label><input id="ties" type="checkbox"> 允许并列选择</label>
+<button id="reveal">揭示本组方法</button></div>
+<nav id="directory" aria-label="样本目录"></nav></header>
+<main><p id="notice" role="status"></p><h2 id="sampleTitle"></h2>
+<section class="original" aria-label="作者中文原文"><h3>作者中文原文（对应节选）</h3><div id="author"></div></section>
+<p class="legend"><mark>高亮</mark>表示候选之间较明显的局部措辞差异，不代表错误。中英文版本可能有增删；原文按对应范围节选，开头或结尾可能在句中。点击候选按钮即可保存偏好。</p>
+<div class="comparison-scroll"><div id="candidates" class="comparison"></div></div>
+<section class="feedback"><div class="feedback-actions"><button id="allTie">四个差不多</button><button id="none">都不理想</button><button id="skip">暂时跳过</button><button id="clear">清除选择</button><strong id="saveStatus" role="status">尚未选择</strong></div>
+<label for="note">备注（可选，自动保存）</label><textarea id="note" rows="2" placeholder="例如：A 的动作更利落，C 的解释太多"></textarea></section>
+
+</main><footer>反馈只保存在本机，可随时改选或导出。各组候选编号独立；本页不会用机器评分代替你的选择。</footer></body></html>

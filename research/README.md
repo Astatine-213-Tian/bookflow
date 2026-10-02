@@ -16,7 +16,7 @@ tests/          portable workflow and experiment contract tests
 ```
 
 Start with [`docs/README.md`](docs/README.md). It states the current decision and
-links the dataset report, authorship-meter report, four numbered transfer
+links the dataset report, authorship-meter report, ten numbered transfer
 iterations, post-transfer validation, and literature notes. Use
 [`workflows/README.md`](workflows/README.md) for current commands and
 [`experiments/README.md`](experiments/README.md) to audit an older iteration or
