@@ -399,6 +399,70 @@ class EpubNormalizerTests(unittest.TestCase):
             self.assertIn("review service unavailable", report.codex_review_error or "")
             self.assertTrue(report.issues[0].requires_codex_review)
 
+    def test_review_retries_remaining_nodes_and_preserves_keep_decisions(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            epub_path = Path(temp) / "followup.epub"
+            self._write_fixture(
+                epub_path,
+                "<html><body><p>第一节 课开始了。</p>"
+                "<p>第二节 是语文课。</p>"
+                "<p>他关注的学校公众号里都是情人节相关。</p></body></html>",
+            )
+            batches = []
+
+            def review(prompt: str) -> str:
+                issues = json.loads(prompt.split("Issues JSON:\n", 1)[1])
+                batches.append([issue["kind"] for issue in issues])
+                decisions = []
+                for issue in issues:
+                    decision = {
+                        "issue_index": issue["issue_index"],
+                        "verdict": "keep",
+                        "confidence": "high",
+                        "reason": "Narrative reference; preserve it.",
+                    }
+                    if issue["kind"] == "ambiguous_han_spacing":
+                        old = "第一节 课" if len(batches) == 1 else "第二节 是"
+                        decision.update(
+                            verdict="replace", old=old, new=old.replace(" ", "")
+                        )
+                    decisions.append(decision)
+                return json.dumps({"reviews": decisions})
+
+            report = normalize_and_review_epub(epub_path, review_runner=review)
+
+            self.assertEqual(len(batches), 2)
+            self.assertNotIn("suspicious_ad", batches[1])
+            self.assertEqual(report.codex_review_status, "completed")
+            self.assertFalse(
+                any(
+                    i.requires_codex_review or i.requires_user_review
+                    for i in report.issues
+                )
+            )
+            with zipfile.ZipFile(epub_path) as archive:
+                chapter = archive.read("EPUB/chap_01_001.xhtml").decode()
+            self.assertIn("第一节课开始了。", chapter)
+            self.assertIn("第二节是语文课。", chapter)
+            self.assertIn("学校公众号", chapter)
+            self.assertEqual(normalize_epub(epub_path, apply=False).total_changes, 0)
+
+    def test_mixed_ellipsis_is_not_converted_to_sentence_stops(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            epub_path = Path(temp) / "ellipsis.epub"
+            self._write_fixture(
+                epub_path,
+                "<html><body><p>都能下.….围棋了？</p>"
+                "<p>是拿冰搓的手吧.…..</p></body></html>",
+            )
+            report = normalize_epub(epub_path)
+            with zipfile.ZipFile(epub_path) as archive:
+                chapter = archive.read("EPUB/chap_01_001.xhtml").decode()
+            self.assertIn("都能下.….围棋了？", chapter)
+            self.assertIn("是拿冰搓的手吧.…..", chapter)
+            self.assertEqual(report.change_counts["ascii_period_to_chinese"], 0)
+            self.assertEqual(normalize_epub(epub_path, apply=False).total_changes, 0)
+
     def test_dialogue_and_ascii_punctuation_rules_are_context_safe(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             epub_path = Path(temp) / "book.epub"

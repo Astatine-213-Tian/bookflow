@@ -413,6 +413,7 @@ def review_epub_with_codex(
                     str(decision["new"]),
                 )
             followup = normalize_epub(Path(path), apply=True)
+            _reuse_cached_reviews(followup, report.codex_review_decisions)
             _merge_followup_report(report, followup)
 
     decision_by_key: dict[tuple[str, str, str], dict[str, object]] = {}

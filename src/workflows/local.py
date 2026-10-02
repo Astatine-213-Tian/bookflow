@@ -13,6 +13,7 @@ from lxml import etree as ET
 
 from src.content.edition_outline import (
     EditionOutlineError,
+    apply_edition_layout,
     apply_jjwxc_outline,
     prepare_extra_sections,
 )
@@ -47,6 +48,7 @@ def prepare_local(
     title: str = "",
     author: str = "",
     chapter_aliases: dict[str, str] | None = None,
+    chapter_layout: dict | None = None,
     use_jjwxc_outline: bool = True,
 ) -> tuple[dict, bytes | None, str]:
     """Normalize a copy, validate all surfaces, and persist the reusable source."""
@@ -58,6 +60,8 @@ def prepare_local(
         "chapter_aliases": chapter_aliases or {},
         "use_jjwxc_outline": use_jjwxc_outline,
     }
+    if chapter_layout is not None:
+        signature["chapter_layout"] = chapter_layout
     manifest = run_dir / "input.json"
     source_path = run_dir / "source.json"
     if source_path.exists():
@@ -109,6 +113,8 @@ def prepare_local(
         )
     edition = read_epub_source(candidate)
     book = copy.deepcopy(edition.source)
+    if chapter_layout is not None:
+        book["layout_report"] = apply_edition_layout(book, chapter_layout)
     # Identity is derived from the original, not a regenerated modified timestamp.
     book["identifier"] = "local-edition:" + signature["sha256"]
     book["metadata_report"] = (
@@ -195,6 +201,7 @@ def ingest_local(
     title: str = "",
     author: str = "",
     chapter_aliases: dict[str, str] | None = None,
+    chapter_layout: dict | None = None,
     use_jjwxc_outline: bool = True,
     cover_url: str | None = None,
 ) -> IngestResult:
@@ -214,6 +221,7 @@ def ingest_local(
             title=title,
             author=author,
             chapter_aliases=chapter_aliases,
+            chapter_layout=chapter_layout,
             use_jjwxc_outline=use_jjwxc_outline,
         )
     metadata = book["metadata"]

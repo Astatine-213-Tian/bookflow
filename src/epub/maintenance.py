@@ -48,15 +48,26 @@ def normalize_and_review_epub(
             report,
             _load_cached_review_decisions(Path(path)),
         )
-    return review_epub_with_codex(
-        path,
-        report,
-        apply=apply,
-        backup_dir=backup_dir,
-        overwrite_backup=overwrite_backup,
-        runner=review_runner,
-        timeout_seconds=review_timeout_seconds,
-    )
+    # One issue may cover several text nodes, while each review replacement is
+    # deliberately limited to one node. Review newly exposed findings as well.
+    for _ in range(5):
+        previous_changes = report.total_changes
+        report = review_epub_with_codex(
+            path,
+            report,
+            apply=apply,
+            backup_dir=backup_dir,
+            overwrite_backup=overwrite_backup,
+            runner=review_runner,
+            timeout_seconds=review_timeout_seconds,
+        )
+        if (
+            not any(issue.requires_codex_review for issue in report.issues)
+            or report.total_changes == previous_changes
+            or report.codex_review_status == "failed"
+        ):
+            break
+    return report
 
 
 def attach_metadata_enrichment(

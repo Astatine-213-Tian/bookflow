@@ -858,6 +858,11 @@ def _normalize_ascii_runs(
 
     def replace_ellipsis(match: re.Match[str]) -> str:
         nonlocal ellipsis_count
+        if (
+            text[max(0, match.start() - 1) : match.start()] == "…"
+            or text[match.end() : match.end() + 1] == "…"
+        ):
+            return match.group(0)
         if not _chinese_punctuation_context(text, match.start()):
             return match.group(0)
         ellipsis_count += 1
@@ -951,7 +956,7 @@ def _normalize_ascii_punctuation(
             is_decimal = previous.isdigit() and following.isdigit()
             is_ascii_token = _is_narrow_alnum(previous) and _is_narrow_alnum(following)
             is_filename_extension = bool(FILENAME_EXTENSION_RE.match(text, index + 1))
-            is_ellipsis = previous == "." or following == "."
+            is_ellipsis = previous in (".", "…") or following in (".", "…")
             url_tail = not following and bool(
                 re.search(r"(?:https?://|www\.)\S+\.$", text, re.IGNORECASE)
             )

@@ -11,7 +11,7 @@ from zipfile import ZipFile
 from src.cli.ingest import main as ingest_main
 from src.cli.notion_book import run as notion_main
 from src.content.blocks import content_signature
-from src.content.edition_outline import apply_jjwxc_outline
+from src.content.edition_outline import apply_edition_layout, apply_jjwxc_outline
 from src.content.models import Chapter, Volume
 from src.content.prepare import prepare_crawl
 from src.content.prepared import load_prepared_source
@@ -46,6 +46,97 @@ def source():
 
 
 class LocalImportTests(unittest.TestCase):
+    def test_reviewed_layout_splits_afterword_from_extra_and_preserves_content(self):
+        book = source()
+        member = list(book["chapters"])[-1]
+        original = copy.deepcopy(book["chapters"][member])
+        original["blocks"] += copy.deepcopy(original["blocks"])
+        book["chapters"][member] = original
+        layout = {
+            member: {
+                "expected_title": original["title"],
+                "parts": [
+                    {"start": 0, "stop": 1, "role": "afterword", "title": "后记"},
+                    {"start": 1, "stop": 2, "role": "extra", "title": "补篇"},
+                ],
+            }
+        }
+        report = apply_edition_layout(book, layout)
+        self.assertEqual(
+            book["chapters"][member]["blocks"] + book["extras"][0]["blocks"],
+            original["blocks"],
+        )
+        self.assertEqual([x["title"] for x in book["extras"]], ["补篇", "番外"])
+        self.assertEqual(len(report), 2)
+        aligned = apply_jjwxc_outline(
+            book,
+            {
+                "volumes": [
+                    {"title": "开端", "chapters": [{"number": 1, "title": "起点"}]}
+                ]
+            },
+        )
+        self.assertEqual(aligned["aligned_main_chapters"], 1)
+        self.assertEqual(book["sections"][-1], {"member": member})
+
+    def test_reviewed_layout_rejects_stale_titles_and_gaps_without_mutation(self):
+        original = source()
+        member = next(iter(original["chapters"]))
+        for title, start, stop in [
+            ("stale", 0, 3),
+            ("第1章 起点", 1, 3),
+            ("第1章 起点", 0, 2),
+        ]:
+            with self.subTest(title=title, start=start, stop=stop):
+                book = copy.deepcopy(original)
+                with self.assertRaises(ValueError):
+                    apply_edition_layout(
+                        book,
+                        {
+                            member: {
+                                "expected_title": title,
+                                "parts": [
+                                    {
+                                        "start": start,
+                                        "stop": stop,
+                                        "role": "extra",
+                                        "title": "补篇",
+                                    }
+                                ],
+                            }
+                        },
+                    )
+                self.assertEqual(book, original)
+
+    def test_layout_preparation_persists_and_rejects_changed_review(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = root / "edition.epub"
+            book = source()
+            member = list(book["chapters"])[-1]
+            export_local(book, path)
+            layout = {
+                member: {
+                    "expected_title": book["chapters"][member]["title"],
+                    "parts": [
+                        {"start": 0, "stop": 1, "role": "afterword", "title": "后记"}
+                    ],
+                }
+            }
+            with patch(
+                "src.epub.maintenance.enrich_epub_metadata",
+                return_value=MetadataEnrichmentReport(
+                    path=path, applied=False, status="unmatched"
+                ),
+            ):
+                prepared, _, _ = prepare_local(
+                    path, root / "run", chapter_layout=layout, use_jjwxc_outline=False
+                )
+            self.assertEqual(prepared["chapters"][member]["title"], "后记")
+            self.assertEqual(prepared["layout_report"][0]["role"], "afterword")
+            with self.assertRaisesRegex(ValueError, "inputs changed"):
+                prepare_local(path, root / "run", use_jjwxc_outline=False)
+
     def test_prepared_txt_retains_extra_and_repeat_when_read_again(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "book.txt"
@@ -132,6 +223,25 @@ class LocalImportTests(unittest.TestCase):
             [n["title"] for n in book["sections"]], ["一朵云", "尾声·春归"]
         )
         self.assertEqual(book["chapters"], original)
+        self.assertEqual(report["aligned_main_chapters"], 2)
+
+    def test_directory_accepts_identical_number_only_chapter_titles(self):
+        book = source()
+        for number, chapter in enumerate(book["chapters"].values(), 1):
+            chapter["title"] = f"第{number}章"
+        contents = {
+            "volumes": [
+                {
+                    "title": "",
+                    "chapters": [
+                        {"number": 1, "title": "第1章"},
+                        {"number": 2, "title": "第2章"},
+                    ],
+                }
+            ]
+        }
+        report = apply_jjwxc_outline(book, contents)
+        self.assertEqual(report["title_differences"], [])
         self.assertEqual(report["aligned_main_chapters"], 2)
 
     def test_preparation_is_reusable_preserves_original_and_rejects_changed_inputs(

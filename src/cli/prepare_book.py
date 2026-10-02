@@ -22,6 +22,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Reviewed JSON map: local complete chapter title -> official title",
     )
     parser.add_argument(
+        "--chapter-layout",
+        type=Path,
+        help="Reviewed JSON chapter splits and main/extra/afterword classification",
+    )
+    parser.add_argument(
         "--keep-outline",
         action="store_true",
         help="Explicitly preserve the edition outline instead of applying Jinjiang's directory",
@@ -43,6 +48,9 @@ def main(argv: list[str] | None = None) -> int:
             title=args.title,
             author=args.author,
             chapter_aliases=aliases,
+            chapter_layout=json.loads(args.chapter_layout.read_text())
+            if args.chapter_layout
+            else None,
             use_jjwxc_outline=not args.keep_outline,
         )
         print(f"Prepared source: {run_dir / 'source.json'}")

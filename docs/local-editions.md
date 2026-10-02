@@ -42,6 +42,33 @@ Aliases validate identity; local chapter titles and bodies stay intact. Explicit
 `--keep-outline` preserves an already reviewed local hierarchy. Author-defined
 `番外卷` remains main text; standalone extras enter the shared extra library.
 
+When a compiled edition numbers supplemental material as main chapters, supply
+`--chapter-layout reviewed-layout.json` to `book-prepare` or `book-ingest` before
+official-directory alignment. Each entry names an existing XHTML member, asserts
+its normalized title, and explicitly partitions its blocks using zero-based,
+half-open ranges. For example, split a six-paragraph afterword from an appended
+extra without changing either body:
+
+```json
+{
+  "EPUB/chap_01_171.xhtml": {
+    "expected_title": "第171章 后记与补篇",
+    "parts": [
+      {"start": 0, "stop": 6, "role": "afterword", "title": "后记"},
+      {"start": 6, "stop": 229, "role": "extra", "title": "补篇"}
+    ]
+  }
+}
+```
+
+All blocks must be accounted for exactly once. Stale titles, gaps, overlaps and
+unknown members fail before mutation. `chapter` retains main-text classification;
+`afterword` stays in the main database outside numbered directory alignment;
+`extra` enters the shared library in source order. Explicitly reviewed `omit`
+parts require a `reason` and remain recorded in `layout_report`; the input edition
+is always preserved. Classification is reviewed data, never inferred from the
+absence of a chapter on the official site.
+
 ## Upload and verify
 
 ```bash

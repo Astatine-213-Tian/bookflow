@@ -127,6 +127,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Reviewed local chapter title -> official title JSON",
     )
     parser.add_argument(
+        "--chapter-layout",
+        type=Path,
+        help="Reviewed JSON chapter splits and main/extra/afterword classification",
+    )
+    parser.add_argument(
         "--keep-outline",
         action="store_true",
         help="Preserve the local edition's outline",
@@ -211,6 +216,7 @@ def main(argv: list[str] | None = None) -> int:
         args.title
         or args.run_dir
         or args.chapter_aliases
+        or args.chapter_layout
         or args.keep_outline
         or args.cover_url
     ):
@@ -229,6 +235,9 @@ def main(argv: list[str] | None = None) -> int:
                 author=args.author or "",
                 chapter_aliases=json.loads(args.chapter_aliases.read_text())
                 if args.chapter_aliases
+                else None,
+                chapter_layout=json.loads(args.chapter_layout.read_text())
+                if args.chapter_layout
                 else None,
                 use_jjwxc_outline=not args.keep_outline,
                 cover_url=args.cover_url,

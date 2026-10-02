@@ -15,6 +15,89 @@ class EditionOutlineError(ValueError):
         self.differences = differences
 
 
+def apply_edition_layout(book: dict, layout: dict) -> list[dict]:
+    """Apply reviewed chapter splits/classification without silently losing blocks."""
+    if not isinstance(layout, dict) or set(layout) - set(book["chapters"]):
+        raise ValueError("Edition layout must map existing chapter members")
+    chapters = dict(book["chapters"])
+    replacements, extras, report = {}, [], []
+    for member in ordered_members(book["sections"]):
+        if member not in layout:
+            continue
+        original = book["chapters"][member]
+        decision = layout[member]
+        if (
+            not isinstance(decision, dict)
+            or decision.get("expected_title") != original["title"]
+        ):
+            raise ValueError(f"Edition layout title changed: {member}")
+        parts = decision.get("parts")
+        if not isinstance(parts, list) or not parts:
+            raise ValueError(f"Edition layout requires reviewed parts: {member}")
+        position = 0
+        nodes = []
+        chapters.pop(member)
+        for index, part in enumerate(parts):
+            if not isinstance(part, dict):
+                raise ValueError(f"Invalid edition layout part: {member}")
+            start, stop = part.get("start"), part.get("stop")
+            role, title = part.get("role"), part.get("title")
+            if (
+                type(start) is not int
+                or type(stop) is not int
+                or start != position
+                or not start < stop <= len(original["blocks"])
+                or role not in {"chapter", "afterword", "extra", "omit"}
+                or not isinstance(title, str)
+                or not title.strip()
+                or (role == "omit" and not part.get("reason"))
+            ):
+                raise ValueError(
+                    f"Invalid or incomplete edition layout coverage: {member}"
+                )
+            position = stop
+            item = original | {
+                "title": title,
+                "role": role,
+                "blocks": original["blocks"][start:stop],
+            }
+            if role == "extra":
+                extras.append(item)
+            elif role != "omit":
+                key = (
+                    member
+                    if index == 0
+                    else member.removesuffix(".xhtml") + f"_part_{index + 1}.xhtml"
+                )
+                if key in chapters:
+                    raise ValueError(f"Edition layout member collision: {key}")
+                chapters[key] = item
+                nodes.append({"member": key})
+            report.append(
+                {"member": member, "original_title": original["title"], **part}
+            )
+        if position != len(original["blocks"]):
+            raise ValueError(f"Edition layout leaves unreviewed blocks: {member}")
+        replacements[member] = nodes
+
+    def rebuild(nodes: list[dict]) -> list[dict]:
+        result = []
+        for node in nodes:
+            if "member" in node:
+                result.extend(replacements.get(node["member"], [node]))
+            else:
+                children = rebuild(node["children"])
+                if children:
+                    result.append(node | {"children": children})
+        return result
+
+    sections = rebuild(book["sections"])
+    if not chapters:
+        raise ValueError("Edition layout must retain main content")
+    book.update(chapters=chapters, sections=sections, extras=extras + book["extras"])
+    return report
+
+
 def prepare_extra_sections(book: dict) -> None:
     """Recognize an extra explicitly divided into consecutive standalone numbers."""
     for extra in book["extras"]:
@@ -59,7 +142,7 @@ def apply_jjwxc_outline(
     numbers = []
     for member in ordered_members(book["sections"]):
         chapter = book["chapters"][member]
-        if chapter.get("role") == "intro":
+        if chapter.get("role") in {"intro", "afterword"}:
             sections.append({"member": member})
             continue
         match = re.fullmatch(r"第(\d+)章\s*(.*)", chapter["title"])
@@ -70,7 +153,7 @@ def apply_jjwxc_outline(
         number = int(match[1])
         numbers.append(number)
         parent, title = official[number]
-        if match[2] != title:
+        if chapter["title"] != title and match[2] != title:
             differences.append({"number": number, "local": match[2], "official": title})
             if aliases.get(chapter["title"]) != title:
                 unreviewed.append(differences[-1] | {"local_title": chapter["title"]})
