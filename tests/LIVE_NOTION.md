@@ -30,7 +30,8 @@ need to be unset for the command.
 After success or failure, move only the test work (including its chapter database),
 author and created extra from `run.json` and its `import_state` (when present) to
 Notion Trash. If a create response was lost, locate the pages by the unique
-`marker` in their names; cleanup verification also checks those names. The MCP transport has no page-trash operation, so use the Notion UI.
+`marker` in their names; cleanup verification also checks those names. Use the
+Notion UI or REST page updates (`in_trash: true`).
 Then check the active inventories:
 
 ```bash
