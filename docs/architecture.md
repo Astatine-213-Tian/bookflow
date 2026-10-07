@@ -139,8 +139,9 @@ covers are thumbnails, with no separate reading page.
 `notion-books` owns typed validation, the REST block reader and resumable writer,
 and XHTML/CSS rendering shared with CMS. Local ZIP/navigation/metadata packaging
 remains in `epub/`; `notion/content.py` projects the app's book model and persists
-write plans. Official MCP retains discovery, linked views, metadata and manual
-chapter order. Body reads/writes require `NOTION_API_TOKEN`. Ordinary internal
+write plans. Official MCP handles catalogs, creation/templates, linked views and
+manual chapter order. Metadata and body reads/writes use REST with
+`NOTION_API_TOKEN`. Ordinary internal
 links target chapter/extra starts;
 unsupported paragraph targets fail before upload. Shared readback reconstructs
 notes without checkpoints and verifies real destinations before removing old blocks.
