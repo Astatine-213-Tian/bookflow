@@ -30,7 +30,7 @@ from mcp.shared.auth import (
 SERVER_URL = "https://mcp.notion.com/mcp"
 AUTH_FILE = (
     Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
-    / "epub-creator-from-web/notion-mcp.json"
+    / "bookflow/notion-mcp.json"
 )
 
 

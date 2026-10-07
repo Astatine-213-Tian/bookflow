@@ -81,7 +81,7 @@ def run(argv: list[str] | None = None) -> None:
         ],
     )
     parser.add_argument(
-        "--state", type=Path, help="generated/notion_cms_sources/.../import.json"
+        "--state", type=Path, help="state/notion/.../import.json"
     )
     parser.add_argument("--config", type=Path, default=CONFIG)
     parser.add_argument(

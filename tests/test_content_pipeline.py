@@ -308,14 +308,13 @@ class ContentPipelineTests(unittest.TestCase):
                 self.assertEqual(normalize_volume_title(actual), actual)
 
     def test_all_destinations_receive_the_same_cleaned_body(self):
-        import tempfile
-        from pathlib import Path
         from unittest.mock import patch
 
         from src.content.models import Chapter, Volume
         from src.crawler.models import CrawledBook
         from src.inputs.epub import read_epub_source
         from src.workflows.ingest import OutputOptions, write_outputs
+        from tests.fixtures import isolated_workdir
 
         source = CrawledBook(
             "书",
@@ -323,34 +322,33 @@ class ContentPipelineTests(unittest.TestCase):
             [Volume("", [Chapter("第１章", ["", "ＭＳＮ，ＱＱ", "重复。", "重复。"])])],
             "https://example.test/book",
         )
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            with patch(
-                "src.notion.upload.upload_source", return_value=root / "state.json"
-            ) as upload:
-                write_outputs(
-                    source,
-                    OutputOptions(
-                        output=root / "book.epub",
-                        txt_output=root / "book.txt",
-                        output_formats=("epub", "txt", "notion"),
-                    ),
-                )
-            expected = ["MSN，QQ", "重复。", "重复。"]
-
-            def text(book):
-                return [
-                    "".join(r["text"] for r in b["runs"])
-                    for b in next(iter(book["chapters"].values()))["blocks"]
-                ]
-
-            self.assertEqual(text(upload.call_args.args[0]), expected)
-            self.assertEqual(
-                text(read_epub_source(root / "book.epub").source), expected
+        root = isolated_workdir(self)
+        with patch(
+            "src.notion.upload.upload_source", return_value=root / "state.json"
+        ) as upload:
+            write_outputs(
+                source,
+                OutputOptions(
+                    output=root / "book.epub",
+                    txt_output=root / "book.txt",
+                    output_formats=("epub", "txt", "notion"),
+                ),
             )
-            self.assertTrue(
-                (root / "book.txt").read_text().endswith("MSN，QQ\n重复。\n重复。\n")
-            )
+        expected = ["MSN，QQ", "重复。", "重复。"]
+
+        def text(book):
+            return [
+                "".join(r["text"] for r in b["runs"])
+                for b in next(iter(book["chapters"].values()))["blocks"]
+            ]
+
+        self.assertEqual(text(upload.call_args.args[0]), expected)
+        self.assertEqual(
+            text(read_epub_source(root / "book.epub").source), expected
+        )
+        self.assertTrue(
+            (root / "book.txt").read_text().endswith("MSN，QQ\n重复。\n重复。\n")
+        )
 
     def test_metadata_lookup_fills_missing_values_without_erasing_explicit_values(self):
         from types import SimpleNamespace

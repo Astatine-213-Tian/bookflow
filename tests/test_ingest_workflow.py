@@ -19,6 +19,7 @@ from src.workflows.ingest import (
     requested_formats,
     write_outputs,
 )
+from tests.fixtures import isolated_workdir
 
 
 def book() -> CrawledBook:
@@ -31,6 +32,9 @@ def book() -> CrawledBook:
 
 
 class IngestWorkflowTests(unittest.TestCase):
+    def setUp(self):
+        isolated_workdir(self)
+
     def test_collects_once_and_passes_only_crawl_controls_to_provider(self):
         crawl = Mock(return_value=book())
         parser = ParserSpec("fixture", ("example.org",), "fixture", crawl)

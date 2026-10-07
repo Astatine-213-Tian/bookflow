@@ -47,7 +47,7 @@ name = "author-style-transfer-research"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "epub-creator-from-web" },
+    { name = "bookflow" },
     { name = "joblib" },
     { name = "numpy" },
     { name = "pyahocorasick" },
@@ -57,7 +57,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "epub-creator-from-web", editable = "../" },
+    { name = "bookflow", editable = "../" },
     { name = "joblib", specifier = "==1.5.3" },
     { name = "numpy", specifier = "==2.4.6" },
     { name = "pyahocorasick", specifier = "==2.3.1" },
@@ -381,7 +381,7 @@ wheels = [
 ]
 
 [[package]]
-name = "epub-creator-from-web"
+name = "bookflow"
 version = "0.1.0"
 source = { editable = "../" }
 dependencies = [

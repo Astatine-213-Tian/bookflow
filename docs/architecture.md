@@ -50,8 +50,10 @@ See [content-json.md](content-json.md) for supported fields and change examples.
 A run contains `source.json`, an optional relative cover asset, and separate
 `report.json` / `evidence.json` files. Platform responses, comments, normalization
 findings and Notion transport IDs are not added to the public content contract.
-Notion's internal checkpoint stores its own page IDs and progress alongside a
-copy of the content; `book-notion export` strips that transport state.
+Notion's durable checkpoint under `state/notion/` stores its own page IDs and
+progress alongside a copy of the content; `book-notion export` strips that state.
+Reusable local style bundles live in `assets/author_styles/`. Working runs and
+their retention are defined in [storage and cleanup](storage.md).
 
 The source JSON is the reusable intermediate output. An EPUB is a destination,
 not a mandatory preparation artifact. EPUB 2, EPUB 3, downloaded editions and

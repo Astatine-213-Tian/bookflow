@@ -97,7 +97,7 @@ def import_book(root: Path) -> None:
     try:
         result = write_outputs(source(run), OutputOptions(output_formats=("notion",)))
     finally:
-        checkpoints = list(root.glob("generated/notion_cms_sources/*/import.json"))
+        checkpoints = list(root.glob("state/notion/*/import.json"))
         if len(checkpoints) == 1:
             run["import_state"] = str(checkpoints[0])
             run["work_id"] = load(checkpoints[0]).get("work_id")

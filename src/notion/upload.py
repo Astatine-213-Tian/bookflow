@@ -271,7 +271,7 @@ def upload_source(
     config = json.loads(config_path.read_text())
     catalog = config["databases"]["works"]["data_source_id"]
     key = digest((catalog + source["identifier"]).encode())[:16]
-    directory = Path("generated/notion_cms_sources") / key
+    directory = Path("state/notion") / key
     state = directory / "import.json"
     with exclusive_lock(directory / "import.lock"):
         fingerprint = source_digest(source)

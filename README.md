@@ -1,4 +1,4 @@
-# EPUB Creator From Web
+# BookFlow
 
 A personal book tool for finding sources, importing EPUB/TXT/images, preparing
 content, translating chapters and writing EPUB, TXT or editable Notion drafts.
@@ -48,7 +48,8 @@ Images and irregular TXT can be parsed by an agent into schema-validated JSON;
 use the [image transcription procedure](.agents/skills/book-management/references/image-transcription.md).
 No traditional OCR is used. Normalization follows [one rule document](docs/normalization.md).
 Metadata enrichment is optional (`--enrich-metadata`) and preserves explicit
-values. Reports and cover assets stay beside prepared JSON under `generated/`.
+values. Working reports and cover assets stay beside prepared JSON in the run
+directory; [storage and cleanup](docs/storage.md) defines what survives completion.
 Local preparation scans possible quotations and uses authenticated `codex exec`
 only when candidates need judgment. Use `book-prepare --scan-quotes` to inspect
 them first, or `--quote-review` for saved session decisions; see
@@ -59,8 +60,8 @@ them first, or `--quote-review` for saved session decisions; see
 ```bash
 uv run book-update current.json --change change.json --run-dir generated/updates/run \
   --mode epub -o books/作者/修订版.epub
-uv run book-notion export --state generated/notion_cms_sources/RUN/import.json --report current.json
-uv run book-notion update --state generated/notion_cms_sources/RUN/import.json --change change.json
+uv run book-notion export --state state/notion/RUN/import.json --report current.json
+uv run book-notion update --state state/notion/RUN/import.json --change change.json
 ```
 
 [Change requests](docs/content-json.md#a-partial-correction-or-new-extra) identify
@@ -73,8 +74,8 @@ updates resume from journals and stop on conflicting editor changes.
 ```bash
 uv run book-notion login
 uv run book-notion upload --source generated/ingest/reviewed/source.json
-uv run book-notion resume --state generated/notion_cms_sources/RUN/import.json
-uv run book-notion verify --state generated/notion_cms_sources/RUN/import.json
+uv run book-notion resume --state state/notion/RUN/import.json
+uv run book-notion verify --state state/notion/RUN/import.json
 ```
 
 Official MCP preserves catalog metadata, linked views and manual chapter order.
@@ -115,6 +116,14 @@ uv run book-dataset upsert --txt research/datasets/raw/作者/书名.txt
 Only the selected book's manifest entry is changed. Dataset classification can
 use maintained metadata and the configured classifier. `research/` is an
 independent nested uv project; production never imports experiments or corpora.
+
+## Local files
+
+`books/` holds reader outputs, `state/notion/` holds durable upload/recovery state,
+and `assets/` holds reusable local inputs. `generated/` holds working runs and
+retained translation baselines. Use the system temporary directory for one-off
+diagnostics and previews. Follow [storage and cleanup](docs/storage.md) when a task
+finishes; successful runs do not require keeping every intermediate file.
 
 ## Validation
 

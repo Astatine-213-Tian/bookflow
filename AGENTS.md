@@ -24,8 +24,7 @@ For “update eternal gate” / “更新永恒之门”, use this workflow:
      or BrowserAct. Use interactive browser tools only when the failure requires
      login, verification, or browser inspection, then resume the crawler. For the
      user's existing Arc session, use a verified `arc-cdp run <adapter>` adapter.
-   - Generated helpers such as `crawl_arc.py` are historical run artifacts;
-     `src/cli/crawl.py` and `src/crawler/providers/patreon/parser.py` own the maintained
+   - `src/cli/crawl.py` and `src/crawler/providers/patreon/parser.py` own the maintained
      crawling path.
 
 3. Compare chapter bodies and fresh comments with the baseline. Reuse exact
@@ -60,11 +59,17 @@ Render explicit formatting without matching prose. EPUB covers are thumbnail
 assets with no separate reading page. Keep credentials and checkpoints local.
 
 - `book_specs/` stores maintained per-book settings and reviewed glossaries.
-- `generated/` stores production snapshots, translation runs and upload checkpoints.
+- `assets/` stores reusable local inputs; `state/notion/` stores durable checkpoints.
+- `generated/` stores working runs and retained translation baselines.
 - `books/` stores final reader outputs grouped by author, not source code.
 - `tests/` contains production contract tests.
 - `research/` is an independent nested `uv` project for corpora and experiments;
   production must not import it. Dataset manifests live in `research/datasets/`.
+
+For task artifacts and cleanup, follow [storage and retention](docs/storage.md).
+Use system temporary directories for one-off scripts, probes, crops and previews;
+tests use `TemporaryDirectory`. Keep a task's recovery and baseline data only as
+specified there instead of archiving every intermediate under `generated/`.
 
 ## Build, Test, and Development Commands
 
@@ -170,7 +175,9 @@ Use Conventional Commits for commit messages, such as `fix(xfxs): repair preview
 
 ## Security & Configuration Tips
 
-Do not commit credentials, browser profiles, temporary downloads, generated crawl snapshots, generated translation runs, generated EPUBs, or copyrighted source text. Keep final book outputs in `books/`, production crawl/translation artifacts under `generated/`, research corpora and experiment outputs under `research/datasets/` and `research/generated/`, and maintained per-book specs under `book_specs/`. Avoid hard-coded absolute paths.
+Keep credentials, browser profiles, local book data and working runs out of Git.
+Follow [storage and retention](docs/storage.md) for local paths and lifecycle.
+Avoid hard-coded absolute paths.
 
 ## Agent skills
 

@@ -1,4 +1,6 @@
 /books/
+/assets/
+/state/
 /generated/
 /reports/normalization/
 /book_specs/author_styles/*/intermediate/

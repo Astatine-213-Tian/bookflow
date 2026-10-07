@@ -377,7 +377,7 @@ wheels = [
 ]
 
 [[package]]
-name = "epub-creator-from-web"
+name = "bookflow"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

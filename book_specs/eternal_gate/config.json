@@ -20,7 +20,7 @@
   "style_transfer": {
     "method": "content_plan_combined_full_regeneration",
     "intensity": "strong",
-    "asset_path": "generated/author_styles/feitianyexiang/content_plan_combined.v1.json",
+    "asset_path": "assets/author_styles/feitianyexiang/content_plan_combined.v1.json",
     "asset_file_sha256": "bf3ad5a97aafcb14cdcc6f11e12debdad9665883d7e66e78444ab839e6918645",
     "prompt_path": "book_specs/author_styles/feitianyexiang/content_plan_combined.prompt.md",
     "prompt_file_sha256": "71828449045e4b682e76e7b9a69ab6874f1bad4481270f76f671ee302b44a17b",
@@ -60,7 +60,7 @@
     "timeout_seconds": 300
   },
   "scene_positive": {
-    "asset_path": "generated/author_styles/feitianyexiang/direct_scene_positive.v1.json",
+    "asset_path": "assets/author_styles/feitianyexiang/direct_scene_positive.v1.json",
     "asset_file_sha256": "2a897fa3e86fa4a7682e49fd6e9bb3ddde033e5281564acb7fd7bb9995ff6ebb",
     "prompt_path": "book_specs/author_styles/feitianyexiang/direct_scene_positive.prompt.md",
     "prompt_file_sha256": "c97e705136cf5686cc15c279e100171dd39c54496683314b6587cce3f58fcaa1",

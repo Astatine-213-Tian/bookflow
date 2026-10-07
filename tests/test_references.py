@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import copy
 import tempfile
 import unittest
 from pathlib import Path
 from zipfile import ZipFile
+from urllib.parse import urlsplit
 
 from lxml import etree as ET
-from tests.notion_api import roundtrip
+from notion_books import NotionBooks
+from tests.notion_api import BlockAPI, roundtrip, write
 
 from src.content.blocks import content_signature
 from src.content.contract import validate_book
@@ -48,6 +51,34 @@ def note_blocks():
 
 
 class ReferenceTests(unittest.TestCase):
+    def test_rest_destinations_are_urls_without_markdown_angle_wrappers(self):
+        async def run():
+            api = BlockAPI()
+            blocks = note_blocks()
+            external = "https://example.com/article?x=1&term=(test)#part"
+            blocks[0]["runs"].insert(
+                0, {"text": "链接", "styles": ["underline"], "href": external}
+            )
+            await write(NotionBooks(api=api), blocks)
+            # Check native storage, independently of our content decoder. The
+            # old Markdown roundtrip hid literal <URL> destinations in Notion.
+            urls = [
+                run["text"]["link"]["url"]
+                for block in api.nodes.values()
+                if not block.get("archived")
+                for run in block.get(block["type"], {}).get("rich_text", [])
+                if run.get("text", {}).get("link")
+            ]
+            self.assertEqual(len(urls), 4)
+            self.assertIn(external, urls)
+            self.assertIn("https://example.com/a?x=1&y=2", urls)
+            for url in urls:
+                self.assertIn(urlsplit(url).scheme, {"http", "https"})
+                self.assertFalse(url.startswith(("<", "%3C")))
+                self.assertFalse(url.endswith((">", "%3E")))
+
+        asyncio.run(run())
+
     def test_epub_keeps_line_breaks_and_whitespace_inside_styled_links(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)

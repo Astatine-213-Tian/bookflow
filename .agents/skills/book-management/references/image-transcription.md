@@ -7,8 +7,10 @@ ordinary image utilities are allowed; generative reconstruction is not evidence.
 
 ## 1. Inventory and Split
 
-List every image in the user's order. Keep a coverage record and transcription
-artifacts under `generated/<task>/`; do not commit source images or source text.
+List every image in the user's order. Keep originals and reviewed transcriptions
+at their authoritative source location or `assets/sources/<book>/`. Use a system
+temporary task directory for crops and comparison drafts; keep the coverage record
+until verification completes. Follow [storage and cleanup](../../../../docs/storage.md).
 Open originals with an image-viewing tool at readable resolution. For tall images,
 make overlapping vertical crops with original coordinates and several complete
 lines of overlap. Include the very top and bottom; a downscaled whole-image preview

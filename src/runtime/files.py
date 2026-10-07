@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
-DEFAULT_BACKUP_DIR = Path("/private/tmp/epub-creator-from-web-codex-backups")
+DEFAULT_BACKUP_DIR = Path("/private/tmp/bookflow-codex-backups")
 
 
 def write_json(path: Path, value: dict) -> None:

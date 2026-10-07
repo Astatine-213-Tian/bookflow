@@ -13,6 +13,7 @@ from src.crawler.registry import find_parser
 from src.crawler.search.orchestrator import search_all
 from src.workflows.collect import collect_source
 from src.workflows.ingest import OutputOptions, ingest
+from tests.fixtures import isolated_workdir
 
 
 class FixtureFetcher:
@@ -111,6 +112,7 @@ class CollectionTests(unittest.TestCase):
         self.assertEqual(blocks[1]["runs"][0]["text"], "Second.")
 
     def setUp(self):
+        isolated_workdir(self)
         FixtureFetcher.instances = []
         FixtureFetcher.fail_comments = False
 

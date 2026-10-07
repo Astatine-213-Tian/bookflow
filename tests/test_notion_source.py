@@ -21,10 +21,13 @@ from src.inputs.html import read_html_blocks
 from src.notion.upload import upload_row
 from src.runtime.files import digest
 from src.workflows.ingest import OutputOptions, write_outputs
-from tests.fixtures import prepared_crawl as prepare_crawl
+from tests.fixtures import isolated_workdir, prepared_crawl as prepare_crawl
 
 
 class SourceTests(unittest.TestCase):
+    def setUp(self):
+        isolated_workdir(self)
+
     def test_numbered_prose_survives_native_paragraph_readback(self):
         blocks = roundtrip(paragraphs("1. 第一项。\n\n2. 第二项。"))
         self.assertEqual(text_blocks(blocks), ["1. 第一项。", "", "2. 第二项。"])

@@ -1,7 +1,7 @@
 # Issue tracker: GitHub
 
 Issues and specs live in GitHub Issues for
-`Astatine-213-Tian/epub-creator-from-web`. Use the `gh` CLI from this clone.
+`Astatine-213-Tian/bookflow`. Use the `gh` CLI from this clone.
 
 ## Operations
 

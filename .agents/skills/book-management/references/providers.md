@@ -10,7 +10,7 @@
 - Notion draft upload: `src/notion/upload.py`.
 - EPUB presentation: `src/epub/`.
 - Shared models: `src/content/models.py`.
-- Sources and checkpoints: `generated/`; optional reader outputs: `books/`.
+- Working sources: `generated/`; Notion checkpoints: `state/notion/`; reader outputs: `books/`.
 
 ## Parser Module Contract
 

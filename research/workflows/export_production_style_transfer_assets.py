@@ -26,7 +26,7 @@ DEFAULT_SOURCE_FILE_SHA256 = (
 )
 DEFAULT_OUTPUT = (
     PRODUCTION_ROOT
-    / "generated/author_styles/feitianyexiang/content_plan_combined.v1.json"
+    / "assets/author_styles/feitianyexiang/content_plan_combined.v1.json"
 )
 
 

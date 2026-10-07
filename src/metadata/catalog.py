@@ -367,7 +367,7 @@ class MetadataLookup:
         self.session = session or requests.Session()
         self.session.headers.setdefault(
             "User-Agent",
-            "Mozilla/5.0 epub-creator-from-web metadata-enricher",
+            "Mozilla/5.0 bookflow metadata-enricher",
         )
         self._author_id_cache: dict[str, str | None] = {}
         self._catalog_cache: dict[str, list[_JjwxcCandidate]] = {}

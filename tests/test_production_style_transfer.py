@@ -43,7 +43,7 @@ from src.translation.style_transfer_assets import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ASSET_PATH = (
-    REPO_ROOT / "generated/author_styles/feitianyexiang/content_plan_combined.v1.json"
+    REPO_ROOT / "assets/author_styles/feitianyexiang/content_plan_combined.v1.json"
 )
 ASSET_SHA256 = "bf3ad5a97aafcb14cdcc6f11e12debdad9665883d7e66e78444ab839e6918645"
 PROMPT_PATH = (

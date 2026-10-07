@@ -1,12 +1,13 @@
 ---
 name: book-management
-description: Add, find, update, or repair books in epub-creator-from-web. Use for choosing sources, transcribing book or extra text from images with Codex vision, crawling to local EPUB, Notion drafts and/or TXT, targeted training-dataset exports, adding or fixing crawler providers, and correcting book formatting or metadata. Dataset export is an output choice in the shared book workflow.
+description: Add, find, update, or repair books in bookflow. Use for choosing sources, transcribing book or extra text from images with Codex vision, crawling to local EPUB, Notion drafts and/or TXT, targeted training-dataset exports, adding or fixing crawler providers, and correcting book formatting or metadata. Dataset export is an output choice in the shared book workflow.
 ---
 
 # Book Management
 
 Use the maintained CLI for book acquisition and output. One crawl can produce
 local EPUB, a Notion draft, TXT, or any combination of these.
+For working files and task completion, follow [storage and cleanup](../../../docs/storage.md).
 
 ## Choose the Task
 

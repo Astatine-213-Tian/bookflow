@@ -33,7 +33,7 @@ UA = (
 )
 PROFILE_DIR_ENV = "BOOKLIB_PATREON_PROFILE_DIR"
 DEFAULT_PROFILE_DIR = (
-    Path.home() / ".local" / "share" / "epub-creator-from-web" / "patreon-profile"
+    Path.home() / ".local" / "share" / "bookflow" / "patreon-profile"
 )
 COLLECTION_RE = re.compile(r"/collection/(\d+)")
 SPACE_RE = re.compile(r"\s+")

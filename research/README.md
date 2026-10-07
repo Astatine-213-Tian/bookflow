@@ -53,7 +53,7 @@ uv run author-style-research export-production --overwrite
 ```
 
 The exporter writes only
-`../generated/author_styles/feitianyexiang/content_plan_combined.v1.json` in the
+`../assets/author_styles/feitianyexiang/content_plan_combined.v1.json` in the
 production project. Corpus text and experiment outputs remain here.
 
 ## Maintenance Boundary

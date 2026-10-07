@@ -72,7 +72,7 @@ options require a fresh run directory. Local output cannot replace its input.
 ## Compare editions only when requested
 
 ```bash
-uv run book-compare first.epub second.txt --report generated/edition-comparison.json
+uv run book-compare first.epub second.txt --report /private/tmp/bookflow-edition-comparison.json
 ```
 
 Comparison evaluates ordered chapter bodies and meaningful repeats. It is an
@@ -88,7 +88,7 @@ high-confidence `quote` changes a paragraph's type. Other judgments preserve
 text and formatting, with uncertainty recorded in `quote-review.json`.
 No arbitrary `.center` or small-font class is treated as a quotation by itself.
 
-`book-prepare FILE --scan-quotes --review ranges.json --run-dir generated/review`
+`book-prepare FILE --scan-quotes --review ranges.json --run-dir generated/ingest/review`
 writes `quote-candidates.json` without calling a model. An agent session can
 supply exact, fingerprint-bound decisions with `--quote-review decisions.json`.
 The default workflow uses the locally authenticated `codex exec`, caches validated
@@ -167,7 +167,7 @@ Metadata-only repair changes the OPF and edit timestamp, not chapter bodies.
   and synchronize affected XHTML title/headings, `nav.xhtml`, `toc.ncx`, and
   OPF manifest/spine when reading order changes. Normalize confirmed volume
   labels with the shared volume function; do not duplicate numbering rules.
-- Back up under `/private/tmp/epub-creator-from-web-codex-backups/`, preserving the
+- Back up under `/private/tmp/bookflow-codex-backups/`, preserving the
   path relative to `books/`; do not put backups beside reader outputs. Write a
   temporary archive, validate, and replace atomically. Keep `mimetype` first and
   uncompressed.

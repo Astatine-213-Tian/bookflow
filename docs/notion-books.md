@@ -40,8 +40,8 @@ mise exec -- uv run --no-cache --with /absolute/path/to/notion-books python -m u
 
 ```bash
 uv run book-notion login
-uv run book-notion upload --source generated/book_import/source.json
-uv run book-notion verify --state generated/notion_cms_sources/HASH/import.json
+uv run book-notion upload --source generated/ingest/reviewed/source.json
+uv run book-notion verify --state state/notion/HASH/import.json
 uv run book-ingest "作品URL" --mode notion
 uv run book-ingest "作品URL" --mode epub -o books/作者/书名.epub
 uv run book-ingest "作品URL" --mode epub --mode notion --mode txt
@@ -90,11 +90,11 @@ PNG/JPEG 最大 10 MiB、2500 万像素。封面不可读取或回读字节不�
 
 ## 续传与冲突
 
-检查点位于 `generated/notion_cms_sources/<来源摘要>/import.json`，按目标目录及来源标识隔离。
+检查点位于 `state/notion/<来源摘要>/import.json`，按目标目录及来源标识隔离。
 保存每次创建返回的 ID，回读正文和属性后标记已验证；上传完成后以 Notion 中的编辑为准。
 
 ```bash
-uv run book-notion resume --state generated/notion_cms_sources/<来源摘要>/import.json
+uv run book-notion resume --state state/notion/<来源摘要>/import.json
 ```
 
 - 创建请求结果不确定：根据页面内容核对对应 ID，再修复检查点；不要盲目重建。
@@ -132,8 +132,8 @@ Notion 用三列中的唯一非空列表示居中或右对齐；这不是任意�
 用生产渲染器预览标题、引用、链接和脚注：
 
 ```bash
-mise exec -- uv run --locked notion-books preview --output generated/format-preview
-open generated/format-preview/index.html
+mise exec -- uv run --locked notion-books preview --output /private/tmp/bookflow-format-preview
+open /private/tmp/bookflow-format-preview/index.html
 ```
 
 平铺编号条目保存为带字面量 `1. `、`2. ` 前缀的 paragraph。REST 回读保留文本、

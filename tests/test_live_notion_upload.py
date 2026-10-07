@@ -20,7 +20,7 @@ class LiveUploadRecoveryTests(unittest.TestCase):
         original = Path.cwd()
         self.addCleanup(os.chdir, original)
         self.manifest = self.root / "run.json"
-        self.checkpoint = self.root / "generated/notion_cms_sources/test/import.json"
+        self.checkpoint = self.root / "state/notion/test/import.json"
         self.reader = SimpleNamespace(rows=AsyncMock(return_value=[]))
 
         async def connect(action):

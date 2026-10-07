@@ -23,7 +23,7 @@ from src.notion.cover import finish_cover, upload_cover, validate_cover, verify_
 from src.notion.upload import upload_draft, upload_row
 from src.runtime.files import digest
 from src.workflows.ingest import OutputOptions, write_outputs
-from tests.fixtures import prepared_crawl as prepare_crawl
+from tests.fixtures import isolated_workdir, prepared_crawl as prepare_crawl
 from tests.notion_api import BlockAPI, paragraphs
 
 WORK = "11111111-1111-1111-1111-111111111111"
@@ -52,6 +52,9 @@ def png():
 
 
 class DestinationTests(unittest.TestCase):
+    def setUp(self):
+        isolated_workdir(self)
+
     def test_local_path_never_authenticates_and_retains_thumbnail_only(self):
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory) / "local.epub"

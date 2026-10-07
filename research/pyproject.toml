@@ -9,7 +9,7 @@ description = "Dataset-first Chinese authorship and style-transfer research."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "epub-creator-from-web",
+    "bookflow",
     "joblib==1.5.3",
     "numpy==2.4.6",
     "pyahocorasick==2.3.1",
@@ -21,7 +21,7 @@ dependencies = [
 author-style-research = "workflows.cli:main"
 
 [tool.uv.sources]
-epub-creator-from-web = { path = "..", editable = true }
+bookflow = { path = "..", editable = true }
 
 [tool.setuptools.packages.find]
 include = ["experiments*", "tests*", "workflows*"]

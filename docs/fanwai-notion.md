@@ -35,14 +35,14 @@
 
 ```bash
 # 复用报告中的第 1 篇候选，保留 Notion 已有标题和正文
-uv run book-notion resolve-extra --state generated/notion_cms_sources/<来源摘要>/import.json \
+uv run book-notion resolve-extra --state state/notion/<来源摘要>/import.json \
   --extra 1 --use-existing <已有番外页面ID或URL>
 
 # 或者确认它是独立内容，应当新建
-uv run book-notion resolve-extra --state generated/notion_cms_sources/<来源摘要>/import.json \
+uv run book-notion resolve-extra --state state/notion/<来源摘要>/import.json \
   --extra 1 --create-new
 
-uv run book-notion resume --state generated/notion_cms_sources/<来源摘要>/import.json
+uv run book-notion resume --state state/notion/<来源摘要>/import.json
 ```
 
 `resolve-extra` 只记录本地选择；`resume` 重新核对后才上传。
