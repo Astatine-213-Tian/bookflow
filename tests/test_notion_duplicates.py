@@ -78,8 +78,6 @@ CONFIG = {
 
 
 class Library:
-    call_api = None
-
     def __init__(self):
         self.pages = {
             PAGE: {
@@ -100,7 +98,9 @@ class Library:
         return await NotionBooks(self).create_page(data_source, properties, **kwargs)
 
     async def write_properties(self, id, properties):
-        return await NotionBooks(self).write_properties(id, properties)
+        return await NotionBooks(self, api=self.call_api).write_properties(
+            id, properties
+        )
 
     async def inventory(self, database):
         return await NotionBooks(self).inventory(database)
@@ -142,6 +142,32 @@ class Library:
         self.pages[plan["page_id"]]["content"] = "\n".join(text_blocks(plan["blocks"]))
         return {**plan, "done": True}
 
+    async def call_api(self, request):
+        id = request["path"].split("/")[1]
+        page = self.pages[id]
+        if request["method"] == "PATCH":
+            self.calls.append(("PATCH", copy.deepcopy(request)))
+            for name, value in request["json"]["properties"].items():
+                if "relation" in value:
+                    page["properties"][name] = [
+                        item["id"] for item in value["relation"]
+                    ]
+                else:
+                    raise AssertionError(value)
+        properties = {}
+        for name, value in page["properties"].items():
+            if isinstance(value, list):
+                properties[name] = {
+                    "type": "relation",
+                    "relation": [{"id": id} for id in value],
+                }
+            else:
+                properties[name] = {"type": "title", "title": [{"plain_text": value}]}
+        return {
+            "status": 200,
+            "body": {"object": "page", "id": id, "properties": properties},
+        }
+
     async def call(self, name, args):
         if name == "notion-fetch":
             view = {"dataSourceUrl": f"collection://{EXTRAS}", "filter": self.filter}
@@ -149,9 +175,6 @@ class Library:
         if name == "notion-query-data-sources":
             return {"results": [{"url": id} for id in self.shared], "has_more": False}
         self.calls.append((name, args))
-        if name == "notion-update-page":
-            self.pages[args["page_id"]]["properties"].update(args["properties"])
-            return {}
         if name == "notion-create-pages":
             id = f"00000000-0000-0000-0000-{len(self.pages):012d}"
             self.pages[id] = {
@@ -370,11 +393,11 @@ class DuplicateUploadTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             [
-                args["command"]
+                args["json"]["properties"]
                 for name, args in self.library.calls
-                if name == "notion-update-page"
+                if name == "PATCH"
             ],
-            ["update_properties"],
+            [{"涉及作品": {"relation": [{"id": OTHER}, {"id": WORK}]}}],
         )
         count = len(self.library.calls)
         self.library.pages[PAGE]["content"] = "Later editorial change"

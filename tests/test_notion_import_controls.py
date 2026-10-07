@@ -110,7 +110,8 @@ class ImportControlsTests(unittest.IsolatedAsyncioTestCase):
             page=AsyncMock(return_value=SimpleNamespace(cover_known=True, cover=None))
         )
         tools = SimpleNamespace(
-            call=AsyncMock(side_effect=ConnectionError("lost response"))
+            call=AsyncMock(side_effect=ConnectionError("lost response")),
+            call_api=AsyncMock(),
         )
         with (
             tempfile.TemporaryDirectory() as temporary,
@@ -137,7 +138,7 @@ class ImportControlsTests(unittest.IsolatedAsyncioTestCase):
                 )
             )
         )
-        tools = SimpleNamespace(call=AsyncMock())
+        tools = SimpleNamespace(call=AsyncMock(), call_api=AsyncMock())
         with (
             tempfile.TemporaryDirectory() as temporary,
             patch("src.notion.presentation.NotionBooks", return_value=reader),
@@ -153,10 +154,12 @@ class ImportControlsTests(unittest.IsolatedAsyncioTestCase):
     async def test_template_recovery_uses_mcp_once_and_preserves_pending_write(self):
         value = book()
         tools = SimpleNamespace(
-            call=AsyncMock(side_effect=ConnectionError("lost response"))
+            call=AsyncMock(side_effect=ConnectionError("lost response")),
+            call_api=AsyncMock(),
         )
         reader = SimpleNamespace(
-            page=AsyncMock(return_value=SimpleNamespace(data_source_id=DS, shell="")),
+            page=AsyncMock(return_value=SimpleNamespace(data_source_id=DS)),
+            layout=AsyncMock(return_value=SimpleNamespace(shell="")),
             catalog=AsyncMock(
                 return_value={
                     "works": {
@@ -198,13 +201,12 @@ class ImportControlsTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_existing_template_content_only_runs_discovery(self):
         value = book()
-        tools = SimpleNamespace(call=AsyncMock())
+        tools = SimpleNamespace(call=AsyncMock(), call_api=AsyncMock())
         reader = SimpleNamespace(
-            page=AsyncMock(
-                return_value=SimpleNamespace(
-                    data_source_id=DS, shell="<database>正文</database>"
-                )
-            )
+            page=AsyncMock(return_value=SimpleNamespace(data_source_id=DS)),
+            layout=AsyncMock(
+                return_value=SimpleNamespace(shell="<database>正文</database>")
+            ),
         )
         with (
             tempfile.TemporaryDirectory() as temporary,

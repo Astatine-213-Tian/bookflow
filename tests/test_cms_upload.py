@@ -434,7 +434,7 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
                 tools=None,
             )
 
-    async def test_native_cover_uses_only_api_for_file_and_mcp_for_readback(self):
+    async def test_native_cover_uses_rest_for_upload_and_readback(self):
         cover = png()
         requests = []
 
@@ -472,18 +472,27 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
                 "cover_sha256": digest(cover),
             }
             tools = AsyncMock()
-            tools.call.side_effect = [
-                {
-                    "cover": None,
-                    "text": "<properties>\n{}\n</properties>\n<blank-page>",
-                },
-                {
-                    "text": "<properties>\n{}\n</properties>\n<blank-page>",
-                    "cover": {
-                        "type": "file",
-                        "file": {"url": "https://files.example.org/cover"},
+            tools.call_api.side_effect = [
+                {"status": 200, "body": payload}
+                for payload in [
+                    {
+                        "object": "page",
+                        "id": WORK,
+                        "properties": {},
+                        "last_edited_time": "0",
+                        "cover": None,
                     },
-                },
+                    {
+                        "object": "page",
+                        "id": WORK,
+                        "properties": {},
+                        "last_edited_time": "0",
+                        "cover": {
+                            "type": "file",
+                            "file": {"url": "https://files.example.org/cover"},
+                        },
+                    },
+                ]
             ]
             await upload_cover(book, Path(directory) / "import.json", tools=tools)
             self.assertTrue(book["cover_uploaded"])
@@ -491,13 +500,10 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 [r.method for r in requests], ["GET", "POST", "POST", "PATCH", "GET"]
             )
-            self.assertTrue(
-                all(
-                    call.args[0] == "notion-fetch" for call in tools.call.call_args_list
-                )
-            )
+            tools.call.assert_not_awaited()
+            self.assertEqual(tools.call_api.await_count, 2)
 
-    async def test_browser_cover_task_resumes_without_an_api_token(self):
+    async def test_browser_cover_task_resumes_with_rest_readback(self):
         with (
             tempfile.TemporaryDirectory() as temporary,
             patch.dict(os.environ, {"NOTION_API_TOKEN": ""}),
@@ -519,11 +525,17 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
             tools.call.assert_not_called()
             task = json.loads((root / "cover-browser.json").read_text())
             self.assertEqual(task["sha256"], digest(png()))
-            tools.call.return_value = {
-                "text": "<properties>\n{}\n</properties>\n<blank-page>",
-                "cover": {
-                    "type": "file",
-                    "file": {"url": "https://files.example.org/cover"},
+            tools.call_api.return_value = {
+                "status": 200,
+                "body": {
+                    "object": "page",
+                    "id": WORK,
+                    "properties": {},
+                    "last_edited_time": "0",
+                    "cover": {
+                        "type": "file",
+                        "file": {"url": "https://files.example.org/cover"},
+                    },
                 },
             }
             client = httpx.AsyncClient
@@ -540,7 +552,7 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(book["cover_uploaded"])
             self.assertNotIn("cover_browser_task", book)
             await finish_cover(book, state, tools=tools)
-            self.assertEqual(tools.call.await_count, 1)
+            self.assertEqual(tools.call_api.await_count, 1)
 
     def test_invalid_cover_is_rejected(self):
         self.assertEqual(validate_cover(png()), "png")

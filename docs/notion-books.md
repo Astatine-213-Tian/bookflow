@@ -53,9 +53,9 @@ uv run book-ingest "作品URL" --mode epub --mode notion --mode txt
 组合输出逐项执行，失败时核对已有文件及检查点，再恢复未完成的输出。
 翻译流程使用同一个内容 JSON 和 EPUB writer。
 
-目录、关联视图、作者关联和书籍属性通过官方 Notion MCP 读写；正文通过官方
-REST pages/blocks API 读写。OAuth 凭据保存在私有状态目录，可刷新。正文需要
-进程环境中的 `NOTION_API_TOKEN`；集成须能访问目标库并有读取、插入及更新内容权限。
+目录、创建页面和模板、关联视图及手动顺序通过官方 Notion MCP 操作；页面属性、
+作者信息、封面元数据及正文通过官方 REST API 读写。OAuth 凭据保存在私有状态目录，
+可刷新。REST 操作需要进程环境中的 `NOTION_API_TOKEN`；集成须能访问目标库并有读取、插入及更新内容权限。
 凭据由进程环境提供，不写入检查点。脚注的实际 block ID 由 REST 获取，无需浏览器绑定。
 `book-notion logout` 删除本地 MCP token；重新授权使用 `book-notion login`。
 
@@ -63,7 +63,8 @@ REST pages/blocks API 读写。OAuth 凭据保存在私有状态目录，可刷�
 
 封面使用官方 File Upload API，复用正文所需的 `NOTION_API_TOKEN`。
 已有 `cover-browser.json` 待办可按[封面流程](../.agents/skills/book-management/references/notion-cover.md)
-处理，再运行 `book-notion verify-cover --state ...`。封面恢复与正文分开，不重建正文。
+处理，再运行 `book-notion verify-cover --state ...`，通过 REST 回读验证（需要 token）。
+封面恢复与正文分开，不重建正文。
 
 PNG/JPEG 最大 10 MiB、2500 万像素。封面不可读取或回读字节不一致时保留
 待处理状态，不重复创建正文。脚本不读取 `.env`，不保存 token 或签名下载 URL。
@@ -119,7 +120,7 @@ uv run book-notion resume --state state/notion/<来源摘要>/import.json
 ## 排版约定
 
 `src/content/` 负责内容相关的清理和格式识别；共享依赖 `notion-books` 负责
-内容契约、Notion schema、REST 正文读写及 XHTML/CSS 渲染。`src/notion/cms.py` 与 `upload.py`
+内容契约、Notion schema、REST 属性和正文读写、XHTML/CSS 渲染。`src/notion/cms.py` 与 `upload.py`
 负责导入决策、身份匹配、检查点和流程；认证与封面 HTTP 客户端也留在本项目。
 `src/workflows/ingest.py` 决定输出目的地；本地输出调用 `src/epub/writer.py`，不经 Notion。
 模块边界见[架构说明](architecture.md)。

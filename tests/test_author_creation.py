@@ -55,7 +55,10 @@ class AuthorCreationTests(unittest.IsolatedAsyncioTestCase):
                     ),
                 ):
                     await ensure_work(
-                        book, Path(temp) / "state.json", CONFIG, tools=None
+                        book,
+                        Path(temp) / "state.json",
+                        CONFIG,
+                        tools=SimpleNamespace(call_api=AsyncMock()),
                     )
                 properties = remote.create_page.call_args_list[0].args[1]
                 self.assertEqual(
@@ -82,7 +85,7 @@ class AuthorCreationTests(unittest.IsolatedAsyncioTestCase):
                     {"metadata": {"title": "书", "creator": "作者"}},
                     Path(temp) / "state.json",
                     CONFIG,
-                    tools=None,
+                    tools=SimpleNamespace(call_api=AsyncMock()),
                 )
         remote.create_page.assert_not_awaited()
 
@@ -98,12 +101,16 @@ class AuthorCreationTests(unittest.IsolatedAsyncioTestCase):
         ):
             state = Path(temp) / "state.json"
             with self.assertRaisesRegex(ValueError, "homepage readback differs"):
-                await ensure_work(book, state, CONFIG, tools=None)
+                await ensure_work(
+                    book, state, CONFIG, tools=SimpleNamespace(call_api=AsyncMock())
+                )
             self.assertEqual(book["pending_author"], "作者")
             self.assertNotIn("work_id", book)
             remote.rows.side_effect = [[{"id": AUTHOR, "作者": "作者"}], []]
             remote.page.return_value.properties[AUTHOR_HOMEPAGE] = URL
-            await ensure_work(book, state, CONFIG, tools=None)
+            await ensure_work(
+                book, state, CONFIG, tools=SimpleNamespace(call_api=AsyncMock())
+            )
             lookup.assert_called_once()
         self.assertEqual(remote.create_page.await_count, 2)  # One author, one work.
         self.assertEqual(book["work_id"], WORK)
@@ -121,7 +128,7 @@ class AuthorCreationTests(unittest.IsolatedAsyncioTestCase):
                 {"metadata": {"title": "书", "creator": "作者"}},
                 Path(temp) / "state.json",
                 CONFIG,
-                tools=None,
+                tools=SimpleNamespace(call_api=AsyncMock()),
             )
             lookup.assert_not_called()
         remote.create_page.assert_awaited_once()

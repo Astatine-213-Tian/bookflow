@@ -29,7 +29,8 @@ for a code-only refactor or fixture test.
    uv run book-notion verify --state state/notion/RUN/import.json
    ```
 
-`verify-cover` fetches current native-cover metadata and its bytes, checks the
+`verify-cover` uses `NOTION_API_TOKEN` to read current native-cover metadata
+through REST, downloads its bytes, checks the
 prepared SHA-256, and only then marks it uploaded. It also resolves an uncertain
 API attachment after the same verification. A click, chooser screenshot or upload
 spinner is not proof. Do not set `cover_uploaded` manually or persist signed URLs,

@@ -229,17 +229,22 @@ class NotionChangesTests(unittest.IsolatedAsyncioTestCase):
                 "chapter": target,
             },
         )
-        original_call = api.call
+        original_call = api.call_api
         fail = True
 
-        async def call(name, args):
+        async def call(request):
             nonlocal fail
-            if name == "notion-update-page" and fail:
+            result = await original_call(request)
+            if (
+                request["method"] == "PATCH"
+                and request["path"] == "pages/" + id
+                and fail
+            ):
                 fail = False
                 raise TimeoutError("lost title response")
-            return await original_call(name, args)
+            return result
 
-        api.call = call
+        api.call_api = call
         config = {"databases": {"works": {"data_source_id": SOURCE}}}
         with tempfile.TemporaryDirectory() as temporary:
             state = Path(temporary) / "import.json"

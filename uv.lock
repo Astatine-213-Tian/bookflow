@@ -60,6 +60,47 @@ wheels = [
 ]
 
 [[package]]
+name = "bookflow"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "beautifulsoup4" },
+    { name = "cssselect2" },
+    { name = "ebooklib" },
+    { name = "httpx" },
+    { name = "jsonschema" },
+    { name = "lxml" },
+    { name = "mcp" },
+    { name = "notion-books" },
+    { name = "opencc-python-reimplemented" },
+    { name = "pillow" },
+    { name = "referencing" },
+    { name = "requests" },
+    { name = "tinycss2" },
+    { name = "tqdm" },
+    { name = "zendriver" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "beautifulsoup4", specifier = "==4.14.3" },
+    { name = "cssselect2", specifier = ">=0.10.1" },
+    { name = "ebooklib", specifier = "==0.20" },
+    { name = "httpx", specifier = "==0.28.1" },
+    { name = "jsonschema", specifier = ">=4.23,<5" },
+    { name = "lxml", specifier = "==6.1.0" },
+    { name = "mcp", specifier = "==1.26.0" },
+    { name = "notion-books", git = "https://github.com/Astatine-213-Tian/notion-books?tag=v0.8.0" },
+    { name = "opencc-python-reimplemented", specifier = "==0.1.7" },
+    { name = "pillow", specifier = ">=11.3,<13" },
+    { name = "referencing", specifier = ">=0.36,<1" },
+    { name = "requests", specifier = "==2.33.1" },
+    { name = "tinycss2", specifier = ">=1.5.1" },
+    { name = "tqdm", specifier = "==4.67.1" },
+    { name = "zendriver", specifier = "==0.15.3" },
+]
+
+[[package]]
 name = "certifi"
 version = "2026.4.22"
 source = { registry = "https://pypi.org/simple" }
@@ -377,47 +418,6 @@ wheels = [
 ]
 
 [[package]]
-name = "bookflow"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "beautifulsoup4" },
-    { name = "cssselect2" },
-    { name = "ebooklib" },
-    { name = "httpx" },
-    { name = "jsonschema" },
-    { name = "lxml" },
-    { name = "mcp" },
-    { name = "notion-books" },
-    { name = "opencc-python-reimplemented" },
-    { name = "pillow" },
-    { name = "referencing" },
-    { name = "requests" },
-    { name = "tinycss2" },
-    { name = "tqdm" },
-    { name = "zendriver" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "beautifulsoup4", specifier = "==4.14.3" },
-    { name = "cssselect2", specifier = ">=0.10.1" },
-    { name = "ebooklib", specifier = "==0.20" },
-    { name = "httpx", specifier = "==0.28.1" },
-    { name = "jsonschema", specifier = ">=4.23,<5" },
-    { name = "lxml", specifier = "==6.1.0" },
-    { name = "mcp", specifier = "==1.26.0" },
-    { name = "notion-books", git = "https://github.com/Astatine-213-Tian/notion-books?tag=v0.7.0" },
-    { name = "opencc-python-reimplemented", specifier = "==0.1.7" },
-    { name = "pillow", specifier = ">=11.3,<13" },
-    { name = "referencing", specifier = ">=0.36,<1" },
-    { name = "requests", specifier = "==2.33.1" },
-    { name = "tinycss2", specifier = ">=1.5.1" },
-    { name = "tqdm", specifier = "==4.67.1" },
-    { name = "zendriver", specifier = "==0.15.3" },
-]
-
-[[package]]
 name = "grapheme"
 version = "0.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -643,8 +643,8 @@ wheels = [
 
 [[package]]
 name = "notion-books"
-version = "0.7.0"
-source = { git = "https://github.com/Astatine-213-Tian/notion-books?tag=v0.7.0#b7c2101b411552fca2e0715c5b06ed7c8790b816" }
+version = "0.8.0"
+source = { git = "https://github.com/Astatine-213-Tian/notion-books?tag=v0.8.0#03d12db35ad35018638a189e480086bfc55d0ad4" }
 
 [[package]]
 name = "opencc-python-reimplemented"

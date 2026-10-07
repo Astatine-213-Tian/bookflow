@@ -110,7 +110,7 @@ async def attach_public_cover(book: dict, state: Path, *, tools) -> None:
     if book.get("cover_uploaded"):
         return
     url = book["cover_url"]
-    reader = NotionBooks(tools)
+    reader = NotionBooks(tools, api=tools.call_api)
     page = await reader.page(book["work_id"])
     if not page.cover_known:
         raise ValueError("Notion omitted cover metadata")

@@ -80,7 +80,7 @@ def author_names(metadata: dict) -> list[str]:
 
 
 async def ensure_work(book: dict, path: Path, config: dict, *, tools) -> None:
-    reader = NotionBooks(tools)
+    reader = NotionBooks(tools, api=tools.call_api)
     states = await reader.catalog(
         {
             kind: database

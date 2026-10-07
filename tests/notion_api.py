@@ -55,14 +55,6 @@ class BlockAPI:
             source = arguments["parent"]["data_source_id"]
             self.add_page(id, title, source, property)
             return {"pages": [{"id": id}]}
-        if name == "notion-update-page":
-            page = self.pages[arguments["page_id"]]
-            for name, value in arguments["properties"].items():
-                page["properties"][name] = {
-                    "type": "title",
-                    "title": [{"plain_text": value}],
-                }
-            return {"page_id": page["id"]}
         raise AssertionError((name, arguments))
 
     def _create(self, payload):
@@ -103,6 +95,11 @@ class BlockAPI:
                     "results": [self.nodes[id] for id in ids],
                     "has_more": False,
                 }
+            elif method == "PATCH" and parts[0] == "pages":
+                body = self.pages[parts[1]]
+                for name, value in request["json"]["properties"].items():
+                    kind = next(iter(value))
+                    body["properties"][name] = {"type": kind, **copy.deepcopy(value)}
             elif method == "PATCH" and parts[0] == "blocks":
                 self.nodes[parts[1]].update(copy.deepcopy(request["json"]))
                 body = self.nodes[parts[1]]

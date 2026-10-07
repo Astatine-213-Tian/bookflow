@@ -48,7 +48,7 @@ async def upload_cover(book: dict, state: Path, *, tools) -> None:
         raise ValueError("Cover asset changed since preparation")
     suffix = validate_cover(data)
     token = api_token()
-    reader = NotionBooks(tools)
+    reader = NotionBooks(tools, api=tools.call_api)
     page = await reader.page(book["work_id"])
     if not page.cover_known:
         raise ValueError("Notion did not provide page cover metadata")
@@ -85,7 +85,7 @@ async def verify_cover(book: dict, state: Path, *, tools) -> None:
         raise ValueError("Checkpoint has no prepared native cover")
     if digest(Path(book["cover_asset"]).read_bytes()) != book["cover_sha256"]:
         raise ValueError("Cover asset changed since preparation")
-    reader = NotionBooks(tools)
+    reader = NotionBooks(tools, api=tools.call_api)
     page = await reader.page(book["work_id"])
     if not page.cover_known:
         raise ValueError("Notion did not provide page cover metadata")
