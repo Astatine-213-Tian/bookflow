@@ -4,8 +4,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from src.crawler.snapshot import clean_text, write_json
+from src.runtime.files import write_json
 from src.translation.codex_cli import extract_json_object
+from src.translation.source import clean_text
 
 
 def _load_chunk_output(path: Path, raw_path: Path) -> dict[str, Any]:
@@ -33,15 +34,23 @@ def validate_and_merge(run_dir: Path, *, allow_missing: bool = False) -> dict[st
         translations = data.get("translations") or []
         actual = [int(item["index"]) for item in translations]
         if actual != expected:
-            raise ValueError(f"{chunk_id}: index mismatch expected {expected} got {actual}")
-        missing = [int(item["index"]) for item in translations if not str(item.get("zh") or "").strip()]
+            raise ValueError(
+                f"{chunk_id}: index mismatch expected {expected} got {actual}"
+            )
+        missing = [
+            int(item["index"])
+            for item in translations
+            if not str(item.get("zh") or "").strip()
+        ]
         if missing and not allow_missing:
             raise ValueError(f"{chunk_id}: empty translations for indexes {missing}")
         normalized = [
             {"index": int(item["index"]), "zh": clean_text(str(item.get("zh") or ""))}
             for item in translations
         ]
-        translations_by_chapter.setdefault(str(chunk["chapter_id"]), []).extend(normalized)
+        translations_by_chapter.setdefault(str(chunk["chapter_id"]), []).extend(
+            normalized
+        )
         for candidate in data.get("glossary_candidates") or []:
             if isinstance(candidate, dict):
                 candidate = dict(candidate)
@@ -61,7 +70,11 @@ def validate_and_merge(run_dir: Path, *, allow_missing: bool = False) -> dict[st
     for chapter_id, items in translations_by_chapter.items():
         items.sort(key=lambda item: int(item["index"]))
         title = next(
-            (chunk["chapter_title"] for chunk in manifest["chunks"] if chunk["chapter_id"] == chapter_id),
+            (
+                chunk["chapter_title"]
+                for chunk in manifest["chunks"]
+                if chunk["chapter_id"] == chapter_id
+            ),
             "",
         )
         write_json(

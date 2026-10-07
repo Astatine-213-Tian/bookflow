@@ -101,7 +101,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--dataset-root",
         type=Path,
-        default=Path("research/datasets"),
+        default=None,
+        help="Also upsert this TXT into a training dataset",
     )
     parser.add_argument(
         "--parser",
@@ -170,6 +171,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--overwrite", action="store_true", help="Replace requested output files"
     )
+    parser.add_argument(
+        "--enrich-metadata", action="store_true", help="Look up missing metadata"
+    )
+    parser.add_argument("--review", type=Path, help="Reviewed EPUB block ranges")
     parser.add_argument("--no-fetch-jjwxc", action="store_true")
     parser.add_argument("--no-codex-classify", action="store_true")
     parser.add_argument(
@@ -194,7 +199,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--verbose", action="store_true", help="Show detailed search/preview fetch logs"
     )
+    parser.add_argument(
+        "--list-parsers",
+        action="store_true",
+        help="List registered collection providers",
+    )
     args = parser.parse_args(argv)
+    if args.list_parsers:
+        for provider in PARSERS:
+            print(
+                f"{provider.name}: {provider.description} (search: {provider.searchable})"
+            )
+        return 0
 
     configure_progress(debug=args.verbose)
     progress = ProgressLogger()
@@ -204,6 +220,7 @@ def main(argv: list[str] | None = None) -> int:
         output_formats=tuple(args.mode or ()),
         dataset_root=args.dataset_root if not args.txt_output else None,
         prevent_overwrite=not args.overwrite,
+        enrich_metadata=args.enrich_metadata,
     )
     try:
         requested_formats(output_options)
@@ -225,7 +242,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if local:
             import json
-            from src.workflows.local import ingest_local
+
+            from src.workflows.ingest import ingest_local
 
             result = ingest_local(
                 Path(args.target),
@@ -239,7 +257,10 @@ def main(argv: list[str] | None = None) -> int:
                 chapter_layout=json.loads(args.chapter_layout.read_text())
                 if args.chapter_layout
                 else None,
-                use_jjwxc_outline=not args.keep_outline,
+                use_jjwxc_outline=args.enrich_metadata and not args.keep_outline,
+                review=__import__("json").loads(args.review.read_text())
+                if args.review
+                else None,
                 cover_url=args.cover_url,
             )
         else:
@@ -266,7 +287,7 @@ def main(argv: list[str] | None = None) -> int:
             if not validate_epub_output(epub_path, strict=args.strict_epub_validation):
                 return 1
 
-        if result.txt_path:
+        if result.txt_path and args.dataset_root:
             entry = upsert_txt_dataset_entry(
                 txt_path=result.txt_path,
                 output_root=args.dataset_root,
@@ -284,6 +305,7 @@ def main(argv: list[str] | None = None) -> int:
             progress.info(f"txt: {entry.txt_path}")
 
         for label, path in (
+            ("Content JSON and reports", result.source_path),
             ("EPUB", result.epub_path),
             ("TXT", result.txt_path),
             ("Notion draft checkpoint", result.notion_state),

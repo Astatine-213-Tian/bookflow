@@ -3,12 +3,6 @@ from __future__ import annotations
 import re
 from html import unescape
 from pathlib import Path
-from typing import Iterable
-
-from bs4 import BeautifulSoup
-
-from src.content.models import Chapter, Volume
-from src.content.outline import ordered_members
 
 SPACE_RE = re.compile(r"[ \t\u3000]+")
 BLANK_RE = re.compile(r"\n{3,}")
@@ -44,105 +38,39 @@ def clean_text_line(value: str) -> str:
     return text
 
 
-def html_fragment_to_lines(fragment: str) -> list[str]:
-    soup = BeautifulSoup(fragment or "", "html.parser")
-    for tag in soup.find_all(["br", "p", "div", "section", "h1", "h2", "h3", "li"]):
-        tag.append("\n")
-    lines = [clean_text_line(line) for line in soup.get_text("\n").splitlines()]
-    return [line for line in lines if line]
-
-
-def chapter_lines(chapter: Chapter) -> list[str]:
-    if chapter.paragraphs:
-        return [
-            line for line in (clean_text_line(p) for p in chapter.paragraphs) if line
-        ]
-    if chapter.html_blocks:
-        lines: list[str] = []
-        for block in chapter.html_blocks:
-            lines.extend(html_fragment_to_lines(block))
-        return lines
-    return []
-
-
-def intro_lines(
-    *,
-    intro_paragraphs: Iterable[str] | None = None,
-    intro_html: str = "",
-) -> list[str]:
-    if intro_paragraphs is not None:
-        return [line for line in (clean_text_line(p) for p in intro_paragraphs) if line]
-    return html_fragment_to_lines(intro_html)
-
-
-def render_book_txt(
-    *,
-    title: str,
-    author: str,
-    volumes: list[Volume],
-    intro_paragraphs: Iterable[str] | None = None,
-    intro_html: str = "",
-) -> str:
-    lines: list[str] = [clean_text_line(title)]
-    if author.strip():
-        lines.append(f"作者：{clean_text_line(author)}")
-    lines.append("")
-
-    intro = intro_lines(intro_paragraphs=intro_paragraphs, intro_html=intro_html)
-    if intro:
-        lines.extend(["简介", ""])
-        lines.extend(intro)
-        lines.append("")
-
-    for volume in volumes:
-        if volume.title.strip():
-            lines.extend([clean_text_line(volume.title), ""])
-        for chapter in volume.chapters:
-            lines.extend([clean_text_line(chapter.title), ""])
-            lines.extend(chapter_lines(chapter))
-            lines.append("")
-
-    text = "\n".join(lines).strip() + "\n"
-    return BLANK_RE.sub("\n\n", text)
-
-
-def write_txt(
-    *,
-    title: str,
-    author: str,
-    volumes: list[Volume],
-    out_path: Path,
-    intro_paragraphs: Iterable[str] | None = None,
-    intro_html: str = "",
-) -> None:
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(
-        render_book_txt(
-            title=title,
-            author=author,
-            volumes=volumes,
-            intro_paragraphs=intro_paragraphs,
-            intro_html=intro_html,
-        ),
-        encoding="utf-8",
-    )
-
-
 def write_prepared_txt(book: dict, out_path: Path) -> None:
     """Render already prepared blocks without another cleanup or deduplication."""
     metadata = book["metadata"]
-    chapters = [book["chapters"][m] for m in ordered_members(book["sections"])] + book[
-        "extras"
+    sections = [
+        metadata["title"],
+        "作者：" + "、".join(metadata.get("creators") or [metadata["creator"]]),
     ]
-    sections = [metadata["title"], "作者：" + metadata["creator"]]
-    sections.extend(
-        "\n".join(
-            [
-                chapter["title"],
-                *["".join(r["text"] for r in b["runs"]) for b in chapter["blocks"]],
-            ]
+
+    def add_chapter(chapter: dict) -> None:
+        sections.append(
+            "\n".join(
+                [
+                    chapter["title"],
+                    *[
+                        "***"
+                        if block["kind"] == "divider"
+                        else "".join(r["text"] for r in block["runs"])
+                        for block in chapter["blocks"]
+                    ],
+                ]
+            )
         )
-        for chapter in chapters
-    )
+
+    def add_sections(nodes: list[dict]) -> None:
+        for node in nodes:
+            if "children" in node:
+                sections.append(node["title"])
+                add_sections(node["children"])
+            else:
+                add_chapter(book["chapters"][node["member"]])
+
+    add_sections(book["sections"])
+    for chapter in book["extras"]:
+        add_chapter(chapter)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text("\n\n".join(sections) + "\n", encoding="utf-8")

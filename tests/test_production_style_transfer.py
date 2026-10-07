@@ -8,9 +8,11 @@ from unittest.mock import patch
 
 from src.cli.translate import (
     _validate_with_optional_semantic_qa,
+)
+from src.cli.translate import (
     main as translate_main,
 )
-from src.crawler.snapshot import write_json
+from src.runtime.files import write_json
 from src.runtime.progress import ProgressLogger
 from src.translation.codex_cli import (
     ModelCapacityError,
@@ -39,11 +41,9 @@ from src.translation.style_transfer_assets import (
     sha256_json,
 )
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ASSET_PATH = (
-    REPO_ROOT
-    / "generated/author_styles/feitianyexiang/content_plan_combined.v1.json"
+    REPO_ROOT / "generated/author_styles/feitianyexiang/content_plan_combined.v1.json"
 )
 ASSET_SHA256 = "bf3ad5a97aafcb14cdcc6f11e12debdad9665883d7e66e78444ab839e6918645"
 PROMPT_PATH = (
@@ -149,8 +149,7 @@ class ProductionStyleTransferTests(unittest.TestCase):
 
     def test_asset_request_matches_frozen_method_evidence(self) -> None:
         old_path = (
-            REPO_ROOT
-            / "generated/translation_runs/eternal_gate_method4_20260714/"
+            REPO_ROOT / "generated/translation_runs/eternal_gate_method4_20260714/"
             "content_plan_combined/requests/01_m4_001.json"
         )
         if not old_path.exists():
@@ -350,7 +349,9 @@ class ProductionStyleTransferTests(unittest.TestCase):
             )
             output_path = root / "outputs/01_style_001.json"
             write_json(output_path, {"translations": [{"index": 0, "zh": "初稿"}]})
-            summary_path = root / "semantic_compression/semantic_compression_summary.json"
+            summary_path = (
+                root / "semantic_compression/semantic_compression_summary.json"
+            )
             candidate_path = root / "semantic_compression/candidates.json"
             prompt_path = root / "semantic_compression/review_prompt.txt"
             result_path = root / "semantic_compression/review_result.json"
@@ -397,29 +398,19 @@ class ProductionStyleTransferTests(unittest.TestCase):
                 "src.translation.semantic_compression.validate_style_transfer_source_inputs",
                 return_value={"state_sha256": "source-state"},
             ):
-                self.assertTrue(
-                    semantic_qa_summary_is_current(root, summary_path, {})
-                )
+                self.assertTrue(semantic_qa_summary_is_current(root, summary_path, {}))
                 summary = json.loads(summary_path.read_text(encoding="utf-8"))
                 summary["dry_run"] = True
                 write_json(summary_path, summary)
-                self.assertFalse(
-                    semantic_qa_summary_is_current(root, summary_path, {})
-                )
+                self.assertFalse(semantic_qa_summary_is_current(root, summary_path, {}))
                 summary["dry_run"] = False
                 summary["result_summary"]["unresolved_true_loss_count"] = 1
                 write_json(summary_path, summary)
-                self.assertFalse(
-                    semantic_qa_summary_is_current(root, summary_path, {})
-                )
+                self.assertFalse(semantic_qa_summary_is_current(root, summary_path, {}))
                 summary["result_summary"]["unresolved_true_loss_count"] = 0
                 write_json(summary_path, summary)
-                write_json(
-                    output_path, {"translations": [{"index": 0, "zh": "改稿"}]}
-                )
-                self.assertFalse(
-                    semantic_qa_summary_is_current(root, summary_path, {})
-                )
+                write_json(output_path, {"translations": [{"index": 0, "zh": "改稿"}]})
+                self.assertFalse(semantic_qa_summary_is_current(root, summary_path, {}))
 
     def test_style_validation_rejects_stale_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -431,17 +422,9 @@ class ProductionStyleTransferTests(unittest.TestCase):
                 semantic_run / "translations/01.json",
                 {"translations": [{"index": 0, "zh": "中性译文"}]},
             )
-            write_json(
-                snapshot / "manifest.json",
-                {
-                    "schema_version": 1,
-                    "chapters": [{"id": "01", "path": "chapters/01.json"}],
-                },
-            )
-            write_json(
-                snapshot / "chapters/01.json",
-                {"paragraphs": [{"index": 0, "english": "English source."}]},
-            )
+            from tests.fixtures import write_source
+
+            write_source(snapshot, ["English source."])
             request = {"sample_id": "s_000000000000000000000000"}
             request_sha256 = sha256_json(request)
             request_path = root / "requests/01_style_001.json"
@@ -486,7 +469,7 @@ class ProductionStyleTransferTests(unittest.TestCase):
                             semantic_run / "run_manifest.json"
                         ),
                         "snapshot_manifest_sha256": file_sha256(
-                            snapshot / "manifest.json"
+                            snapshot / "source.json"
                         ),
                     },
                     "chunks": [
@@ -533,8 +516,7 @@ class ProductionStyleTransferTests(unittest.TestCase):
             self.assertTrue(
                 semantic_qa_summary_is_current(
                     root,
-                    root
-                    / "semantic_compression/semantic_compression_summary.json",
+                    root / "semantic_compression/semantic_compression_summary.json",
                     qa_config,
                 )
             )

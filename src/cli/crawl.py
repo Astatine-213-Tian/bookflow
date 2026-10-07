@@ -1,63 +1,68 @@
-#!/usr/bin/env python3
+"""Collect a known source into the shared book JSON, with optional source evidence."""
+
 from __future__ import annotations
 
 import argparse
-import asyncio
+import json
 from pathlib import Path
 
-from src.runtime.progress import ProgressLogger, configure_progress
+from src.crawler.models import CrawlOptions
+from src.crawler.registry import PARSERS
+from src.workflows.collect import collect_source
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Crawl a supported source into a reusable snapshot for later translation."
-    )
-    parser.add_argument("target", help="Collection/book URL to crawl")
-    parser.add_argument("--provider", choices=("patreon",), required=True)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("target", nargs="?")
     parser.add_argument(
-        "--output", type=Path, required=True, help="Snapshot output directory"
+        "--config",
+        type=Path,
+        help="Book spec containing source.provider, source.url and source.language",
     )
-    parser.add_argument("--title", help="Override book title in the snapshot")
-    parser.add_argument("--author", help="Override author in the snapshot")
+    parser.add_argument("--provider", choices=[p.name for p in PARSERS])
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--title", default="")
+    parser.add_argument("--author", default="")
+    parser.add_argument("--language", default="")
+    parser.add_argument(
+        "--comments",
+        action="store_true",
+        help="Fetch required comment evidence where supported",
+    )
+    parser.add_argument("--extra-post-id", action="append", default=[])
     parser.add_argument("--delay", type=float, default=0.4)
     parser.add_argument("--concurrency", type=int, default=2)
     parser.add_argument("--headless", action="store_true")
-    parser.add_argument(
-        "--no-comments", action="store_true", help="Do not crawl comments"
-    )
-    parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
-
-    configure_progress(debug=args.verbose)
-    progress = ProgressLogger()
-
     try:
-        if args.provider == "patreon":
-            from src.crawler.providers.patreon import parser as patreon
-
-            progress.section("Crawl")
-            progress.info("provider: patreon")
-            progress.info(f"snapshot: {args.output}")
-            manifest = asyncio.run(
-                patreon.crawl_snapshot(
-                    args.target,
-                    args.output,
-                    title=args.title,
-                    author=args.author,
-                    headless=args.headless,
-                    delay=args.delay,
-                    concurrency=max(1, args.concurrency),
-                    include_comments=not args.no_comments,
-                )
-            )
-        else:  # pragma: no cover - argparse prevents this today.
-            parser.error(f"unsupported provider: {args.provider}")
-    except Exception as exc:  # noqa: BLE001
-        progress.warning(str(exc))
+        config = json.loads(args.config.read_text()) if args.config else {}
+        source = config.get("source", {})
+        target = args.target or source.get("url")
+        if not target:
+            raise ValueError("Provide a target URL or --config with source.url")
+        options = CrawlOptions(
+            delay=args.delay,
+            concurrency=max(1, args.concurrency),
+            headless=args.headless,
+            title=args.title or config.get("title", ""),
+            author=args.author or config.get("author", ""),
+            language=args.language or source.get("language", ""),
+            include_comments=args.comments or source.get("comments", False),
+            extra_post_ids=tuple(
+                args.extra_post_id or source.get("extra_post_ids", [])
+            ),
+        )
+        path = collect_source(
+            target,
+            args.output,
+            provider=args.provider or source.get("provider"),
+            options=options,
+        )
+        print(path)
+        return 0
+    except (OSError, ValueError, RuntimeError) as error:
+        print(error)
         return 1
-
-    progress.info(f"wrote crawl snapshot {manifest}")
-    return 0
 
 
 if __name__ == "__main__":

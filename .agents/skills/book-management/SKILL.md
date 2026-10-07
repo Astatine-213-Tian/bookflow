@@ -26,6 +26,8 @@ local EPUB, a Notion draft, TXT, or any combination of these.
 - **Source unsupported, incomplete or broken:** read [providers.md](references/providers.md),
   implement or repair the provider, then resume acquisition if a book output was requested.
   A provider-development-only task ends with its fixture and CLI checks.
+- **Append images or correct part of a chapter:** follow [content-json.md](../../../docs/content-json.md). Read current content, transcribe into the shared schema, then apply an explicit change task with `book-update` or `book-notion update`.
+- **Upload a Notion cover:** follow [notion-cover.md](references/notion-cover.md); use the saved browser task and verify actual uploaded bytes.
 - **Correct existing content, formatting, TOC or metadata:** read
   [formatting.md](references/formatting.md). Edit uploaded content in Notion;
   repair a local archive when requested.
@@ -63,17 +65,16 @@ uv run book-ingest "<url>" --mode epub --mode notion --mode txt
 uv run book-ingest --search "<title>" --mode epub --mode txt
 ```
 
-`--mode` and `--output-format` are aliases on `book-ingest`. The lower-level
-`book-to-epub` command accepts repeated `--output-format` options.
-`both` remains an alias for EPUB + TXT; spell out destinations for new commands.
-The CLI requires a format choice, or infers EPUB/TXT from explicit output paths.
+`book-ingest` is the single combined entry point. Use `book-crawl` to persist
+source JSON for later translation/preparation. The CLI requires a destination,
+or infers EPUB/TXT from explicit output paths.
 
 ## Destinations and Recovery
 
 - Local EPUB: default path `books/<author>/<title>.epub`; override with `-o`.
-- TXT: default path `research/datasets/raw/<author>/<title>.txt`; override with
-  `--txt-output` or `--dataset-root`. `book-ingest` upserts only that book in the
-  selected dataset's `dataset_manifest.json` whenever TXT is requested.
+- TXT: default path `books/<author>/<title>.txt`; override with `--txt-output`.
+  Add `--dataset-root research/datasets` only for a requested training export;
+  this also upserts that book in the selected dataset manifest.
 - Notion: upload an editable draft and verify its readback. Authentication,
   cover upload, schema and checkpoint recovery are documented in
   [notion-books.md](../../../docs/notion-books.md). Shared extras use

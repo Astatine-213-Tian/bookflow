@@ -9,14 +9,6 @@ from src.runtime.progress import ProgressLogger, configure_progress
 from src.translation.codex_cli import run_missing_prompts_with_model_fallback
 from src.translation.comments import write_glossary_comment_evidence
 from src.translation.positive_scene import run_positive_scenes
-from src.translation.pipeline import (
-    build_epub_from_run,
-    default_run_dir,
-    load_config,
-    prepare_author_style_transfer_run,
-    prepare_translation_run,
-    validate_translation_run,
-)
 from src.translation.semantic_compression import (
     DEFAULT_BATCH_SIZE as DEFAULT_COMPRESSION_BATCH_SIZE,
 )
@@ -35,6 +27,14 @@ from src.translation.style_transfer import (
     is_author_style_transfer_run,
     run_style_transfer,
     validate_style_transfer_provenance,
+)
+from src.workflows.translation import (
+    build_epub_from_run,
+    default_run_dir,
+    load_config,
+    prepare_author_style_transfer_run,
+    prepare_translation_run,
+    validate_translation_run,
 )
 
 
@@ -311,7 +311,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verbose", action="store_true")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_positive = sub.add_parser("scene-positive", help="Direct positive scenes, source QA and non-rewriting bilingual alignment")
+    p_positive = sub.add_parser(
+        "scene-positive",
+        help="Direct positive scenes, source QA and non-rewriting bilingual alignment",
+    )
     p_positive.add_argument("snapshot", type=Path)
     p_positive.add_argument("--config", type=Path, required=True)
     p_positive.add_argument("--run-dir", type=Path, required=True)
@@ -427,10 +430,16 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.command == "scene-positive":
-            summary = run_positive_scenes(snapshot_dir=args.snapshot, run_dir=args.run_dir,
-                config=load_config(args.config), baseline_snapshot=args.baseline_snapshot,
-                baseline_run=args.baseline_run)
-            progress.info(f"validated {len(summary['chunks'])} positive scenes; reused {summary['reused_chapters']} chapters")
+            summary = run_positive_scenes(
+                snapshot_dir=args.snapshot,
+                run_dir=args.run_dir,
+                config=load_config(args.config),
+                baseline_snapshot=args.baseline_snapshot,
+                baseline_run=args.baseline_run,
+            )
+            progress.info(
+                f"validated {len(summary['chunks'])} positive scenes; reused {summary['reused_chapters']} chapters"
+            )
             return 0
 
         if args.command == "comment-evidence":
@@ -443,6 +452,7 @@ def main(argv: list[str] | None = None) -> int:
             evidence = write_glossary_comment_evidence(
                 snapshot_dir=args.snapshot,
                 output_path=output_path,
+                authors=tuple(config.get("comment_authorities", [])),
             )
             progress.info(
                 f"wrote {evidence['thread_count']} thread(s) with "

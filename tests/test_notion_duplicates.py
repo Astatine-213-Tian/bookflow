@@ -277,7 +277,15 @@ class SimilarityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, contextlib.chdir(directory):
             config = Path("config.json")
             config.write_text(json.dumps(CONFIG))
-            book = source() | {"identifier": "warning-test"}
+            from tests.fixtures import prepared_crawl
+            from src.content.models import Chapter, Volume
+
+            book = prepared_crawl(
+                title="Fixture",
+                author="Author",
+                source_url="https://example.test",
+                volumes=[Volume("", [Chapter("Chapter 1", ["Synthetic text."])])],
+            )
             with patch("src.notion.upload.asyncio.run", side_effect=fail):
                 with self.assertRaisesRegex(
                     ValueError, "^WARNING: review extra-review.md$"

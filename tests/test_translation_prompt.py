@@ -111,7 +111,10 @@ class TranslationPromptTests(unittest.TestCase):
             },
         ]
 
-        threads = authoritative_reply_threads(comments)
+        threads = authoritative_reply_threads(
+            comments,
+            ("Risk", "Via Lactea Press Inc.", "Via Lactea Press", "Pengiesama"),
+        )
 
         self.assertEqual(
             threads,
@@ -138,7 +141,7 @@ class TranslationPromptTests(unittest.TestCase):
                             "author": "pengiesama",
                             "body": "Zion：锡安；Tetsu：闪哲。",
                             "created": "2026-01-02T01:00:00",
-                        }
+                        },
                     ],
                 }
             ],

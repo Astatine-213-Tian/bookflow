@@ -8,18 +8,15 @@ import json
 import math
 import re
 import statistics
-import sys
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Sequence
 
 import joblib
-
-
-from experiments.shared.paths import RESEARCH_ROOT
 from workflows.author_style_meter_contract import CURRENT_SCORER_ID
 
+from experiments.shared.paths import RESEARCH_ROOT
 
 REPO_ROOT = RESEARCH_ROOT
 PRODUCTION_ROOT = REPO_ROOT.parent
@@ -27,8 +24,7 @@ PRODUCTION_ROOT = REPO_ROOT.parent
 from experiments.validation.application import (  # noqa: E402
     apply_content_plan_combined_to_translation_run as application,
 )
-from src.crawler.snapshot import write_json  # noqa: E402
-
+from src.runtime.files import write_json  # noqa: E402
 
 SCHEMA = "method4_application_evaluation.v1"
 TARGET_AUTHOR = "非天夜翔"
@@ -115,10 +111,7 @@ def glossary_mask_terms(glossary_path: Path) -> list[str]:
         runs = CJK_RUN_RE.findall(zh)
         for run in runs:
             if len(run) >= 2 or (
-                len(run) == 1
-                and source
-                and source[0].isupper()
-                and len(source) > 2
+                len(run) == 1 and source and source[0].isupper() and len(source) > 2
             ):
                 terms.add(run)
     return sorted(terms, key=lambda value: (-len(value), value))
@@ -187,7 +180,11 @@ def build_windows(
     current_cjk = 0
     for index in sorted(neutral):
         paragraph_cjk = len(CJK_RE.findall(neutral[index]))
-        if current and current_cjk >= minimum_cjk and current_cjk + paragraph_cjk > maximum_cjk:
+        if (
+            current
+            and current_cjk >= minimum_cjk
+            and current_cjk + paragraph_cjk > maximum_cjk
+        ):
             windows.append(current)
             current = []
             current_cjk = 0
@@ -269,7 +266,9 @@ def flow_metrics(text: str) -> dict[str, float | int]:
     }
 
 
-def summarize_scores(rows: Sequence[dict[str, Any]], threshold: float) -> dict[str, Any]:
+def summarize_scores(
+    rows: Sequence[dict[str, Any]], threshold: float
+) -> dict[str, Any]:
     lifts = [float(row["paired_margin_lift"]) for row in rows]
     return {
         "window_count": len(rows),
@@ -462,7 +461,9 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
         + f"Each block retrieved {report['method_details']['aligned_pair_k']} aligned pairs from a pool of {report['method_details']['aligned_pair_pool_count']} and supplied {report['method_details']['reference_example_count']} total reference items.",
         "",
         "Style dimensions: "
-        + ", ".join(f"`{value}`" for value in report["method_details"]["style_dimensions"])
+        + ", ".join(
+            f"`{value}`" for value in report["method_details"]["style_dimensions"]
+        )
         + ".",
         "",
         "The English source is authoritative. The content plan is derived before style evidence",
@@ -539,14 +540,14 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
     lines.extend(
         [
             "",
-        "## Interpretation",
-        "",
-        report["interpretation"],
-        "",
-        "The accepted generation artifacts bind the frozen prompt directly. The schema",
-        "and application-runner hashes are retained in the run manifest but were not",
-        "copied into each accepted segment artifact; their provenance status is therefore",
-        "`MANIFEST_ONLY`, not a per-segment implementation claim.",
+            "## Interpretation",
+            "",
+            report["interpretation"],
+            "",
+            "The accepted generation artifacts bind the frozen prompt directly. The schema",
+            "and application-runner hashes are retained in the run manifest but were not",
+            "copied into each accepted segment artifact; their provenance status is therefore",
+            "`MANIFEST_ONLY`, not a per-segment implementation claim.",
             "",
             "## Reproduction",
             "",
@@ -582,7 +583,9 @@ def evaluate(
     windows: list[dict[str, Any]] = []
     for chapter_id, chunks in chapter_chunks.items():
         title = str(chunks[0].get("chapter_title") or "")
-        neutral = translation_map(semantic_run_dir / "translations" / f"{chapter_id}.json")
+        neutral = translation_map(
+            semantic_run_dir / "translations" / f"{chapter_id}.json"
+        )
         styled = translation_map(style_run_dir / "translations" / f"{chapter_id}.json")
         windows.extend(
             build_windows(
@@ -592,8 +595,12 @@ def evaluate(
                 styled=styled,
             )
         )
-    neutral_masked = [mask_generated_text(row["neutral_text"], mask_terms) for row in windows]
-    styled_masked = [mask_generated_text(row["styled_text"], mask_terms) for row in windows]
+    neutral_masked = [
+        mask_generated_text(row["neutral_text"], mask_terms) for row in windows
+    ]
+    styled_masked = [
+        mask_generated_text(row["styled_text"], mask_terms) for row in windows
+    ]
     neutral_scores = score_texts(vectorizer, classifier, labels, neutral_masked)
     styled_scores = score_texts(vectorizer, classifier, labels, styled_masked)
     score_rows: list[dict[str, Any]] = []
@@ -643,14 +650,14 @@ def evaluate(
     flow_delta = {
         key: float(styled_flow[key]) - float(neutral_flow[key]) for key in neutral_flow
     }
-    semantic_path = style_run_dir / "semantic_compression/semantic_compression_summary.json"
+    semantic_path = (
+        style_run_dir / "semantic_compression/semantic_compression_summary.json"
+    )
     if semantic_path.exists():
         semantic_payload = read_json(semantic_path)
         result_summary = semantic_payload.get("result_summary") or {}
         semantic_status = (
-            "PASS"
-            if int(result_summary.get("failure_count", 0)) == 0
-            else "FAIL"
+            "PASS" if int(result_summary.get("failure_count", 0)) == 0 else "FAIL"
         )
         semantic_summary = {
             "status": semantic_status,
@@ -721,9 +728,7 @@ def evaluate(
     for chunk in manifest.get("chunks") or []:
         artifact = read_json(style_run_dir / str(chunk["method_output_path"]))
         models_used = list(
-            dict.fromkeys(
-                str(value) for value in artifact.get("models_used") or []
-            )
+            dict.fromkeys(str(value) for value in artifact.get("models_used") or [])
         )
         artifact_model_counts.update(models_used)
         if len(models_used) > 1:
@@ -758,7 +763,9 @@ def evaluate(
     output_files = list((style_run_dir / "outputs").glob("*.json"))
     paragraph_count = sum(len(chunk["indexes"]) for chunk in manifest["chunks"])
     latest_chunk = manifest["chunks"][-1]
-    first_request = read_json(style_run_dir / str(manifest["chunks"][0]["request_path"]))
+    first_request = read_json(
+        style_run_dir / str(manifest["chunks"][0]["request_path"])
+    )
     method_payload = first_request.get("method_payload") or {}
     style_definition = method_payload.get("style_definition") or {}
     evidence_policy = style_definition.get("evidence_policy") or {}
@@ -839,14 +846,12 @@ def evaluate(
             "discovery_books": int(evidence_policy.get("discovery_books", 0)),
             "validation_books": int(evidence_policy.get("validation_books", 0)),
             "eternal_gate_used": bool(evidence_policy.get("eternal_gate_used")),
-            "masked_examples_only": bool(
-                evidence_policy.get("masked_examples_only")
-            ),
-            "aligned_pair_pool_count": int(
-                aligned_retrieval.get("pair_pool_count", 0)
-            ),
+            "masked_examples_only": bool(evidence_policy.get("masked_examples_only")),
+            "aligned_pair_pool_count": int(aligned_retrieval.get("pair_pool_count", 0)),
             "aligned_pair_k": int(aligned_retrieval.get("k", 0)),
-            "reference_example_count": len(first_request.get("reference_examples") or []),
+            "reference_example_count": len(
+                first_request.get("reference_examples") or []
+            ),
             "style_dimensions": [
                 str(item.get("dimension_id"))
                 for item in style_definition.get("dimensions") or []
@@ -876,9 +881,7 @@ def evaluate(
                 if not schema_sha256s
                 else "FAIL"
             ),
-            "runner_binding_status": (
-                "PASS" if runner_sha256s else "MANIFEST_ONLY"
-            ),
+            "runner_binding_status": ("PASS" if runner_sha256s else "MANIFEST_ONLY"),
         },
         "standard_validation_status": (
             "PASS"

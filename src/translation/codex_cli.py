@@ -7,9 +7,8 @@ import subprocess
 from pathlib import Path
 from typing import Any, Sequence
 
-from src.crawler.snapshot import write_json
+from src.runtime.files import write_json
 from src.runtime.paths import repo_root
-
 
 PROMPT_JSON_MARKER = "INPUT JSON:\n"
 FALLBACK_ITEM_COUNT = 5
@@ -94,11 +93,11 @@ def _load_prompt_payload(prompt_path: Path) -> tuple[str, dict[str, Any]]:
     return prompt, payload
 
 
-def _filtered_reference_bank(base_payload: dict[str, Any], items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _filtered_reference_bank(
+    base_payload: dict[str, Any], items: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
     ref_ids = {
-        str(ref_id)
-        for item in items
-        for ref_id in (item.get("reference_ids") or [])
+        str(ref_id) for item in items for ref_id in (item.get("reference_ids") or [])
     }
     if not ref_ids:
         return []
@@ -139,7 +138,12 @@ def _prompt_for_subset(
 - If an individual item still cannot be translated, set zh to an empty string.
 
 """
-    return header + fallback_note + PROMPT_JSON_MARKER + json.dumps(payload, ensure_ascii=False, indent=2)
+    return (
+        header
+        + fallback_note
+        + PROMPT_JSON_MARKER
+        + json.dumps(payload, ensure_ascii=False, indent=2)
+    )
 
 
 def _translation_map(data: dict[str, Any]) -> dict[int, str]:
@@ -151,7 +155,9 @@ def _translation_map(data: dict[str, Any]) -> dict[int, str]:
     return translations
 
 
-def _candidates_from(data: dict[str, Any], *, fallback_id: str | None = None) -> list[dict[str, Any]]:
+def _candidates_from(
+    data: dict[str, Any], *, fallback_id: str | None = None
+) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     for candidate in data.get("glossary_candidates") or []:
         if not isinstance(candidate, dict):
@@ -181,7 +187,9 @@ def _chunk_output_from_translations(
     }
 
 
-def _normalize_chunk_output(data: dict[str, Any], base_payload: dict[str, Any]) -> dict[str, Any]:
+def _normalize_chunk_output(
+    data: dict[str, Any], base_payload: dict[str, Any]
+) -> dict[str, Any]:
     return _chunk_output_from_translations(
         base_payload,
         _translation_map(data),
@@ -288,8 +296,7 @@ def _local_windows_for_failed_indices(
         return []
 
     positions_by_index = {
-        int(item["index"]): position
-        for position, item in enumerate(items)
+        int(item["index"]): position for position, item in enumerate(items)
     }
     failed_positions = sorted(
         positions_by_index[index]
@@ -300,7 +307,9 @@ def _local_windows_for_failed_indices(
     windows: list[list[dict[str, Any]]] = []
 
     while True:
-        remaining = [position for position in failed_positions if position not in covered]
+        remaining = [
+            position for position in failed_positions if position not in covered
+        ]
         if not remaining:
             break
 
@@ -325,9 +334,7 @@ def _local_windows_for_failed_indices(
 
         windows.append(items[start:end])
         covered.update(
-            position
-            for position in failed_positions
-            if start <= position < end
+            position for position in failed_positions if start <= position < end
         )
 
     return windows
@@ -356,10 +363,7 @@ def _repair_failed_items_with_local_windows(
     if not failed_indices:
         return
 
-    items_by_index = {
-        int(item["index"]): item
-        for item in items
-    }
+    items_by_index = {int(item["index"]): item for item in items}
     model_namespace = _adaptive_model_namespace(model)
     prompt_dir = run_dir / "adaptive_prompts" / model_namespace
     output_dir = run_dir / "adaptive_outputs" / model_namespace
@@ -464,7 +468,9 @@ def _repair_failed_items(
         summary=summary,
     )
 
-    return _chunk_output_from_translations(base_payload, translations_by_index, glossary_candidates)
+    return _chunk_output_from_translations(
+        base_payload, translations_by_index, glossary_candidates
+    )
 
 
 def _run_adaptive_chunk_fallback(
@@ -553,7 +559,9 @@ def _run_adaptive_chunk_fallback(
             translations_by_index[index] = zh
             glossary_candidates.extend(candidates)
 
-    return _chunk_output_from_translations(base_payload, translations_by_index, glossary_candidates)
+    return _chunk_output_from_translations(
+        base_payload, translations_by_index, glossary_candidates
+    )
 
 
 def run_prompt_with_codex(
@@ -716,8 +724,10 @@ def run_missing_prompts(
                     {
                         "chunk_id": chunk_id,
                         "status": "repaired_existing",
-                        "local_window_attempts": int(summary["local_window_attempts"]) - before_windows,
-                        "paragraph_attempts": int(summary["paragraph_attempts"]) - before_attempts,
+                        "local_window_attempts": int(summary["local_window_attempts"])
+                        - before_windows,
+                        "paragraph_attempts": int(summary["paragraph_attempts"])
+                        - before_attempts,
                         "recovered": int(summary["recovered"]) - before_recovered,
                         "still_missing": int(summary["still_missing"]) - before_missing,
                     }
@@ -762,7 +772,9 @@ def run_missing_prompts(
         except Exception as exc:  # noqa: BLE001
             used_adaptive_fallback = True
             summary["chunk_failures"] += 1
-            failure_path = raw_output_path.with_name(f"{raw_output_path.stem}.failure.txt")
+            failure_path = raw_output_path.with_name(
+                f"{raw_output_path.stem}.failure.txt"
+            )
             failure_path.write_text(str(exc), encoding="utf-8")
             print(f"chunk {chunk_id} failed; running adaptive fallback")
             final_data = _run_adaptive_chunk_fallback(
@@ -783,10 +795,15 @@ def run_missing_prompts(
         summary["items"].append(
             {
                 "chunk_id": chunk_id,
-                "status": "adaptive_fallback" if used_adaptive_fallback else "full_chunk",
-                "fallback_piece_attempts": int(summary["fallback_piece_attempts"]) - before_piece_attempts,
-                "local_window_attempts": int(summary["local_window_attempts"]) - before_window_attempts,
-                "paragraph_attempts": int(summary["paragraph_attempts"]) - before_paragraph_attempts,
+                "status": "adaptive_fallback"
+                if used_adaptive_fallback
+                else "full_chunk",
+                "fallback_piece_attempts": int(summary["fallback_piece_attempts"])
+                - before_piece_attempts,
+                "local_window_attempts": int(summary["local_window_attempts"])
+                - before_window_attempts,
+                "paragraph_attempts": int(summary["paragraph_attempts"])
+                - before_paragraph_attempts,
                 "recovered": int(summary["recovered"]) - before_recovered,
                 "still_missing": int(summary["still_missing"]) - before_missing,
             }

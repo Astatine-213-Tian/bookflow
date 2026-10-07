@@ -62,13 +62,10 @@ def apply_edition_layout(book: dict, layout: dict) -> list[dict]:
                 "blocks": original["blocks"][start:stop],
             }
             if role == "extra":
+                item["id"] = f"{member}-extra-{index + 1}"
                 extras.append(item)
             elif role != "omit":
-                key = (
-                    member
-                    if index == 0
-                    else member.removesuffix(".xhtml") + f"_part_{index + 1}.xhtml"
-                )
+                key = member if index == 0 else member + f"-part-{index + 1}"
                 if key in chapters:
                     raise ValueError(f"Edition layout member collision: {key}")
                 chapters[key] = item

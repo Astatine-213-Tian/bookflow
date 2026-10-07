@@ -3,18 +3,21 @@
 from __future__ import annotations
 
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
-from src.content.prepare import prepare_source
 from src.crawler.models import CrawledBook, CrawlOptions, DownloadedEdition
 from src.crawler.registry import ParserSpec
-from src.dataset.text import write_txt
+from src.dataset.text import write_prepared_txt
+from src.inputs.crawl import extract_crawl
 from src.runtime.paths import (
     dataset_txt_output_path,
     resolve_output_path,
     resolve_txt_output_path,
 )
+from src.workflows.prepare import prepare_book, prepare_file, save_prepared
+from src.content.changes import content_hash
+from src.runtime.files import digest
 
 
 @dataclass(frozen=True)
@@ -24,6 +27,7 @@ class OutputOptions:
     output_formats: tuple[str, ...] = ()
     dataset_root: Path | None = None
     prevent_overwrite: bool = True
+    enrich_metadata: bool = False
 
 
 @dataclass(frozen=True)
@@ -31,6 +35,7 @@ class IngestResult:
     epub_path: Path | None = None
     txt_path: Path | None = None
     notion_state: Path | None = None
+    source_path: Path | None = None
 
 
 def requested_formats(options: OutputOptions) -> tuple[str, ...]:
@@ -82,114 +87,148 @@ def resolve_requested_txt_output(
     return resolve_txt_output_path(options.txt_output, title, author)
 
 
-def write_outputs(book: CrawledBook, options: OutputOptions) -> IngestResult:
+def write_book(
+    book: dict,
+    options: OutputOptions,
+    *,
+    cover: bytes | None = None,
+    cover_mime: str = "image/jpeg",
+    cover_url: str | None = None,
+    input_path: Path | None = None,
+) -> IngestResult:
+    from src.content.contract import validate_book
+    from src.epub.writer import export_local
+
+    validate_book(book)
     formats = requested_formats(options)
+    metadata = book["metadata"]
     epub_path = (
-        resolve_output_path(options.output, book.title, book.author)
+        resolve_output_path(options.output, metadata["title"], metadata["creator"])
         if "epub" in formats
         else None
     )
     txt_path = (
         resolve_requested_txt_output(
-            options,
-            title=book.title,
-            author=book.author,
+            options, title=metadata["title"], author=metadata["creator"]
         )
         if "txt" in formats
         else None
     )
+    for path in (epub_path, txt_path):
+        if path and input_path and path.resolve() == input_path.resolve():
+            raise ValueError("Choose a different output path; input is preserved")
+        if path and options.prevent_overwrite and path.exists():
+            raise ValueError(f"Output exists: {path}")
+    if "notion" in formats:
+        from src.notion.capabilities import validate_notion_content
 
-    if epub_path and options.prevent_overwrite and epub_path.exists():
-        raise ValueError("Output EPUB exists; choose another path or use --overwrite")
-    notion_path = None
-    if "notion" in formats or epub_path:
-        from src.epub.writer import export_local
-
-        prepared = prepare_source(
-            title=book.title,
-            author=book.author,
-            volumes=book.volumes,
-            source_url=book.source_url,
-            intro_paragraphs=book.intro_paragraphs,
-            intro_html=book.intro_html,
+        validate_notion_content(book)
+    if epub_path:
+        export_local(
+            book,
+            epub_path,
+            cover=cover,
+            cover_mime=cover_mime,
+            prevent_overwrite=options.prevent_overwrite,
         )
-        if "notion" in formats:
-            from src.notion.upload import upload_source
+    if txt_path:
+        write_prepared_txt(book, txt_path)
+    notion_state = None
+    if "notion" in formats:
+        from src.notion.upload import upload_source
 
-            notion_path = upload_source(prepared, cover_bytes=book.cover_bytes)
-        if epub_path:
-            export_local(
-                prepared,
-                epub_path,
-                cover=book.cover_bytes,
-                cover_mime=book.cover_mime,
-                prevent_overwrite=options.prevent_overwrite,
-            )
-    if txt_path and (not options.prevent_overwrite or not txt_path.exists()):
-        write_txt(
-            title=book.title,
-            author=book.author,
-            volumes=book.volumes,
-            out_path=txt_path,
-            intro_paragraphs=book.intro_paragraphs,
-            intro_html=book.intro_html,
+        notion_state = upload_source(
+            book, cover_bytes=cover if not cover_url else None, cover_url=cover_url
         )
+    return IngestResult(epub_path, txt_path, notion_state)
 
-    return IngestResult(epub_path, txt_path, notion_path)
+
+def write_outputs(book: CrawledBook, options: OutputOptions) -> IngestResult:
+    requested_formats(options)
+    source = extract_crawl(
+        title=book.title,
+        author=book.author,
+        volumes=book.volumes,
+        source_url=book.source_url,
+        intro_paragraphs=book.intro_paragraphs,
+        intro_html=book.intro_html,
+        language=book.language,
+    )
+    return prepare_and_write(
+        source,
+        options,
+        cover=book.cover_bytes,
+        cover_mime=book.cover_mime,
+        evidence=book.evidence,
+    )
 
 
-def write_edition(edition: DownloadedEdition, options: OutputOptions) -> IngestResult:
-    """Maintain a downloaded edition without interpreting it as a crawler draft."""
-    from src.dataset.library import extract_epub_text
-    from src.epub.archive import install_archive, validate_archive
-    from src.epub.maintenance import normalize_new_epub
-    from src.epub.reports import automatic_report_path, write_reports
+def prepare_and_write(
+    source: dict,
+    options: OutputOptions,
+    *,
+    cover: bytes | None = None,
+    cover_mime: str = "image/jpeg",
+    evidence: dict | None = None,
+) -> IngestResult:
+    prepared, reports = prepare_book(source, enrich=options.enrich_metadata)
+    fingerprint = content_hash(
+        {
+            "book": prepared,
+            "reports": reports,
+            "evidence": evidence,
+            "cover": digest(cover) if cover else None,
+        }
+    )
+    directory = Path("generated/ingest") / fingerprint[:16]
+    source_path = save_prepared(
+        prepared, directory, reports, cover, cover_mime, evidence=evidence
+    )
+    return replace(
+        write_book(prepared, options, cover=cover, cover_mime=cover_mime),
+        source_path=source_path,
+    )
+
+
+def ingest_local(
+    path: Path,
+    options: OutputOptions,
+    *,
+    run_dir: Path | None = None,
+    title: str = "",
+    author: str = "",
+    review: dict | None = None,
+    chapter_aliases: dict | None = None,
+    chapter_layout: dict | None = None,
+    use_jjwxc_outline: bool = False,
+    cover_url: str | None = None,
+) -> IngestResult:
     from src.runtime.files import digest
 
-    formats = requested_formats(options)
-    if "notion" in formats:
-        raise ValueError(
-            "Z-Library downloads editions; use --output-format epub or txt explicitly"
-        )
-    epub_path = (
-        resolve_output_path(options.output, edition.title, edition.author)
-        if "epub" in formats
-        else None
+    requested_formats(options)
+    directory = run_dir or Path("generated/ingest") / digest(path.read_bytes())[:16]
+    book, cover, mime = prepare_file(
+        path,
+        directory,
+        title=title,
+        author=author,
+        review=review,
+        chapter_aliases=chapter_aliases,
+        chapter_layout=chapter_layout,
+        use_jjwxc_outline=use_jjwxc_outline,
+        enrich=options.enrich_metadata,
     )
-    txt_path = (
-        resolve_requested_txt_output(
-            options, title=edition.title, author=edition.author
-        )
-        if "txt" in formats
-        else None
+    return replace(
+        write_book(
+            book,
+            options,
+            cover=cover,
+            cover_mime=mime,
+            cover_url=cover_url,
+            input_path=path,
+        ),
+        source_path=directory / "source.json",
     )
-    with tempfile.TemporaryDirectory(prefix="book-edition-") as temporary:
-        candidate = Path(temporary) / "edition.epub"
-        candidate.write_bytes(edition.epub_bytes)
-        extraction_path = candidate
-        if epub_path and (not options.prevent_overwrite or not epub_path.exists()):
-            expected = digest(epub_path.read_bytes()) if epub_path.exists() else None
-            report_path = automatic_report_path(epub_path)
-            if report_path.exists():
-                automatic_report_path(candidate).write_bytes(report_path.read_bytes())
-            report = normalize_new_epub(candidate)
-            validate_archive(candidate)
-            install_archive(candidate, epub_path, expected)
-            report.path = epub_path
-            if report.metadata_enrichment:
-                report.metadata_enrichment.path = epub_path
-            write_reports(report_path, [report])
-            extraction_path = epub_path
-        elif epub_path:
-            extraction_path = epub_path
-        if txt_path and (not options.prevent_overwrite or not txt_path.exists()):
-            _, _, text = extract_epub_text(extraction_path)
-            txt_path.parent.mkdir(parents=True, exist_ok=True)
-            txt_path.write_text(
-                f"{edition.title}\n作者：{edition.author}\n\n{text.strip()}\n",
-                encoding="utf-8",
-            )
-    return IngestResult(epub_path, txt_path)
 
 
 def ingest(
@@ -199,12 +238,19 @@ def ingest(
     crawl_options: CrawlOptions,
     output_options: OutputOptions,
 ) -> IngestResult:
-    formats = requested_formats(output_options)
-    if parser.downloads_edition and "notion" in formats:
-        raise ValueError(
-            "Z-Library downloads editions; use --output-format epub or txt explicitly"
-        )
+    requested_formats(output_options)
     collected = parser.crawl(target, crawl_options)
     if isinstance(collected, DownloadedEdition):
-        return write_edition(collected, output_options)
+        from src.inputs.epub import read_epub_source
+
+        with tempfile.TemporaryDirectory(prefix="book-input-") as temporary:
+            path = Path(temporary) / "download.epub"
+            path.write_bytes(collected.epub_bytes)
+            edition = read_epub_source(path)
+            return prepare_and_write(
+                edition.source,
+                output_options,
+                cover=edition.cover,
+                cover_mime=edition.cover_mime,
+            )
     return write_outputs(collected, output_options)

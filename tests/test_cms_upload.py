@@ -16,14 +16,14 @@ from notion_books import NotionError, Page, work_properties
 from PIL import Image
 
 from src.content.models import Chapter, Volume
-from src.content.prepare import prepare_crawl
 from src.crawler.models import CrawledBook
 from src.epub.writer import export_local
-from src.notion.cms import STORAGE, chapter_entries, ensure_work, ensure_views
-from src.notion.cover import upload_cover, validate_cover
+from src.notion.cms import STORAGE, chapter_entries, ensure_views, ensure_work
+from src.notion.cover import finish_cover, upload_cover, validate_cover, verify_cover
 from src.notion.upload import upload_draft, upload_row
 from src.runtime.files import digest
 from src.workflows.ingest import OutputOptions, write_outputs
+from tests.fixtures import prepared_crawl as prepare_crawl
 
 WORK = "11111111-1111-1111-1111-111111111111"
 DS = "22222222-2222-2222-2222-222222222222"
@@ -37,7 +37,7 @@ def source():
         intro_paragraphs=["简介内容"],
         volumes=[
             Volume("卷一", [Chapter("第1章", ["正文"]), Chapter("第2章", ["后续"])]),
-            Volume("番外", [Chapter("番外篇", ["独立番外"])]),
+            Volume("番外", [Chapter("番外篇", ["独立番外"], role="extra")]),
         ],
     )
     book["identifier"] = "local-book"
@@ -55,7 +55,7 @@ class DestinationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory) / "local.epub"
             with (
-                patch("src.content.prepare.enrich_source", return_value={}),
+                patch("src.workflows.prepare.enrich_source", return_value={}),
                 patch(
                     "src.notion.upload.upload_source",
                     side_effect=AssertionError("Notion called"),
@@ -91,60 +91,40 @@ class DestinationTests(unittest.TestCase):
                 self.assertEqual(images[0].get("href"), "cover.png")
                 self.assertEqual(root.find("{*}spine")[0].get("idref"), "nav")
                 self.assertIn("番外", z.read("EPUB/nav.xhtml").decode())
-                self.assertIn("内容", z.read("EPUB/extra_001.xhtml").decode())
+                self.assertIn("内容", z.read("EPUB/chapter_0002.xhtml").decode())
 
     def test_bilingual_builder_embeds_only_cover_image(self):
-        from src.translation.output import build_bilingual_epub
+        from src.workflows.translation import build_bilingual_epub
+        from tests.fixtures import write_source
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "cover.png").write_bytes(png())
-            (root / "manifest.json").write_text(
-                json.dumps(
-                    {
-                        "schema_version": 1,
-                        "title": "Fixture",
-                        "author": "Author",
-                        "cover": {"path": "cover.png", "mime": "image/png"},
-                        "chapters": [{"id": "001", "path": "chapter.json"}],
-                    }
-                )
+            write_source(root, ["Text."], cover=png())
+            build_bilingual_epub(
+                snapshot_dir=root,
+                translations_dir=root / "translations",
+                output=root / "bilingual.epub",
             )
-            (root / "chapter.json").write_text(
-                json.dumps(
-                    {
-                        "title": "Chapter 001",
-                        "paragraphs": [{"index": 0, "english": "Text."}],
-                    }
+            with zipfile.ZipFile(root / "bilingual.epub") as z:
+                self.assertEqual(z.read("EPUB/cover.png"), png())
+                self.assertFalse(
+                    any(
+                        Path(n).name in {"cover.xhtml", "cover.html"}
+                        for n in z.namelist()
+                    )
                 )
-            )
-            with patch("src.translation.output.normalize_new_epub"):
-                build_bilingual_epub(
-                    snapshot_dir=root,
-                    translations_dir=root / "translations",
-                    output=root / "bilingual.epub",
-                )
-            for name in ("bilingual.epub",):
-                with self.subTest(builder=name), zipfile.ZipFile(root / name) as z:
-                    self.assertEqual(z.read("EPUB/cover.png"), png())
-                    self.assertFalse(
-                        any(
-                            Path(n).name in ("cover.xhtml", "cover.html")
-                            for n in z.namelist()
+                opf = ET.fromstring(z.read("EPUB/content.opf"))
+                self.assertEqual(
+                    len(
+                        opf.xpath(
+                            '//*[local-name()="item" and @properties="cover-image"]'
                         )
-                    )
-                    opf = ET.fromstring(z.read("EPUB/content.opf"))
-                    self.assertEqual(
-                        len(
-                            opf.xpath(
-                                '//*[local-name()="item" and @properties="cover-image"]'
-                            )
-                        ),
-                        1,
-                    )
-                    self.assertFalse(
-                        opf.xpath('//*[local-name()="itemref" and @idref="cover"]')
-                    )
+                    ),
+                    1,
+                )
+                self.assertFalse(
+                    opf.xpath('//*[local-name()="itemref" and @idref="cover"]')
+                )
 
     def test_cms_metadata_has_new_field_types_and_no_service_fields(self):
         self.assertEqual(source()["metadata"]["description"], "简介内容")
@@ -378,6 +358,37 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
             created[rows["main"][1]["id"]]["content"] = "User edit after upload"
             await upload_draft(book, state, config, tools=Tools())
             self.assertEqual(len(calls), count)
+            # Appending to a nonempty manual view creates at the top. Stop for
+            # deliberate reordering, then resume using the existing page ID.
+            from src.notion.update import apply_update
+            from tests.fixtures import paragraph
+
+            request = {
+                "version": 1,
+                "id": "append-3",
+                "book_id": book["identifier"],
+                "operations": [
+                    {
+                        "kind": "append_chapter",
+                        "chapter_id": "new",
+                        "after": "chapter-1-2",
+                        "chapter": {"title": "第3章", "blocks": [paragraph("新章。")]},
+                    }
+                ],
+            }
+            with self.assertRaisesRegex(ValueError, "manual order"):
+                await apply_update(state, request, config, tools=Tools())
+            resumed = json.loads(state.read_text())
+            new_id = resumed["chapters"]["new"]["page_id"]
+            self.assertEqual(rows["main"][0]["id"], new_id)
+            self.assertEqual(len(calls), count + 1)
+            rows["main"].append(rows["main"].pop(0))
+            await apply_update(state, request, config, tools=Tools())
+            self.assertEqual(len(calls), count + 1)
+            self.assertTrue(json.loads(state.read_text())["uploaded"])
+            self.assertIn(
+                "User edit after upload", [page["content"] for page in created.values()]
+            )
 
     async def test_lost_create_response_stops_retry_without_duplicate(self):
         book = source()
@@ -472,6 +483,51 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
                     call.args[0] == "notion-fetch" for call in tools.call.call_args_list
                 )
             )
+
+    async def test_browser_cover_task_resumes_without_an_api_token(self):
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            patch.dict(os.environ, {"NOTION_API_TOKEN": ""}),
+        ):
+            root = Path(temporary)
+            asset = root / "cover.png"
+            asset.write_bytes(png())
+            book = {
+                "work_id": WORK,
+                "uploaded": True,
+                "cover_asset": str(asset),
+                "cover_sha256": digest(png()),
+            }
+            state = root / "import.json"
+            tools = AsyncMock()
+            for _ in range(2):
+                with self.assertRaisesRegex(ValueError, "awaits browser upload"):
+                    await finish_cover(book, state, tools=tools)
+            tools.call.assert_not_called()
+            task = json.loads((root / "cover-browser.json").read_text())
+            self.assertEqual(task["sha256"], digest(png()))
+            tools.call.return_value = {
+                "text": "<properties>\n{}\n</properties>\n<blank-page>",
+                "cover": {
+                    "type": "file",
+                    "file": {"url": "https://files.example.org/cover"},
+                },
+            }
+            client = httpx.AsyncClient
+            with patch(
+                "src.notion.cover.httpx.AsyncClient",
+                lambda **kwargs: client(
+                    transport=httpx.MockTransport(
+                        lambda request: httpx.Response(200, content=png())
+                    ),
+                    **kwargs,
+                ),
+            ):
+                await verify_cover(book, state, tools=tools)
+            self.assertTrue(book["cover_uploaded"])
+            self.assertNotIn("cover_browser_task", book)
+            await finish_cover(book, state, tools=tools)
+            self.assertEqual(tools.call.await_count, 1)
 
     def test_invalid_cover_is_rejected(self):
         self.assertEqual(validate_cover(png()), "png")

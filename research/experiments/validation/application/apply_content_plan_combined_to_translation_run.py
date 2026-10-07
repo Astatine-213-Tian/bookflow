@@ -13,21 +13,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Sequence
 
-
 from experiments.shared.paths import RESEARCH_ROOT
-
 
 REPO_ROOT = RESEARCH_ROOT
 
 from experiments.iteration1 import run_style_transfer_generation as generation
 from experiments.iteration4 import style_transfer_payloads as payloads
-from src.crawler.snapshot import (
+from src.runtime.files import write_json
+from src.translation.source import (
+    chapter_ids,
     load_chapter,
-    load_manifest,
-    snapshot_chapter_ids,
-    write_json,
+    load_source,
 )
-
 
 APPLICATION_SCHEMA = "eternal_gate_content_plan_combined_application.v1"
 METHOD_ID = "content_plan_combined_full_regeneration"
@@ -188,7 +185,7 @@ def prepare_application_run(
         )
 
     snapshot_dir = Path(str(semantic_manifest["snapshot_dir"])).expanduser().resolve()
-    snapshot_manifest = load_manifest(snapshot_dir)
+    snapshot_manifest = load_source(snapshot_dir)
     verified_sources = verify_iteration4_sources(experiment_root)
     frozen_assets = payloads.load_frozen_assets(experiment_root)
     prompt_template_path = experiment_root / "prompts/style_transfer_method.v1.md"
@@ -211,11 +208,11 @@ def prepare_application_run(
 
     chunks: list[dict[str, Any]] = []
     total_paragraphs = 0
-    for chapter_id in snapshot_chapter_ids(snapshot_manifest):
+    for chapter_id in chapter_ids(snapshot_manifest):
         expected_indexes = expected_by_chapter.get(chapter_id)
         if expected_indexes is None:
             raise ValueError(f"semantic run has no chunks for chapter {chapter_id}")
-        chapter = load_chapter(snapshot_dir, snapshot_manifest, chapter_id)
+        chapter = load_chapter(snapshot_manifest, chapter_id)
         english_by_index = {
             int(item["index"]): str(item.get("english") or "").strip()
             for item in chapter.get("paragraphs") or []
@@ -237,7 +234,9 @@ def prepare_application_run(
             }
             for index in sorted(expected_indexes)
         ]
-        for block_number, start in enumerate(range(0, len(ordered_rows), block_size), 1):
+        for block_number, start in enumerate(
+            range(0, len(ordered_rows), block_size), 1
+        ):
             rows = ordered_rows[start : start + block_size]
             chunk_id = f"{chapter_id}_m4_{block_number:03d}"
             request = request_for_rows(
@@ -267,9 +266,7 @@ def prepare_application_run(
                     "method_output_path": f"method_outputs/{chunk_id}.json",
                     "request_sha256": sha256_json(request),
                     "prompt_sha256": file_sha256(prompt_path),
-                    "english_sha256": sha256_json(
-                        [row["english"] for row in rows]
-                    ),
+                    "english_sha256": sha256_json([row["english"] for row in rows]),
                     "neutral_zh_sha256": sha256_json(
                         [row["neutral_zh"] for row in rows]
                     ),
@@ -336,7 +333,9 @@ def reference_texts(request: dict[str, Any]) -> list[str]:
     return texts
 
 
-def copied_reference_spans(request: dict[str, Any], result: dict[str, Any]) -> list[str]:
+def copied_reference_spans(
+    request: dict[str, Any], result: dict[str, Any]
+) -> list[str]:
     references = reference_texts(request)
     neutral_text = "\n".join(
         str(paragraph.get("zh") or "") for paragraph in request.get("neutral_zh") or []
@@ -387,7 +386,9 @@ def deterministic_fidelity_errors(
             PLACEHOLDER_RE.findall(output_text)
         ):
             failures.append(f"fidelity:{prefix}:placeholder_mismatch")
-        if sorted(LATIN_RE.findall(source_text)) != sorted(LATIN_RE.findall(output_text)):
+        if sorted(LATIN_RE.findall(source_text)) != sorted(
+            LATIN_RE.findall(output_text)
+        ):
             failures.append(f"fidelity:{prefix}:latin_token_mismatch")
         if starts_dialogue(source_text) != starts_dialogue(output_text):
             failures.append(f"fidelity:{prefix}:dialogue_turn_surface_mismatch")
@@ -400,9 +401,7 @@ def deterministic_fidelity_errors(
         ratio = output_cjk / max(source_cjk, 1)
         if source_cjk >= 20 and not 0.50 <= ratio <= 1.80:
             failures.append(f"fidelity:{prefix}:paragraph_cjk_ratio_out_of_bounds")
-    source_total = sum(
-        len(CJK_RE.findall(str(row.get("zh") or ""))) for row in neutral
-    )
+    source_total = sum(len(CJK_RE.findall(str(row.get("zh") or ""))) for row in neutral)
     output_total = sum(
         len(CJK_RE.findall(str(row.get("zh") or ""))) for row in candidate
     )
@@ -513,7 +512,9 @@ class ApplicationRunner:
         self.max_attempts = max_attempts
         self.overwrite = overwrite
         self.prompt_path = experiment_root / "prompts/style_transfer_method.v1.md"
-        self.schema_path = experiment_root / "schemas/style_transfer_output.v1.schema.json"
+        self.schema_path = (
+            experiment_root / "schemas/style_transfer_output.v1.schema.json"
+        )
         self.prompt_template = self.prompt_path.read_text(encoding="utf-8")
         self.prompt_sha256 = file_sha256(self.prompt_path)
         self.schema_sha256 = file_sha256(self.schema_path)
@@ -535,10 +536,14 @@ class ApplicationRunner:
 
     def active_models(self) -> list[str]:
         with self._model_lock:
-            active = [model for model in self.models if model not in self._disabled_models]
+            active = [
+                model for model in self.models if model not in self._disabled_models
+            ]
             disabled = dict(self._disabled_models)
         if not active:
-            raise RuntimeError(f"all requested models are at capacity or unavailable: {disabled}")
+            raise RuntimeError(
+                f"all requested models are at capacity or unavailable: {disabled}"
+            )
         return active
 
     def disable_model(self, model: str, record: dict[str, Any]) -> None:
@@ -699,7 +704,11 @@ class ApplicationRunner:
                 artifact=last_artifact,
                 validation_errors=last_application_errors,
             )
-            if fallback is not None and last_model is not None and last_output_path is not None:
+            if (
+                fallback is not None
+                and last_model is not None
+                and last_output_path is not None
+            ):
                 fallback_result, rejected_errors = fallback
                 return SegmentResult(
                     indexes=[int(rows[0]["index"])],
@@ -722,7 +731,9 @@ class ApplicationRunner:
                             "segment": segment_name,
                             "depth": depth,
                             "source_indexes": [int(rows[0]["index"])],
-                            "path": str(last_output_path.relative_to(self.style_run_dir)),
+                            "path": str(
+                                last_output_path.relative_to(self.style_run_dir)
+                            ),
                             "file_sha256": file_sha256(last_output_path),
                             "request_sha256": sha256_json(request),
                             "response_id": records[-1].get("response_id"),
@@ -778,7 +789,9 @@ class ApplicationRunner:
             style_cues_skipped=list(
                 dict.fromkeys([*left.style_cues_skipped, *right.style_cues_skipped])
             ),
-            uncertainties=list(dict.fromkeys([*left.uncertainties, *right.uncertainties])),
+            uncertainties=list(
+                dict.fromkeys([*left.uncertainties, *right.uncertainties])
+            ),
             artifacts=[*left.artifacts, *right.artifacts],
             usage=usage,
             models_used=list(dict.fromkeys([*left.models_used, *right.models_used])),
@@ -848,7 +861,9 @@ class ApplicationRunner:
         }
         errors = application_validation_errors(request, merged_result)
         if errors:
-            raise RuntimeError(f"merged method4 validation failed for {chunk_id}: {errors}")
+            raise RuntimeError(
+                f"merged method4 validation failed for {chunk_id}: {errors}"
+            )
 
         method_artifact = {
             "schema_version": 1,
@@ -882,7 +897,9 @@ class ApplicationRunner:
                 "method_id": METHOD_ID,
                 "intensity": INTENSITY,
                 "request_sha256": request_sha256,
-                "method_output_path": str(method_output_path.relative_to(self.style_run_dir)),
+                "method_output_path": str(
+                    method_output_path.relative_to(self.style_run_dir)
+                ),
                 "method_output_sha256": file_sha256(method_output_path),
                 "models_used": segment.models_used,
             },
@@ -950,8 +967,7 @@ def run_application(
             completed_count += 1
             with PRINT_LOCK:
                 print(
-                    f"method4 {status} {chunk_id} "
-                    f"({completed_count}/{len(chunks)})",
+                    f"method4 {status} {chunk_id} ({completed_count}/{len(chunks)})",
                     flush=True,
                 )
 

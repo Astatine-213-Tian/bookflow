@@ -20,6 +20,12 @@ HAN_CLASS = (
 
 HAN_RE = re.compile(f"[{HAN_CLASS}]")
 
+FULLWIDTH_ALPHANUMERIC = {
+    codepoint: codepoint - 0xFEE0
+    for start, stop in ((0xFF10, 0xFF1A), (0xFF21, 0xFF3B), (0xFF41, 0xFF5B))
+    for codepoint in range(start, stop)
+}
+
 
 HAN_INTERNAL_SPACE_RE = re.compile(
     f"(?<=[{HAN_CLASS}])[\\t \\u00a0\\u3000]+(?=[{HAN_CLASS}])"
@@ -236,7 +242,7 @@ TOKEN_RE = re.compile(r"(<[^>]+>|&(?:#\d+|#x[0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);)
 
 
 PARAGRAPH_RE = re.compile(
-    r"(?P<open><(?:[A-Za-z_][\w.-]*:)?p\b[^>]*>)"
+    r"(?P<open><(?:[A-Za-z_][\w.-]*:)?p\b(?![^>]*?/\s*>)[^>]*>)"
     r"(?P<body>.*?)"
     r"(?P<close></(?:[A-Za-z_][\w.-]*:)?p>)",
     re.DOTALL,
@@ -661,7 +667,7 @@ def _surface_tags(member: str) -> set[str]:
 def _tag_pattern(tags: Iterable[str]) -> re.Pattern[str]:
     alternatives = "|".join(sorted(map(re.escape, tags), key=len, reverse=True))
     return re.compile(
-        rf"(<(?:[A-Za-z_][\w.-]*:)?(?:{alternatives})\b[^>]*>)"
+        rf"(<(?:[A-Za-z_][\w.-]*:)?(?:{alternatives})\b(?![^>]*?/\s*>)[^>]*>)"
         rf"(.*?)"
         rf"(</(?:[A-Za-z_][\w.-]*:)?(?:{alternatives})>)",
         re.DOTALL,
@@ -729,8 +735,11 @@ def _normalize_dialogue_attribution(
             return match.group()
         changes += 1
         return (
-            match["close_punct"] + "”" + match["attribution"]
-            + match["resume_punct"] + "“"
+            match["close_punct"]
+            + "”"
+            + match["attribution"]
+            + match["resume_punct"]
+            + "“"
         )
 
     normalized = DIALOGUE_ATTRIBUTION_RE.sub(replace, text)
@@ -1523,6 +1532,25 @@ def _normalize_han_internal_backslash(
     )
 
 
+def normalize_alphanumeric_width(text: str) -> str:
+    """Convert full-width Latin letters and digits, preserving other Unicode."""
+    return text.translate(FULLWIDTH_ALPHANUMERIC)
+
+
+def _normalize_fullwidth_alphanumeric(
+    text: str, *, member: str, report: NormalizationReport
+) -> str:
+    normalized = normalize_alphanumeric_width(text)
+    report.record_change(
+        "fullwidth_alphanumeric_normalized",
+        member,
+        sum(before != after for before, after in zip(text, normalized)),
+        text,
+        normalized,
+    )
+    return normalized
+
+
 def _normalize_plain_text(
     text: str,
     *,
@@ -1534,6 +1562,7 @@ def _normalize_plain_text(
     member: str,
     report: NormalizationReport,
 ) -> str:
+    text = _normalize_fullwidth_alphanumeric(text, member=member, report=report)
     text = _normalize_chinese_numeral_zero(
         text,
         member=member,
@@ -1557,8 +1586,7 @@ def _normalize_plain_text(
             member=member,
             report=report,
         )
-    # Punctuation is the first general prose-normalization stage. Quote
-    # direction and spacing rules intentionally consume its normalized output.
+    # Resolve character width before punctuation, quote direction and spacing.
     text = _normalize_ascii_punctuation(text, member=member, report=report)
     text = _apply_regex(
         text,
@@ -1707,7 +1735,14 @@ def _normalize_fragment(
 ) -> str:
     tokens = TOKEN_RE.split(fragment)
     for index, token in enumerate(tokens):
-        if not token or token.startswith("<") or token.startswith("&"):
+        if token.startswith("&"):
+            decoded = html.unescape(token)
+            if len(decoded) == 1 and ord(decoded) in FULLWIDTH_ALPHANUMERIC:
+                tokens[index] = _normalize_fullwidth_alphanumeric(
+                    decoded, member=member, report=report
+                )
+            continue
+        if not token or token.startswith("<"):
             continue
         tokens[index] = _normalize_plain_text(
             token,
@@ -2155,40 +2190,46 @@ def _scan_member_issues(
     # already run, but prose-quality review findings from intro.xhtml are noise.
     if Path(member).name == "intro.xhtml":
         return
-    paragraphs: list[str] = []
-    author_note_flags: list[bool] = []
-    review_paragraphs: list[str] = []
-    if member.endswith(".xhtml"):
-        paragraph_elements = [
-            element for element in root.iter() if _local_name(element.tag) == "p"
-        ]
-        paragraphs = ["".join(element.itertext()) for element in paragraph_elements]
-        in_author_note = False
-        trailing_start = int(len(paragraphs) * 0.7)
-        for index, paragraph in enumerate(paragraphs):
-            if index >= trailing_start and (
-                AUTHOR_NOTE_MARKER_RE.search(paragraph)
-                or AUTHOR_NOTE_SIGNAL_RE.search(paragraph)
-            ):
-                in_author_note = True
-            author_note_flags.append(in_author_note)
-        review_paragraphs = [
-            paragraph
-            for paragraph, is_author_note in zip(
-                paragraphs,
-                author_note_flags,
-                strict=True,
-            )
-            if not is_author_note
-        ]
-        heading_texts = [
-            "".join(element.itertext())
-            for element in root.iter()
-            if _local_name(element.tag) in XHTML_TITLE_TAGS
-        ]
-        visible = "\n".join(heading_texts + review_paragraphs)
-    else:
-        visible = "\n".join(text for text in root.itertext() if text and text.strip())
+    paragraphs = [
+        "".join(element.itertext())
+        for element in root.iter()
+        if _local_name(element.tag) == "p"
+    ]
+    headings = [
+        "".join(element.itertext())
+        for element in root.iter()
+        if _local_name(element.tag) in XHTML_TITLE_TAGS
+    ]
+    has_prose = member.endswith(".xhtml")
+    if not has_prose:
+        headings = [text for text in root.itertext() if text and text.strip()]
+    scan_content_issues(member, paragraphs, headings, report, has_prose=has_prose)
+
+
+def scan_content_issues(
+    member: str,
+    paragraphs: list[str],
+    headings: list[str],
+    report: NormalizationReport,
+    *,
+    has_prose: bool = True,
+) -> None:
+    """Review plain content from any input; uncertain findings never rewrite prose."""
+    in_author_note = False
+    author_note_flags = []
+    for index, paragraph in enumerate(paragraphs):
+        if index >= int(len(paragraphs) * 0.7) and (
+            AUTHOR_NOTE_MARKER_RE.search(paragraph)
+            or AUTHOR_NOTE_SIGNAL_RE.search(paragraph)
+        ):
+            in_author_note = True
+        author_note_flags.append(in_author_note)
+    review_paragraphs = [
+        text
+        for text, is_note in zip(paragraphs, author_note_flags, strict=True)
+        if not is_note
+    ]
+    visible = "\n".join(headings + review_paragraphs)
     bad: dict[tuple[str, str], tuple[int, str]] = {}
     for index, char in enumerate(visible):
         reason = _bad_character_reason(char)
@@ -2219,7 +2260,7 @@ def _scan_member_issues(
             )
         )
 
-    if member.endswith(".xhtml"):
+    if has_prose:
         prose = "\n".join(review_paragraphs)
         structural_markers = [
             paragraph.strip()

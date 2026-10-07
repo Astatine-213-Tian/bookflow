@@ -18,6 +18,7 @@ class ParserSpec:
     description: str
     crawl: Callable[[str, CrawlOptions], CrawledBook | DownloadedEdition]
     downloads_edition: bool = False
+    searchable: bool = True
 
     def matches(self, target: str) -> bool:
         host = urlparse(target).netloc.lower().removeprefix("www.")
@@ -190,29 +191,9 @@ def run_zhenhun(target: str, options: CrawlOptions) -> CrawledBook:
 
 
 def run_patreon(target: str, options: CrawlOptions) -> CrawledBook:
-    from src.crawler.providers.patreon import parser
+    from src.crawler.providers.patreon.parser import crawl_book
 
-    delay = options.delay if options.delay is not None else 0.4
-    concurrency = options.concurrency if options.concurrency is not None else 2
-    book_url = parser._resolve_book_url(target)
-    meta, volumes = asyncio.run(
-        parser.crawl_book(
-            book_url,
-            headless=options.headless,
-            delay=delay,
-            concurrency=concurrency,
-        )
-    )
-
-    return CrawledBook(
-        title=meta.title,
-        author=meta.author,
-        volumes=volumes,
-        source_url=book_url,
-        cover_bytes=getattr(meta, "cover_bytes", None),
-        cover_mime=getattr(meta, "cover_mime", "image/jpeg"),
-        intro_paragraphs=meta.intro_paragraphs,
-    )
+    return asyncio.run(crawl_book(target, options=options))
 
 
 def run_zlibrary(target: str, options: CrawlOptions) -> DownloadedEdition:
@@ -268,6 +249,7 @@ PARSERS: tuple[ParserSpec, ...] = (
         domains=("zhenhunxiaoshuo.com",),
         description="zhenhunxiaoshuo.com WordPress category novels",
         crawl=run_zhenhun,
+        searchable=False,
     ),
     ParserSpec(
         name="zlibrary",
@@ -281,6 +263,7 @@ PARSERS: tuple[ParserSpec, ...] = (
         domains=("patreon.com",),
         description="patreon.com collections through authenticated browser profile",
         crawl=run_patreon,
+        searchable=False,
     ),
 )
 

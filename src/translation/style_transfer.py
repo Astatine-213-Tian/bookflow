@@ -14,14 +14,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
-from src.crawler.snapshot import (
-    load_chapter,
-    load_manifest,
-    snapshot_chapter_ids,
-    write_json,
-)
+from src.runtime.files import write_json
 from src.runtime.paths import repo_root
 from src.translation.codex_cli import is_model_capacity_text
+from src.translation.source import (
+    chapter_ids,
+    load_chapter,
+    load_source,
+)
 from src.translation.style_transfer_assets import (
     INTENSITY,
     METHOD_ID,
@@ -31,7 +31,6 @@ from src.translation.style_transfer_assets import (
     load_assets,
     sha256_json,
 )
-
 
 RUN_SCHEMA = "author_style_transfer_run.v1"
 DEFAULT_BLOCK_SIZE = 12
@@ -80,7 +79,9 @@ def configured_model_order(
             or codex_config.get("model_order")
             or DEFAULT_MODEL_ORDER
         )
-    result = list(dict.fromkeys(str(value).strip() for value in values if str(value).strip()))
+    result = list(
+        dict.fromkeys(str(value).strip() for value in values if str(value).strip())
+    )
     if not result:
         raise ValueError("at least one Codex model is required")
     return result
@@ -177,7 +178,9 @@ def prepare_style_transfer_run(
         )
     block_size = int(block_size or style_config.get("block_size") or DEFAULT_BLOCK_SIZE)
     if not 1 <= block_size <= DEFAULT_BLOCK_SIZE:
-        raise ValueError(f"style-transfer block size must be between 1 and {DEFAULT_BLOCK_SIZE}")
+        raise ValueError(
+            f"style-transfer block size must be between 1 and {DEFAULT_BLOCK_SIZE}"
+        )
 
     semantic_run_dir = semantic_run_dir.expanduser().resolve()
     style_run_dir = style_run_dir.expanduser().resolve()
@@ -189,7 +192,7 @@ def prepare_style_transfer_run(
             f"validated semantic translations not found: {semantic_translations_dir}"
         )
     snapshot_dir = Path(str(semantic_manifest["snapshot_dir"])).expanduser().resolve()
-    snapshot_manifest = load_manifest(snapshot_dir)
+    snapshot_manifest = load_source(snapshot_dir)
     prompt_template = prompt_path.read_text(encoding="utf-8")
 
     style_run_dir.mkdir(parents=True, exist_ok=True)
@@ -207,11 +210,11 @@ def prepare_style_transfer_run(
 
     chunks: list[dict[str, Any]] = []
     total_paragraphs = 0
-    for chapter_id in snapshot_chapter_ids(snapshot_manifest):
+    for chapter_id in chapter_ids(snapshot_manifest):
         expected_indexes = expected_by_chapter.get(chapter_id)
         if expected_indexes is None:
             raise ValueError(f"semantic run has no chunks for chapter {chapter_id}")
-        chapter = load_chapter(snapshot_dir, snapshot_manifest, chapter_id)
+        chapter = load_chapter(snapshot_manifest, chapter_id)
         english_by_index = {
             int(item["index"]): str(item.get("english") or "").strip()
             for item in chapter.get("paragraphs") or []
@@ -232,7 +235,9 @@ def prepare_style_transfer_run(
             }
             for index in sorted(expected_indexes)
         ]
-        for block_number, start in enumerate(range(0, len(ordered_rows), block_size), 1):
+        for block_number, start in enumerate(
+            range(0, len(ordered_rows), block_size), 1
+        ):
             rows = ordered_rows[start : start + block_size]
             chunk_id = f"{chapter_id}_style_{block_number:03d}"
             request = request_for_rows(
@@ -275,7 +280,9 @@ def prepare_style_transfer_run(
         "pass": "author_style_transfer",
         "snapshot_dir": str(snapshot_dir),
         "semantic_run_dir": str(semantic_run_dir),
-        "config": {key: value for key, value in config.items() if key != "_config_path"},
+        "config": {
+            key: value for key, value in config.items() if key != "_config_path"
+        },
         "chunks": chunks,
         "style_transfer": {
             "schema": RUN_SCHEMA,
@@ -302,7 +309,7 @@ def prepare_style_transfer_run(
             "schema_path": str(schema_path),
             "schema_sha256": schema_file_sha256,
             "semantic_manifest_sha256": file_sha256(semantic_manifest_path),
-            "snapshot_manifest_sha256": file_sha256(snapshot_dir / "manifest.json"),
+            "snapshot_manifest_sha256": file_sha256(snapshot_dir / "source.json"),
         },
     }
     write_json(style_run_dir / "run_manifest.json", manifest)
@@ -321,7 +328,9 @@ def reference_texts(request: dict[str, Any]) -> list[str]:
     return texts
 
 
-def copied_reference_spans(request: dict[str, Any], result: dict[str, Any]) -> list[str]:
+def copied_reference_spans(
+    request: dict[str, Any], result: dict[str, Any]
+) -> list[str]:
     references = reference_texts(request)
     neutral_text = "\n".join(
         str(paragraph.get("zh") or "") for paragraph in request.get("neutral_zh") or []
@@ -370,7 +379,10 @@ def base_result_errors(request: dict[str, Any], result: dict[str, Any]) -> list[
     output_ids = [row.get("id") for row in paragraphs]
     if output_ids != expected_ids:
         errors.append("paragraph IDs or order do not match input")
-    if any(not isinstance(row.get("zh"), str) or not row["zh"].strip() for row in paragraphs):
+    if any(
+        not isinstance(row.get("zh"), str) or not row["zh"].strip()
+        for row in paragraphs
+    ):
         errors.append("one or more zh outputs are empty")
     if len(output_ids) != len(set(output_ids)):
         errors.append("duplicate paragraph IDs")
@@ -389,13 +401,17 @@ def deterministic_fidelity_errors(
         source_text = str(source.get("zh") or "")
         output_text = str(output.get("zh") or "")
         prefix = str(output.get("id") or "unknown")
-        if sorted(NUMBER_RE.findall(source_text)) != sorted(NUMBER_RE.findall(output_text)):
+        if sorted(NUMBER_RE.findall(source_text)) != sorted(
+            NUMBER_RE.findall(output_text)
+        ):
             failures.append(f"fidelity:{prefix}:number_surface_mismatch")
         if sorted(PLACEHOLDER_RE.findall(source_text)) != sorted(
             PLACEHOLDER_RE.findall(output_text)
         ):
             failures.append(f"fidelity:{prefix}:placeholder_mismatch")
-        if sorted(LATIN_RE.findall(source_text)) != sorted(LATIN_RE.findall(output_text)):
+        if sorted(LATIN_RE.findall(source_text)) != sorted(
+            LATIN_RE.findall(output_text)
+        ):
             failures.append(f"fidelity:{prefix}:latin_token_mismatch")
         if starts_dialogue(source_text) != starts_dialogue(output_text):
             failures.append(f"fidelity:{prefix}:dialogue_turn_surface_mismatch")
@@ -519,7 +535,9 @@ def run_structured_attempt(
     timeout_seconds: int,
     codex_bin: str,
     attempt: int,
-    result_validator: Callable[[dict[str, Any], dict[str, Any]], list[str]] = base_result_errors,
+    result_validator: Callable[
+        [dict[str, Any], dict[str, Any]], list[str]
+    ] = base_result_errors,
 ) -> dict[str, Any]:
     started_at = utc_now()
     validation_errors: list[str] = []
@@ -595,7 +613,9 @@ def run_structured_attempt(
             stderr = completed.stderr or ""
             response_id, usage, response_errors = _parse_events(stdout)
             if completed.returncode != 0:
-                validation_errors.append(f"codex exited with status {completed.returncode}")
+                validation_errors.append(
+                    f"codex exited with status {completed.returncode}"
+                )
                 process_error_tail = stdout[-2000:]
             elif not response_path.exists():
                 validation_errors.append("codex did not write a final response")
@@ -614,7 +634,9 @@ def run_structured_attempt(
         "started_at": started_at,
         "completed_at": utc_now(),
         "attempt": attempt,
-        "status": "success" if result is not None and not validation_errors else "failed",
+        "status": "success"
+        if result is not None and not validation_errors
+        else "failed",
         "model": model,
         "reasoning_effort": reasoning_effort,
         "response_id": response_id,
@@ -742,7 +764,9 @@ class StyleTransferRunner:
 
     def active_models(self) -> list[str]:
         with self._model_lock:
-            active = [model for model in self.models if model not in self._disabled_models]
+            active = [
+                model for model in self.models if model not in self._disabled_models
+            ]
             disabled = dict(self._disabled_models)
         if not active:
             raise RuntimeError(f"all requested models are unavailable: {disabled}")
@@ -869,7 +893,11 @@ class StyleTransferRunner:
                 artifact=last_artifact,
                 validation_errors=last_application_errors,
             )
-            if fallback is not None and last_model is not None and last_output_path is not None:
+            if (
+                fallback is not None
+                and last_model is not None
+                and last_output_path is not None
+            ):
                 fallback_result, rejected_errors = fallback
                 return SegmentResult(
                     indexes=[int(rows[0]["index"])],
@@ -892,7 +920,9 @@ class StyleTransferRunner:
                             "segment": segment_name,
                             "depth": depth,
                             "source_indexes": [int(rows[0]["index"])],
-                            "path": str(last_output_path.relative_to(self.style_run_dir)),
+                            "path": str(
+                                last_output_path.relative_to(self.style_run_dir)
+                            ),
                             "file_sha256": file_sha256(last_output_path),
                             "request_sha256": sha256_json(request),
                             "model": last_model,
@@ -945,7 +975,9 @@ class StyleTransferRunner:
             style_cues_skipped=list(
                 dict.fromkeys([*left.style_cues_skipped, *right.style_cues_skipped])
             ),
-            uncertainties=list(dict.fromkeys([*left.uncertainties, *right.uncertainties])),
+            uncertainties=list(
+                dict.fromkeys([*left.uncertainties, *right.uncertainties])
+            ),
             artifacts=[*left.artifacts, *right.artifacts],
             usage=usage,
             models_used=list(dict.fromkeys([*left.models_used, *right.models_used])),
@@ -1012,7 +1044,9 @@ class StyleTransferRunner:
         }
         errors = application_validation_errors(request, merged_result)
         if errors:
-            raise RuntimeError(f"merged style-transfer validation failed for {chunk_id}: {errors}")
+            raise RuntimeError(
+                f"merged style-transfer validation failed for {chunk_id}: {errors}"
+            )
         method_artifact = {
             "schema_version": 1,
             "run_schema": RUN_SCHEMA,
@@ -1082,7 +1116,10 @@ def run_style_transfer(
     manifest_path = style_run_dir / "run_manifest.json"
     manifest = read_json(manifest_path)
     transfer = manifest.get("style_transfer") or {}
-    if manifest.get("pass") != "author_style_transfer" or transfer.get("schema") != RUN_SCHEMA:
+    if (
+        manifest.get("pass") != "author_style_transfer"
+        or transfer.get("schema") != RUN_SCHEMA
+    ):
         raise ValueError("run manifest is not an author style-transfer run")
     validate_style_transfer_runtime_assets(style_run_dir)
     validate_style_transfer_source_inputs(style_run_dir)
@@ -1212,10 +1249,12 @@ def validate_style_transfer_source_inputs(run_dir: Path) -> dict[str, Any]:
     run_dir = run_dir.expanduser().resolve()
     manifest = read_json(run_dir / "run_manifest.json")
     transfer = manifest.get("style_transfer") or {}
-    semantic_run_dir = Path(str(manifest.get("semantic_run_dir") or "")).expanduser().resolve()
+    semantic_run_dir = (
+        Path(str(manifest.get("semantic_run_dir") or "")).expanduser().resolve()
+    )
     snapshot_dir = Path(str(manifest.get("snapshot_dir") or "")).expanduser().resolve()
     semantic_manifest_path = semantic_run_dir / "run_manifest.json"
-    snapshot_manifest_path = snapshot_dir / "manifest.json"
+    snapshot_manifest_path = snapshot_dir / "source.json"
     expected_files = (
         (
             "semantic manifest",
@@ -1242,7 +1281,7 @@ def validate_style_transfer_source_inputs(run_dir: Path) -> dict[str, Any]:
             )
         state["files"][label] = actual_hash
 
-    snapshot_manifest = load_manifest(snapshot_dir)
+    snapshot_manifest = load_source(snapshot_dir)
     english_cache: dict[str, dict[int, str]] = {}
     neutral_cache: dict[str, dict[int, str]] = {}
     for chunk in manifest.get("chunks") or []:
@@ -1250,7 +1289,7 @@ def validate_style_transfer_source_inputs(run_dir: Path) -> dict[str, Any]:
         chapter_id = str(chunk["chapter_id"])
         indexes = [int(value) for value in chunk.get("indexes") or []]
         if chapter_id not in english_cache:
-            chapter = load_chapter(snapshot_dir, snapshot_manifest, chapter_id)
+            chapter = load_chapter(snapshot_manifest, chapter_id)
             english_cache[chapter_id] = {
                 int(item["index"]): str(item.get("english") or "").strip()
                 for item in chapter.get("paragraphs") or []

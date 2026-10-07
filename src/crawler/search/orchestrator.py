@@ -121,6 +121,12 @@ def search_all(
     for order, spec in enumerate(PARSERS):
         if parser_name and spec.name != parser_name:
             continue
+        if not spec.searchable:
+            if parser_name:
+                raise ValueError(
+                    f"{parser_name} supports direct collection, not search; provide its URL"
+                )
+            continue
         module = load_search_module(spec.name)
         if module is None:
             continue

@@ -7,13 +7,14 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Sequence
 
-from src.crawler.snapshot import clean_text, load_chapter, load_manifest, write_json
+from src.runtime.files import write_json
 from src.runtime.paths import repo_root
 from src.translation.codex_cli import (
     ModelCapacityError,
     extract_json_object,
     run_prompt_to_text,
 )
+from src.translation.source import clean_text, load_chapter, load_source
 from src.translation.style_transfer import (
     is_author_style_transfer_run,
     validate_style_transfer_provenance,
@@ -21,9 +22,15 @@ from src.translation.style_transfer import (
 )
 from src.translation.validation import validate_and_merge
 
-
 CJK_RE = re.compile(r"[\u4e00-\u9fff]")
-FAILURE_MARKERS = ("无法翻译", "抱歉", "cannot comply", "can't comply", "PLACEHOLDER", "TODO")
+FAILURE_MARKERS = (
+    "无法翻译",
+    "抱歉",
+    "cannot comply",
+    "can't comply",
+    "PLACEHOLDER",
+    "TODO",
+)
 
 DEFAULT_MAX_CANDIDATES = 30
 DEFAULT_BATCH_SIZE = 8
@@ -36,7 +43,18 @@ CONFIDENCE_RANK = {
     "high": 3,
 }
 
-IMPOSSIBLE_SOURCE = ["不能", "无法", "不敢", "不会", "不可", "绝不", "再也不", "不许", "不准", "不得"]
+IMPOSSIBLE_SOURCE = [
+    "不能",
+    "无法",
+    "不敢",
+    "不会",
+    "不可",
+    "绝不",
+    "再也不",
+    "不许",
+    "不准",
+    "不得",
+]
 IMPOSSIBLE_STYLE = IMPOSSIBLE_SOURCE + [
     "没法",
     "无从",
@@ -50,7 +68,15 @@ IMPOSSIBLE_STYLE = IMPOSSIBLE_SOURCE + [
     "得不到",
 ]
 NECESSITY_SOURCE = ["必须", "不得不", "只能", "只好", "只准", "注定"]
-NECESSITY_STYLE = NECESSITY_SOURCE + ["要", "需", "得以", "方能", "被迫", "只得", "只问"]
+NECESSITY_STYLE = NECESSITY_SOURCE + [
+    "要",
+    "需",
+    "得以",
+    "方能",
+    "被迫",
+    "只得",
+    "只问",
+]
 WARNING_SOURCE = ["提醒", "警告", "告诫", "警示", "劝诫"]
 WARNING_STYLE = WARNING_SOURCE + ["叮嘱"]
 ORDER_SOURCE = ["命令", "下令", "吩咐", "嘱咐", "指示"]
@@ -190,7 +216,9 @@ def translation_state_sha256(run_dir: Path) -> str:
     for chunk in manifest.get("chunks") or []:
         output_path = run_dir / str(chunk["json_output_path"])
         if not output_path.exists():
-            raise FileNotFoundError(f"style output missing from QA state: {output_path}")
+            raise FileNotFoundError(
+                f"style output missing from QA state: {output_path}"
+            )
         state.append(
             {
                 "chunk_id": str(chunk["chunk_id"]),
@@ -247,13 +275,10 @@ def semantic_qa_summary_is_current(
         ):
             return False
         if str(settings.get("min_auto_apply_confidence") or "") != str(
-            semantic_config.get("min_auto_apply_confidence")
-            or DEFAULT_MIN_CONFIDENCE
+            semantic_config.get("min_auto_apply_confidence") or DEFAULT_MIN_CONFIDENCE
         ):
             return False
-        if provenance.get("review_contract_sha256") != _sha256_json(
-            _review_contract()
-        ):
+        if provenance.get("review_contract_sha256") != _sha256_json(_review_contract()):
             return False
         if provenance.get("style_run_binding_sha256") != _style_run_binding_sha256(
             run_dir
@@ -265,16 +290,12 @@ def semantic_qa_summary_is_current(
         ):
             return False
         candidate_path = Path(str(provenance.get("candidate_report_path") or ""))
-        if (
-            not candidate_path.exists()
-            or provenance.get("candidate_report_sha256")
-            != _file_sha256(candidate_path)
-        ):
+        if not candidate_path.exists() or provenance.get(
+            "candidate_report_sha256"
+        ) != _file_sha256(candidate_path):
             return False
         review_artifacts = provenance.get("review_artifacts") or []
-        if int(provenance.get("review_artifact_count") or 0) != len(
-            review_artifacts
-        ):
+        if int(provenance.get("review_artifact_count") or 0) != len(review_artifacts):
             return False
         for artifact in review_artifacts:
             prompt_path = Path(str(artifact.get("prompt_path") or ""))
@@ -296,7 +317,10 @@ def _cjk_len(text: str) -> int:
 
 def _translation_map(path: Path) -> dict[int, str]:
     data = _load_json(path)
-    return {int(item["index"]): str(item.get("zh") or "") for item in data.get("translations") or []}
+    return {
+        int(item["index"]): str(item.get("zh") or "")
+        for item in data.get("translations") or []
+    }
 
 
 def _english_map(
@@ -304,11 +328,16 @@ def _english_map(
     snapshot_manifest: dict[str, Any],
     chapter_id: str,
 ) -> dict[int, str]:
-    data = load_chapter(snapshot_dir, snapshot_manifest, chapter_id)
-    return {int(item["index"]): str(item.get("english") or "") for item in data.get("paragraphs") or []}
+    data = load_chapter(snapshot_manifest, chapter_id)
+    return {
+        int(item["index"]): str(item.get("english") or "")
+        for item in data.get("paragraphs") or []
+    }
 
 
-def _glossary_terms(config: dict[str, Any], compression_config: dict[str, Any]) -> list[dict[str, str]]:
+def _glossary_terms(
+    config: dict[str, Any], compression_config: dict[str, Any]
+) -> list[dict[str, str]]:
     glossary_path = config.get("glossary_path")
     if not glossary_path:
         return []
@@ -317,7 +346,9 @@ def _glossary_terms(config: dict[str, Any], compression_config: dict[str, Any]) 
         return []
     glossary = _load_json(path)
     ignored = set(DEFAULT_IGNORED_GLOSSARY_TERMS)
-    ignored.update(str(item) for item in compression_config.get("ignored_glossary_terms") or [])
+    ignored.update(
+        str(item) for item in compression_config.get("ignored_glossary_terms") or []
+    )
     min_chars = int(compression_config.get("min_glossary_term_chars") or 3)
     terms: dict[str, dict[str, str]] = {}
     for source, entry in (glossary.get("terms") or {}).items():
@@ -327,7 +358,12 @@ def _glossary_terms(config: dict[str, Any], compression_config: dict[str, Any]) 
         else:
             target = str(entry or "")
             confidence = ""
-        if not target or target in ignored or len(target) < min_chars or not CJK_RE.search(target):
+        if (
+            not target
+            or target in ignored
+            or len(target) < min_chars
+            or not CJK_RE.search(target)
+        ):
             continue
         terms[target] = {"zh": target, "source": str(source), "confidence": confidence}
     return sorted(terms.values(), key=lambda item: len(item["zh"]), reverse=True)
@@ -465,13 +501,19 @@ def detect_semantic_compression_candidates(
     snapshot_dir = resolve_path(str(manifest["snapshot_dir"]))
     compression_config = config.get("semantic_compression") or {}
     terms = _glossary_terms(config, compression_config)
-    snapshot_manifest = load_manifest(snapshot_dir)
+    snapshot_manifest = load_source(snapshot_dir)
     candidates: list[dict[str, Any]] = []
-    chapter_ids = sorted({str(chunk["chapter_id"]) for chunk in manifest.get("chunks") or []})
+    chapter_ids = sorted(
+        {str(chunk["chapter_id"]) for chunk in manifest.get("chunks") or []}
+    )
     for chapter_id in chapter_ids:
         english_by_index = _english_map(snapshot_dir, snapshot_manifest, chapter_id)
-        semantic_by_index = _translation_map(semantic_run_dir / "translations" / f"{chapter_id}.json")
-        style_by_index = _translation_map(run_dir / "translations" / f"{chapter_id}.json")
+        semantic_by_index = _translation_map(
+            semantic_run_dir / "translations" / f"{chapter_id}.json"
+        )
+        style_by_index = _translation_map(
+            run_dir / "translations" / f"{chapter_id}.json"
+        )
         for index, style_zh in sorted(style_by_index.items()):
             semantic_zh = semantic_by_index.get(index, "")
             if not semantic_zh or semantic_zh == style_zh:
@@ -488,10 +530,14 @@ def detect_semantic_compression_candidates(
             if candidate:
                 candidates.append(candidate)
 
-    candidates.sort(key=lambda item: (-int(item["score"]), float(item["ratio"]), str(item["ref"])))
+    candidates.sort(
+        key=lambda item: (-int(item["score"]), float(item["ratio"]), str(item["ref"]))
+    )
     if max_candidates is not None:
         candidates = candidates[:max_candidates]
-    signal_counts = Counter(signal for item in candidates for signal in item.get("signals") or [])
+    signal_counts = Counter(
+        signal for item in candidates for signal in item.get("signals") or []
+    )
     report = {
         "schema_version": 1,
         "run_dir": str(run_dir),
@@ -518,7 +564,12 @@ def _review_contract() -> dict[str, Any]:
             "Keep repair_zh as one Chinese paragraph and preserve the style_zh sentence flow unless the loss requires a small local edit.",
             "Do not mechanically paste a missing term into style_zh; choose natural Chinese phrasing, borrowing local wording from semantic_zh when that reads better.",
         ],
-        "verdicts": ["true_loss", "preserved_by_paraphrase", "harmless_compaction", "false_positive"],
+        "verdicts": [
+            "true_loss",
+            "preserved_by_paraphrase",
+            "harmless_compaction",
+            "false_positive",
+        ],
         "output_schema": {
             "items": [
                 {
@@ -580,11 +631,17 @@ def _replace_translation_item(path: Path, index: int, new_zh: str) -> str:
 
 
 def _confidence_allows(value: str, minimum: str) -> bool:
-    return CONFIDENCE_RANK.get(value.lower(), 0) >= CONFIDENCE_RANK.get(minimum.lower(), 2)
+    return CONFIDENCE_RANK.get(value.lower(), 0) >= CONFIDENCE_RANK.get(
+        minimum.lower(), 2
+    )
 
 
 def _result_by_ref(review_items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    return {str(item.get("ref") or ""): item for item in review_items if isinstance(item, dict)}
+    return {
+        str(item.get("ref") or ""): item
+        for item in review_items
+        if isinstance(item, dict)
+    }
 
 
 def _repair_preserves_original_signals(
@@ -608,7 +665,10 @@ def _repair_preserves_original_signals(
     original_signals.discard("low_ratio_context")
     unresolved = sorted(original_signals & remaining)
     if unresolved:
-        return False, f"repair still triggers original signal(s): {', '.join(unresolved)}"
+        return (
+            False,
+            f"repair still triggers original signal(s): {', '.join(unresolved)}",
+        )
     return True, ""
 
 
@@ -639,7 +699,9 @@ def _validate_repair(
         return False, "", "repair_zh is too short relative to style_zh"
     if _cjk_len(repair_zh) < max(1, int(_cjk_len(semantic_zh) * 0.6)):
         return False, "", "repair_zh is too short relative to semantic_zh"
-    preserves, reason = _repair_preserves_original_signals(candidate=candidate, repair_zh=repair_zh, terms=terms)
+    preserves, reason = _repair_preserves_original_signals(
+        candidate=candidate, repair_zh=repair_zh, terms=terms
+    )
     if not preserves:
         return False, "", reason
     return True, repair_zh, ""
@@ -688,9 +750,11 @@ def run_semantic_compression_qa(
     candidate_report_path = output_dir / "semantic_compression_candidates.json"
     candidates = list(candidate_report.get("candidates") or [])
     candidates_by_ref = {str(item["ref"]): item for item in candidates}
-    requested_models: list[str | None] = list(
-        dict.fromkeys(str(value) for value in models if str(value))
-    ) if models else [model]
+    requested_models: list[str | None] = (
+        list(dict.fromkeys(str(value) for value in models if str(value)))
+        if models
+        else [model]
+    )
     unavailable_models: dict[str, str] = {}
     effective_model_batches: dict[str, int] = {}
 
@@ -709,16 +773,20 @@ def run_semantic_compression_qa(
             reuse_parsed = False
             if parsed_path.exists() and parsed_meta_path.exists() and not overwrite:
                 parsed_meta = _load_json(parsed_meta_path)
-                reuse_parsed = (
-                    parsed_meta.get("prompt_sha256") == prompt_sha256
-                    and parsed_meta.get("result_sha256") == _file_sha256(parsed_path)
+                reuse_parsed = parsed_meta.get(
+                    "prompt_sha256"
+                ) == prompt_sha256 and parsed_meta.get("result_sha256") == _file_sha256(
+                    parsed_path
                 )
             if reuse_parsed:
                 parsed = _load_json(parsed_path)
             else:
                 text = ""
                 for candidate_model in requested_models:
-                    if candidate_model is not None and candidate_model in unavailable_models:
+                    if (
+                        candidate_model is not None
+                        and candidate_model in unavailable_models
+                    ):
                         continue
                     try:
                         text = run_prompt_to_text(
@@ -779,9 +847,7 @@ def run_semantic_compression_qa(
     unresolved_true_losses: list[dict[str, Any]] = []
     review_by_ref = _result_by_ref(review_items)
     review_ref_counts = Counter(
-        str(item.get("ref") or "")
-        for item in review_items
-        if isinstance(item, dict)
+        str(item.get("ref") or "") for item in review_items if isinstance(item, dict)
     )
     for ref in sorted(set(review_ref_counts) - set(candidates_by_ref)):
         rejected.append({"ref": ref, "reject_reason": "unexpected review ref"})
@@ -896,10 +962,11 @@ def run_semantic_compression_qa(
             }
         )
 
-    verdict_counts = Counter(str(item.get("verdict") or "missing") for item in review_items)
+    verdict_counts = Counter(
+        str(item.get("verdict") or "missing") for item in review_items
+    )
     unresolved_severity_counts = Counter(
-        str(item.get("severity") or "unspecified")
-        for item in unresolved_true_losses
+        str(item.get("severity") or "unspecified") for item in unresolved_true_losses
     )
     output_translation_state_sha256 = translation_state_sha256(run_dir)
     summary = {
@@ -936,9 +1003,7 @@ def run_semantic_compression_qa(
             "rejected_count": len(rejected),
             "failure_count": len(failures),
             "unresolved_true_loss_count": len(unresolved_true_losses),
-            "unresolved_high_severity_count": unresolved_severity_counts.get(
-                "high", 0
-            ),
+            "unresolved_high_severity_count": unresolved_severity_counts.get("high", 0),
         },
         "provenance": {
             "schema": "semantic_qa_provenance.v1",

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import mimetypes
+
 import asyncio
 import base64
 import json
 import logging
-import mimetypes
 import os
 import re
 import sys
@@ -23,15 +24,13 @@ from src.content.html import is_scene_break_text, render_scene_break
 from src.content.models import Chapter, Volume
 from src.crawler.fetch.browser import resolve_browser_executable
 from src.crawler.fetch.parallel import crawl_items
-from src.crawler.snapshot import CRAWL_SCHEMA_VERSION, deduplicate_comments, write_json
+from src.crawler.models import CrawledBook, CrawlOptions
 
 HOST = "https://www.patreon.com"
 UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 )
-DEFAULT_AUTHOR = "顾雪柔"
-DEFAULT_TITLE = "永恒之门"
 PROFILE_DIR_ENV = "BOOKLIB_PATREON_PROFILE_DIR"
 DEFAULT_PROFILE_DIR = (
     Path.home() / ".local" / "share" / "epub-creator-from-web" / "patreon-profile"
@@ -226,7 +225,11 @@ async def _wait_for_document(page: zd.Tab) -> None:
 def _collection_id_from_url(url: str) -> str:
     parsed = urlparse(url)
     match = COLLECTION_RE.search(parsed.path)
-    if match:
+    if (
+        match
+        and parsed.hostname in {"patreon.com", "www.patreon.com"}
+        and parsed.scheme == "https"
+    ):
         return match.group(1)
     if url.isdigit():
         return url
@@ -247,17 +250,6 @@ def _api_post_url(post_id: str) -> str:
 
 def _api_post_comments_url(post_id: str) -> str:
     return f"{HOST}/api/posts/{post_id}/comments?{urlencode({'include': 'commenter,replies'})}"
-
-
-def _api_campaign_posts_url(campaign_id: str, *, count: int = 20) -> str:
-    query = urlencode(
-        {
-            "include": "user,campaign,attachments,post_file,post_files,images",
-            "sort": "-published_at",
-            "page[count]": str(count),
-        }
-    )
-    return f"{HOST}/api/campaigns/{campaign_id}/posts?{query}"
 
 
 def _normalize_text(text: str) -> str:
@@ -318,6 +310,22 @@ def _relationship_ids(item: dict[str, Any], name: str) -> list[str]:
     return []
 
 
+def _collection_author(data: dict[str, Any]) -> str:
+    # Platform creator identity is evidence; literary-author overrides are task data.
+    for item in data.get("included") or []:
+        if item.get("type") == "campaign":
+            attrs = item.get("attributes") or {}
+            name = attrs.get("creator_name") or attrs.get("name")
+            if name:
+                return str(name)
+    collection = data.get("data") or {}
+    owner_ids = set(_relationship_ids(collection, "creator"))
+    for item in data.get("included") or []:
+        if item.get("type") == "user" and str(item.get("id")) in owner_ids:
+            return str((item.get("attributes") or {}).get("full_name") or "")
+    return ""
+
+
 def _parse_collection(
     data: dict[str, Any], collection_id: str
 ) -> tuple[BookMeta, list[PostRef]]:
@@ -330,27 +338,42 @@ def _parse_collection(
 
     description = _html_to_text(attrs.get("description") or "")
     collection_title = _normalize_text(str(attrs.get("title") or ""))
-    intro = [f"Patreon collection: {collection_title}"] if collection_title else []
-    intro.extend(description)
+    intro = description
 
     cover_url = _best_image_url(attrs.get("thumbnail") or attrs.get("image"))
     meta = BookMeta(
         collection_id=collection_id,
-        title=DEFAULT_TITLE,
-        author=DEFAULT_AUTHOR,
+        title=collection_title or f"Collection {collection_id}",
+        author=_collection_author(data),
         intro_paragraphs=intro,
-        volume_title=description[0] if description else collection_title,
+        volume_title=collection_title,
         cover_url=cover_url,
         cover_mime=_mime_from_url(cover_url),
     )
 
     included_posts = _included_by_type(data, "post")
-    ids = _relationship_ids(collection_item, "posts")
-    if not ids:
-        ids = [str(post_id) for post_id in attrs.get("post_ids") or []]
-    if not ids:
-        ids = list(included_posts)
-
+    relationship = (collection_item.get("relationships") or {}).get("posts") or {}
+    if "data" in relationship:
+        ids = _relationship_ids(collection_item, "posts")
+    elif isinstance(attrs.get("post_ids"), list):
+        ids = [str(post_id) for post_id in attrs["post_ids"]]
+    else:
+        raise ValueError(
+            "Patreon collection membership is absent; included posts are not membership evidence"
+        )
+    if (relationship.get("links") or {}).get("next") or (data.get("links") or {}).get(
+        "next"
+    ):
+        raise ValueError(
+            "Patreon returned a paginated collection; add collection pagination before importing"
+        )
+    declared = attrs.get("post_count")
+    if isinstance(declared, int) and declared != len(set(ids)):
+        raise ValueError(
+            "Patreon collection membership is incomplete; refusing a partial book"
+        )
+    if len(ids) != len(set(ids)):
+        raise ValueError("Patreon collection repeats a post ID")
     refs: list[PostRef] = []
     for index, post_id in enumerate(ids):
         post = included_posts.get(str(post_id), {})
@@ -377,49 +400,6 @@ def _parse_collection(
     return meta, refs
 
 
-def _campaign_id_from_collection_data(data: dict[str, Any]) -> str | None:
-    for item in data.get("included") or []:
-        if item.get("type") != "post":
-            continue
-        campaign = ((item.get("relationships") or {}).get("campaign") or {}).get(
-            "data"
-        ) or {}
-        campaign_id = campaign.get("id")
-        if campaign_id:
-            return str(campaign_id)
-    for item in data.get("included") or []:
-        if item.get("type") == "campaign" and item.get("id"):
-            return str(item["id"])
-    return None
-
-
-def _chapter_number_from_title(title: str) -> int | None:
-    match = re.match(r"^\s*chapter\s+(\d+)\b", title, flags=re.IGNORECASE)
-    if not match:
-        return None
-    return int(match.group(1))
-
-
-def _source_chapter_label(number: int | None) -> str | None:
-    if number is None:
-        return None
-    return f"Chapter {number:03d}"
-
-
-def _source_chapter_file_stem(number: int | None) -> str | None:
-    if number is None:
-        return None
-    return f"chapter-{number:03d}"
-
-
-def _clear_json_files(directory: Path) -> None:
-    if not directory.exists():
-        return
-    for path in directory.glob("*.json"):
-        if path.is_file() or path.is_symlink():
-            path.unlink()
-
-
 def _post_ref_from_api_post(post: dict[str, Any], *, order: int) -> PostRef | None:
     post_id = str(post.get("id") or "")
     attrs = post.get("attributes") or {}
@@ -438,72 +418,6 @@ def _post_ref_from_api_post(post: dict[str, Any], *, order: int) -> PostRef | No
         order=order,
         current_user_can_view=attrs.get("current_user_can_view"),
     )
-
-
-async def _supplement_refs_from_campaign_feed(
-    fetcher: PatreonFetcher,
-    collection_data: dict[str, Any],
-    refs: list[PostRef],
-) -> tuple[list[PostRef], dict[str, Any] | None]:
-    campaign_id = _campaign_id_from_collection_data(collection_data)
-    if not campaign_id:
-        return refs, None
-
-    existing_ids = {ref.post_id for ref in refs}
-    existing_numbers = [
-        number
-        for ref in refs
-        if (number := _chapter_number_from_title(ref.title)) is not None
-    ]
-    if not existing_numbers:
-        return refs, None
-
-    latest_published = max(
-        (
-            published
-            for ref in refs
-            if (published := _parse_iso_datetime(ref.published_at)) is not None
-        ),
-        default=None,
-    )
-    if latest_published is not None and latest_published.tzinfo is None:
-        latest_published = latest_published.replace(tzinfo=timezone.utc)
-    max_existing_number = max(existing_numbers)
-
-    feed_data = await fetcher.get_json(_api_campaign_posts_url(campaign_id))
-    feed_posts = feed_data.get("data") or []
-    if isinstance(feed_posts, dict):
-        feed_posts = [feed_posts]
-
-    supplements: list[PostRef] = []
-    for index, post in enumerate(feed_posts, len(refs)):
-        if not isinstance(post, dict) or str(post.get("id") or "") in existing_ids:
-            continue
-        ref = _post_ref_from_api_post(post, order=index)
-        if ref is None:
-            continue
-        number = _chapter_number_from_title(ref.title)
-        if number is None or number <= max_existing_number:
-            continue
-        published = _parse_iso_datetime(ref.published_at)
-        if published is not None:
-            if published.tzinfo is None:
-                published = published.replace(tzinfo=timezone.utc)
-            if latest_published is not None and published <= latest_published:
-                continue
-        supplements.append(ref)
-
-    if not supplements:
-        return refs, feed_data
-
-    merged = [*refs, *supplements]
-    merged.sort(key=_post_ref_sort_key)
-    added = ", ".join(f"{ref.post_id} {ref.title}" for ref in supplements)
-    print(
-        f"[+] supplemented {len(supplements)} newer campaign feed post(s): {added}",
-        file=sys.stderr,
-    )
-    return merged, feed_data
 
 
 def _post_ref_sort_key(ref: PostRef) -> tuple[float, int]:
@@ -876,7 +790,16 @@ async def fetch_post_comments_authenticated(
                         _flatten_comment(reply, users, parent_id=parent["id"])
                     )
         url = (data.get("links") or {}).get("next")
-    return deduplicate_comments(comments)
+    unique = []
+    seen = set()
+    for item in comments:
+        key = item.get("id")
+        if key and key in seen:
+            continue
+        if key:
+            seen.add(key)
+        unique.append(item)
+    return unique
 
 
 def _chapter_from_post(post_ref: PostRef, data: dict[str, Any]) -> Chapter:
@@ -884,6 +807,11 @@ def _chapter_from_post(post_ref: PostRef, data: dict[str, Any]) -> Chapter:
     title = _clean_title(
         str(attrs.get("title") or post_ref.title), fallback=post_ref.title
     )
+    if (
+        attrs.get("current_user_can_view") is False
+        or post_ref.current_user_can_view is False
+    ):
+        raise PatreonAuthError(_auth_message(post_ref))
     paragraphs = _extract_post_paragraphs(attrs)
     html_blocks = _extract_post_html_blocks(attrs)
     if not paragraphs:
@@ -919,11 +847,6 @@ def _auth_message(post_ref: PostRef) -> str:
     )
 
 
-async def _fetch_post(fetcher: PatreonFetcher, post_ref: PostRef) -> Chapter:
-    data = await fetcher.get_json(_api_post_url(post_ref.post_id))
-    return _chapter_from_post(post_ref, data)
-
-
 async def _fetch_post_snapshot(
     fetcher: PatreonFetcher,
     post_ref: PostRef,
@@ -952,40 +875,6 @@ def _fetch_cover_direct(url: str) -> tuple[bytes, str]:
     response = requests.get(url, headers={"User-Agent": UA}, timeout=30)
     response.raise_for_status()
     return response.content, response.headers.get("content-type", "")
-
-
-async def _crawl_posts_with_login_retry(
-    fetcher: PatreonFetcher,
-    refs: list[PostRef],
-    *,
-    concurrency: int,
-    headless: bool,
-) -> list[Chapter]:
-    try:
-        return await crawl_items(
-            refs,
-            lambda ref: _fetch_post(fetcher, ref),
-            concurrency=concurrency,
-            item_name="post",
-        )
-    except Exception as exc:
-        auth_error = _find_auth_error(exc)
-        if auth_error is None or headless or not sys.stdin.isatty():
-            raise
-
-        print(f"[!] {auth_error}", file=sys.stderr)
-        print(
-            "[!] Finish logging in to Patreon in the opened browser window; "
-            "the session will be saved in this provider profile.",
-            file=sys.stderr,
-        )
-        await asyncio.to_thread(input, "Press Enter after Patreon login is complete...")
-        return await crawl_items(
-            refs,
-            lambda ref: _fetch_post(fetcher, ref),
-            concurrency=concurrency,
-            item_name="post",
-        )
 
 
 async def _crawl_post_snapshots_with_login_retry(
@@ -1022,16 +911,6 @@ async def _crawl_post_snapshots_with_login_retry(
         )
 
 
-async def _safe_fetch_comments(
-    fetcher: PatreonFetcher, ref: PostRef
-) -> list[dict[str, Any]]:
-    try:
-        return await fetch_post_comments_authenticated(fetcher, ref.post_id)
-    except Exception as exc:  # noqa: BLE001
-        print(f"[!] comments fetch failed for {ref.title}: {exc}", file=sys.stderr)
-        return []
-
-
 def _find_auth_error(exc: BaseException) -> PatreonAuthError | None:
     current: BaseException | None = exc
     seen: set[int] = set()
@@ -1043,243 +922,84 @@ def _find_auth_error(exc: BaseException) -> PatreonAuthError | None:
     return None
 
 
-def _snapshot_blocks(
-    chapter: Chapter,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    html_blocks = chapter.html_blocks or [
-        f"<p>{escape_html(text)}</p>" for text in chapter.paragraphs
-    ]
-    blocks: list[dict[str, Any]] = []
-    paragraphs: list[dict[str, Any]] = []
-    paragraph_index = 0
-    for html in html_blocks:
-        text = _normalize_text(
-            BeautifulSoup(html, "html.parser").get_text(" ", strip=True)
-        )
-        if is_scene_break_text(text) or html.lstrip().startswith("<hr"):
-            blocks.append({"type": "separator", "html": html})
-            continue
-        if not text:
-            blocks.append({"type": "html", "html": html})
-            continue
-        paragraph = {"index": paragraph_index, "english": text}
-        paragraphs.append(paragraph)
-        blocks.append(
-            {
-                "type": "content",
-                "index": paragraph_index,
-                "english": text,
-                "html": html,
-            }
-        )
-        paragraph_index += 1
-    return blocks, paragraphs
-
-
-async def crawl_snapshot(
-    book_url: str,
-    output_dir: Path,
-    *,
-    title: str | None = None,
-    author: str | None = None,
-    headless: bool = False,
-    delay: float = 0.4,
-    concurrency: int = 2,
-    include_comments: bool = True,
-) -> Path:
+async def crawl_book(
+    book_url: str, *, options: CrawlOptions | None = None
+) -> CrawledBook:
+    options = options or CrawlOptions()
     collection_id = _collection_id_from_url(book_url)
     collection_url = _resolve_book_url(book_url)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "chapters").mkdir(exist_ok=True)
-    (output_dir / "chapters" / "by-source").mkdir(exist_ok=True)
-    (output_dir / "comments").mkdir(exist_ok=True)
-    (output_dir / "comments" / "by-source").mkdir(exist_ok=True)
-    (output_dir / "raw_posts").mkdir(exist_ok=True)
-    (output_dir / "assets").mkdir(exist_ok=True)
-    _clear_json_files(output_dir / "chapters" / "by-source")
-    _clear_json_files(output_dir / "comments" / "by-source")
-
-    fetcher = PatreonFetcher(headless=headless, delay=delay)
+    fetcher = PatreonFetcher(
+        headless=options.headless,
+        delay=options.delay if options.delay is not None else 0.4,
+    )
     await fetcher.start()
     try:
         await fetcher.open_collection(collection_url)
         collection_data = await fetcher.get_json(_api_collection_url(collection_id))
         meta, refs = _parse_collection(collection_data, collection_id)
-        refs, campaign_feed_data = await _supplement_refs_from_campaign_feed(
-            fetcher,
-            collection_data,
-            refs,
-        )
-        if title:
-            meta.title = title
-        if author:
-            meta.author = author
+        existing = {ref.post_id for ref in refs}
+        for post_id in options.extra_post_ids:
+            if post_id in existing:
+                continue
+            if not post_id.isdigit():
+                raise ValueError("Supplemental Patreon post IDs must be numeric")
+            payload = await fetcher.get_json(_api_post_url(post_id))
+            ref = _post_ref_from_api_post(payload.get("data") or {}, order=len(refs))
+            if ref is None:
+                raise ValueError(
+                    f"Explicit supplemental post is unavailable: {post_id}"
+                )
+            refs.append(ref)
+            existing.add(post_id)
+        refs.sort(key=_post_ref_sort_key)
         if not refs:
-            raise RuntimeError(
+            raise ValueError(
                 f"Patreon collection {collection_id} has no published posts"
             )
-
-        write_json(output_dir / "raw_collection.json", collection_data)
-        if campaign_feed_data is not None:
-            write_json(output_dir / "raw_campaign_posts.json", campaign_feed_data)
-        print(f"[+] found {len(refs)} published Patreon post(s)", file=sys.stderr)
         await _download_cover(fetcher, meta)
-        post_results = await _crawl_post_snapshots_with_login_retry(
+        collected = await _crawl_post_snapshots_with_login_retry(
             fetcher,
             refs,
-            concurrency=concurrency,
-            headless=headless,
+            concurrency=options.concurrency or 2,
+            headless=options.headless,
         )
-        if include_comments:
-            comment_lists = await crawl_items(
+        comments = (
+            await crawl_items(
                 refs,
-                lambda ref: _safe_fetch_comments(fetcher, ref),
-                concurrency=max(1, min(concurrency, 4)),
+                lambda ref: fetch_post_comments_authenticated(fetcher, ref.post_id),
+                concurrency=options.concurrency or 2,
                 item_name="comments",
             )
-        else:
-            comment_lists = [[] for _ in refs]
+            if options.include_comments
+            else [[] for _ in refs]
+        )
     finally:
         await fetcher.stop()
-
-    cover: dict[str, Any] = {"url": meta.cover_url, "mime": meta.cover_mime}
-    if meta.cover_bytes:
-        cover_name = f"cover{mimetypes.guess_extension(meta.cover_mime) or '.jpg'}"
-        cover_path = output_dir / "assets" / cover_name
-        cover_path.write_bytes(meta.cover_bytes)
-        cover["path"] = f"assets/{cover_name}"
-
-    manifest_chapters: list[dict[str, Any]] = []
-    chapter_index: list[dict[str, Any]] = []
-    for index, (ref, result, comments) in enumerate(
-        zip(refs, post_results, comment_lists, strict=True), 1
-    ):
-        chapter, raw_post = result
-        chapter_id = f"{index:02d}"
-        source_chapter_number = _chapter_number_from_title(chapter.title)
-        source_chapter_label = _source_chapter_label(source_chapter_number)
-        source_file_stem = _source_chapter_file_stem(source_chapter_number)
-        source_chapter_path = (
-            f"chapters/by-source/{source_file_stem}.json" if source_file_stem else None
-        )
-        source_comments_path = (
-            f"comments/by-source/{source_file_stem}.json" if source_file_stem else None
-        )
-        blocks, paragraphs = _snapshot_blocks(chapter)
-        chapter_payload = {
-            "id": chapter_id,
-            "title": chapter.title,
-            "source_id": ref.post_id,
-            "source_url": ref.url,
-            "source_chapter_number": source_chapter_number,
-            "source_chapter_label": source_chapter_label,
-            "published_at": ref.published_at,
-            "order": index - 1,
-            "paragraphs": paragraphs,
-            "blocks": blocks,
-        }
-        write_json(output_dir / "chapters" / f"{chapter_id}.json", chapter_payload)
-        write_json(output_dir / "comments" / f"{chapter_id}.json", comments)
-        if source_file_stem:
-            write_json(
-                output_dir / "chapters" / "by-source" / f"{source_file_stem}.json",
-                chapter_payload,
-            )
-            write_json(
-                output_dir / "comments" / "by-source" / f"{source_file_stem}.json",
-                comments,
-            )
-        write_json(output_dir / "raw_posts" / f"{ref.post_id}.json", raw_post)
-        manifest_chapters.append(
-            {
-                "id": chapter_id,
-                "title": chapter.title,
-                "source_id": ref.post_id,
-                "source_url": ref.url,
-                "source_chapter_number": source_chapter_number,
-                "source_chapter_label": source_chapter_label,
-                "published_at": ref.published_at,
-                "order": index - 1,
-                "path": f"chapters/{chapter_id}.json",
-                "comments_path": f"comments/{chapter_id}.json",
-                "source_chapter_path": source_chapter_path,
-                "source_comments_path": source_comments_path,
-                "paragraph_count": len(paragraphs),
-                "block_count": len(blocks),
-            }
-        )
-        chapter_index.append(
-            {
-                "id": chapter_id,
-                "title": chapter.title,
-                "source_chapter_number": source_chapter_number,
-                "source_chapter_label": source_chapter_label,
-                "path": f"chapters/{chapter_id}.json",
-                "comments_path": f"comments/{chapter_id}.json",
-                "source_chapter_path": source_chapter_path,
-                "source_comments_path": source_comments_path,
-            }
-        )
-
-    manifest = {
-        "schema_version": CRAWL_SCHEMA_VERSION,
-        "source": {
-            "provider": "patreon",
-            "url": collection_url,
-            "collection_id": collection_id,
-        },
-        "title": meta.title,
-        "author": meta.author,
-        "language": "en",
-        "target_language": "zh-CN",
-        "intro_paragraphs": meta.intro_paragraphs,
-        "volume_title": meta.volume_title,
-        "cover": cover,
-        "chapters": manifest_chapters,
+    chapters = []
+    evidence = {
+        "collection": collection_data,
+        "posts": {},
+        "comments": {},
+        "comments_status": "complete" if options.include_comments else "not_requested",
     }
-    write_json(output_dir / "chapter_index.json", chapter_index)
-    write_json(output_dir / "manifest.json", manifest)
-    return output_dir / "manifest.json"
-
-
-async def crawl_book(
-    book_url: str,
-    *,
-    headless: bool = False,
-    delay: float = 0.4,
-    concurrency: int = 2,
-) -> tuple[BookMeta, list[Volume]]:
-    collection_id = _collection_id_from_url(book_url)
-    collection_url = _resolve_book_url(book_url)
-    fetcher = PatreonFetcher(headless=headless, delay=delay)
-    await fetcher.start()
-    try:
-        await fetcher.open_collection(collection_url)
-        collection_data = await fetcher.get_json(_api_collection_url(collection_id))
-        meta, refs = _parse_collection(collection_data, collection_id)
-        refs, _campaign_feed_data = await _supplement_refs_from_campaign_feed(
-            fetcher,
-            collection_data,
-            refs,
-        )
-        if not refs:
-            raise RuntimeError(
-                f"Patreon collection {collection_id} has no published posts"
-            )
-
-        print(f"[+] found {len(refs)} published Patreon post(s)", file=sys.stderr)
-        await _download_cover(fetcher, meta)
-        chapters = await _crawl_posts_with_login_retry(
-            fetcher,
-            refs,
-            concurrency=concurrency,
-            headless=headless,
-        )
-    finally:
-        await fetcher.stop()
-
-    volume_title = meta.volume_title or ""
-    return meta, [Volume(title=volume_title, chapters=chapters)]
+    for ref, (chapter, raw), replies in zip(refs, collected, comments, strict=True):
+        chapter.source_id = ref.post_id
+        chapter.source_url = ref.url
+        chapter.published_at = ref.published_at
+        chapters.append(chapter)
+        evidence["posts"][ref.post_id] = raw
+        evidence["comments"][ref.post_id] = replies
+    return CrawledBook(
+        title=options.title or meta.title,
+        author=options.author or meta.author,
+        volumes=[Volume(meta.volume_title, chapters)],
+        source_url=collection_url,
+        cover_bytes=meta.cover_bytes,
+        cover_mime=meta.cover_mime,
+        intro_paragraphs=meta.intro_paragraphs,
+        language=options.language or "und",
+        evidence=evidence,
+    )
 
 
 def _resolve_book_url(target: str) -> str:

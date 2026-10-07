@@ -5,8 +5,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.crawler.snapshot import write_json
-from experiments.validation.application.merge_semantic_fallback_repairs import merge_fallback_repairs
+from experiments.validation.application.merge_semantic_fallback_repairs import (
+    merge_fallback_repairs,
+)
+
+from src.runtime.files import write_json
 
 
 class MergeSemanticFallbackRepairsTest(unittest.TestCase):

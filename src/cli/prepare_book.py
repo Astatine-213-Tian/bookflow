@@ -1,4 +1,4 @@
-"""Prepare a supplied local EPUB/TXT for the shared outputs."""
+"""Extract and prepare EPUB, TXT or agent content JSON."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import argparse
 import json
 from pathlib import Path
 
-from src.runtime.files import digest
-from src.workflows.local import prepare_local
+from src.runtime.files import digest, write_json
+from src.workflows.prepare import prepare_file
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -17,46 +17,51 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--title", default="")
     parser.add_argument("--author", default="")
     parser.add_argument(
-        "--chapter-aliases",
-        type=Path,
-        help="Reviewed JSON map: local complete chapter title -> official title",
+        "--review", type=Path, help="Reviewed EPUB block ranges, omissions and metadata"
     )
     parser.add_argument(
-        "--chapter-layout",
-        type=Path,
-        help="Reviewed JSON chapter splits and main/extra/afterword classification",
-    )
-    parser.add_argument(
-        "--keep-outline",
+        "--inventory",
         action="store_true",
-        help="Explicitly preserve the edition outline instead of applying Jinjiang's directory",
+        help="Extract EPUB blocks for agent review without normalizing",
     )
+    parser.add_argument("--enrich-metadata", action="store_true")
+    parser.add_argument("--chapter-layout", type=Path)
+    parser.add_argument("--chapter-aliases", type=Path)
+    parser.add_argument("--official-outline", action="store_true")
     args = parser.parse_args(argv)
     try:
-        run_dir = (
+        directory = (
             args.run_dir
-            or Path("generated/local_imports") / digest(args.source.read_bytes())[:16]
+            or Path("generated/ingest") / digest(args.source.read_bytes())[:16]
         )
-        aliases = (
-            json.loads(args.chapter_aliases.read_text())
-            if args.chapter_aliases
-            else None
-        )
-        prepare_local(
+        if args.inventory:
+            from src.inputs.epub import inventory_epub
+
+            inventory = inventory_epub(args.source)
+            inventory.pop("files")
+            inventory["sha256"] = digest(args.source.read_bytes())
+            write_json(directory / "inventory.json", inventory)
+            print(directory / "inventory.json")
+            return 0
+        prepare_file(
             args.source,
-            run_dir,
+            directory,
             title=args.title,
             author=args.author,
-            chapter_aliases=aliases,
+            review=json.loads(args.review.read_text()) if args.review else None,
             chapter_layout=json.loads(args.chapter_layout.read_text())
             if args.chapter_layout
             else None,
-            use_jjwxc_outline=not args.keep_outline,
+            chapter_aliases=json.loads(args.chapter_aliases.read_text())
+            if args.chapter_aliases
+            else None,
+            use_jjwxc_outline=args.official_outline,
+            enrich=args.enrich_metadata,
         )
-        print(f"Prepared source: {run_dir / 'source.json'}")
+        print(directory / "source.json")
         return 0
     except (OSError, ValueError) as error:
-        print(str(error))
+        print(error)
         return 1
 
 

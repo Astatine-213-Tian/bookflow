@@ -5,19 +5,19 @@ from pathlib import Path
 from typing import Any
 
 from src.runtime.paths import repo_root
-from src.crawler.snapshot import load_manifest
-from src.translation.output import build_bilingual_epub
 from src.translation.glossary import load_glossary
+from src.translation.output import translated_source
+from src.translation.positive_scene import is_positive_run, validate_positive_run
 from src.translation.prompt_builder import prepare_prompts
 from src.translation.semantic_compression import semantic_qa_summary_is_current
 from src.translation.sentence_translations import apply_sentence_translation_overrides
+from src.translation.source import load_source
 from src.translation.style_transfer import (
     is_author_style_transfer_run,
     prepare_style_transfer_run,
     validate_style_transfer_provenance,
 )
 from src.translation.validation import validate_and_merge
-from src.translation.positive_scene import is_positive_run, validate_positive_run
 
 
 def load_config(path: Path) -> dict[str, Any]:
@@ -26,7 +26,9 @@ def load_config(path: Path) -> dict[str, Any]:
     return data
 
 
-def config_path(config: dict[str, Any], key: str, default: str | None = None) -> Path | None:
+def config_path(
+    config: dict[str, Any], key: str, default: str | None = None
+) -> Path | None:
     raw = config.get(key, default)
     if not raw:
         return None
@@ -51,7 +53,9 @@ def prepare_translation_run(
     run_dir: Path | None = None,
 ) -> Path:
     if (config.get("translation") or {}).get("method") == "direct_scene_positive":
-        raise ValueError("This book uses direct positive scenes; use book-translate scene-positive with a reuse baseline")
+        raise ValueError(
+            "This book uses direct positive scenes; use book-translate scene-positive with a reuse baseline"
+        )
     snapshot_dir = snapshot_dir.expanduser().resolve()
     run_dir = (run_dir or default_run_dir(snapshot_dir, config)).expanduser()
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -74,8 +78,10 @@ def prepare_author_style_transfer_run(
 ) -> Path:
     semantic_run_dir = semantic_run_dir.expanduser().resolve()
     style_run_dir = (
-        style_run_dir or (semantic_run_dir / "author_style_transfer")
-    ).expanduser().resolve()
+        (style_run_dir or (semantic_run_dir / "author_style_transfer"))
+        .expanduser()
+        .resolve()
+    )
     prepare_style_transfer_run(
         semantic_run_dir=semantic_run_dir,
         style_run_dir=style_run_dir,
@@ -105,9 +111,7 @@ def validate_translation_run(
         summary["sentence_translations"] = {
             "entry_count": sentence_summary["entry_count"],
             "occurrence_count": sentence_summary["occurrence_count"],
-            "changed_occurrence_count": sentence_summary[
-                "changed_occurrence_count"
-            ],
+            "changed_occurrence_count": sentence_summary["changed_occurrence_count"],
             "unresolved_count": len(sentence_summary["unresolved"]),
         }
     return summary
@@ -150,9 +154,13 @@ def build_epub_from_run(
     run_dir = run_dir.expanduser().resolve()
     if is_positive_run(run_dir):
         validate_positive_run(run_dir, config=config, snapshot_dir=snapshot_dir)
-        return build_bilingual_epub(snapshot_dir=snapshot_dir,
-            translations_dir=run_dir / "translations", output=output,
-            title=str(config.get("title") or ""), author=str(config.get("author") or ""))
+        return build_bilingual_epub(
+            snapshot_dir=snapshot_dir,
+            translations_dir=run_dir / "translations",
+            output=output,
+            title=str(config.get("title") or ""),
+            author=str(config.get("author") or ""),
+        )
     validate_and_merge(run_dir, allow_missing=False)
     if is_author_style_transfer_run(run_dir):
         validate_style_transfer_provenance(run_dir)
@@ -166,9 +174,7 @@ def build_epub_from_run(
             raise ValueError(
                 "author style-transfer EPUB build requires semantic_compression.auto_review"
             )
-        if not semantic_qa_summary_is_current(
-            run_dir, semantic_summary_path, config
-        ):
+        if not semantic_qa_summary_is_current(run_dir, semantic_summary_path, config):
             raise ValueError(
                 "author style-transfer output has no current semantic QA summary; "
                 "run `book-translate validate --config ...` before building"
@@ -178,11 +184,36 @@ def build_epub_from_run(
         config=config,
         snapshot_dir=snapshot_dir,
     )
-    manifest = load_manifest(snapshot_dir)
+    manifest = load_source(snapshot_dir)
     return build_bilingual_epub(
         snapshot_dir=snapshot_dir,
         translations_dir=run_dir / "translations",
         output=output,
-        title=str(config.get("title") or manifest.get("title") or ""),
-        author=str(config.get("author") or manifest.get("author") or ""),
+        title=str(config.get("title") or manifest["metadata"].get("title") or ""),
+        author=str(config.get("author") or manifest["metadata"].get("creator") or ""),
     )
+
+
+def build_bilingual_epub(
+    *,
+    snapshot_dir: Path,
+    translations_dir: Path,
+    output: Path | None,
+    title: str | None = None,
+    author: str | None = None,
+) -> Path:
+    from src.workflows.ingest import OutputOptions, write_book
+    from src.workflows.prepare import prepare_book, save_prepared
+
+    book, cover, mime = translated_source(
+        snapshot_dir, translations_dir, title=title, author=author
+    )
+    book, reports = prepare_book(book)
+    save_prepared(book, translations_dir.parent / "prepared", reports, cover, mime)
+    result = write_book(
+        book,
+        OutputOptions(output=output, output_formats=("epub",), prevent_overwrite=False),
+        cover=cover,
+        cover_mime=mime,
+    )
+    return result.epub_path

@@ -41,6 +41,8 @@ class ArchitectureTests(unittest.TestCase):
             ),
             "content": ("src.epub", "src.notion", "src.crawler", "src.workflows"),
             "notion": ("src.epub", "src.crawler", "src.workflows", "src.translation"),
+            "inputs": ("src.notion", "src.workflows", "src.translation", "src.cli"),
+            "translation": ("src.crawler", "src.workflows", "src.notion", "src.cli"),
             "metadata": (
                 "src.epub",
                 "src.crawler",
@@ -59,7 +61,7 @@ class ArchitectureTests(unittest.TestCase):
     def test_presentation_never_runs_source_cleanup_or_remote_services(self):
         forbidden = (
             "src.content.normalization",
-            "src.content.prepare",
+            "src.content.normalize",
             "src.content.html",
             "src.epub.maintenance",
             "src.epub.normalize",
@@ -69,7 +71,7 @@ class ArchitectureTests(unittest.TestCase):
             "src.crawler",
             "src.translation",
         )
-        for name in ("writer", "xhtml", "bilingual"):
+        for name in ("writer", "xhtml"):
             with self.subTest(renderer=name):
                 self.assertFalse(
                     {

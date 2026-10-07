@@ -13,18 +13,17 @@ from src.cli.notion_book import run as notion_main
 from src.content.blocks import content_signature
 from src.content.edition_outline import apply_edition_layout, apply_jjwxc_outline
 from src.content.models import Chapter, Volume
-from src.content.prepare import prepare_crawl
 from src.content.prepared import load_prepared_source
-from src.content.text_source import read_txt_source
 from src.dataset.text import write_prepared_txt
-from src.epub.source import read_epub_source
 from src.epub.writer import export_local
+from src.inputs.epub import read_epub_source
+from src.inputs.text import read_txt_source
 from src.metadata.catalog import MetadataEnrichmentReport
-from src.metadata.jjwxc import JjwxcChapter, JjwxcContents, JjwxcVolume
 from src.runtime.files import digest
-from src.workflows.ingest import IngestResult
 from src.workflows.edition_comparison import compare_editions
-from src.workflows.local import prepare_local
+from src.workflows.ingest import IngestResult
+from src.workflows.prepare import prepare_file as prepare_local
+from tests.fixtures import prepared_crawl as prepare_crawl
 
 
 def source():
@@ -38,7 +37,7 @@ def source():
                 [Chapter("第1章 起点", ["重复台词。", "重复台词。", "第一段。"])],
             ),
             Volume("尾声 春归", [Chapter("第2章 回家", ["结束。"])]),
-            Volume("番外", [Chapter("番外", ["补充。"])]),
+            Volume("番外", [Chapter("番外", ["补充。"], role="extra")]),
         ],
     )
     book["identifier"] = "fixture"
@@ -133,7 +132,10 @@ class LocalImportTests(unittest.TestCase):
                     path, root / "run", chapter_layout=layout, use_jjwxc_outline=False
                 )
             self.assertEqual(prepared["chapters"][member]["title"], "后记")
-            self.assertEqual(prepared["layout_report"][0]["role"], "afterword")
+            self.assertEqual(
+                json.loads((root / "run/report.json").read_text())["layout"][0]["role"],
+                "afterword",
+            )
             with self.assertRaisesRegex(ValueError, "inputs changed"):
                 prepare_local(path, root / "run", use_jjwxc_outline=False)
 
@@ -146,7 +148,7 @@ class LocalImportTests(unittest.TestCase):
             self.assertEqual(
                 parsed["extras"][0]["blocks"][0]["runs"][0]["text"], "补充。"
             )
-            paragraphs = parsed["chapters"]["EPUB/chap_01_001.xhtml"]["blocks"]
+            paragraphs = parsed["chapters"]["chapter-1"]["blocks"]
             self.assertEqual(paragraphs[0], paragraphs[1])
 
     def test_prepared_cover_asset_is_loaded_and_hash_checked(self):
@@ -260,7 +262,7 @@ class LocalImportTests(unittest.TestCase):
             ):
                 first, _, _ = prepare_local(path, root / "run", use_jjwxc_outline=False)
             with patch(
-                "src.workflows.local.normalize_new_epub",
+                "src.inputs.load.read_input",
                 side_effect=AssertionError("repeated preparation"),
             ):
                 second, _, _ = prepare_local(
@@ -269,7 +271,7 @@ class LocalImportTests(unittest.TestCase):
             self.assertEqual(first, second)
             self.assertEqual(digest(path.read_bytes()), before)
             self.assertEqual(
-                json.loads((root / "run/second_pass.json").read_text())[
+                json.loads((root / "run/report.json").read_text())["normalization"][
                     "total_changes"
                 ],
                 0,
@@ -287,7 +289,7 @@ class LocalImportTests(unittest.TestCase):
                     side_effect=AssertionError("provider called"),
                 ),
                 patch(
-                    "src.workflows.local.ingest_local", return_value=IngestResult()
+                    "src.workflows.ingest.ingest_local", return_value=IngestResult()
                 ) as run,
             ):
                 self.assertEqual(
@@ -300,37 +302,33 @@ class LocalImportTests(unittest.TestCase):
             root = Path(temporary)
             path = root / "edition.epub"
             export_local(source(), path)
-            contents = JjwxcContents(
-                "https://example.test/book",
-                (
-                    JjwxcVolume(
-                        "始末",
-                        (
-                            JjwxcChapter(1, "新起点", None),
-                            JjwxcChapter(2, "回家", None),
-                        ),
-                    ),
-                ),
-            )
-            metadata = MetadataEnrichmentReport(
-                path=path, applied=False, status="fixture", table_of_contents=contents
-            )
-            with patch(
-                "src.epub.maintenance.enrich_epub_metadata", return_value=metadata
-            ):
-                with self.assertRaisesRegex(ValueError, "outline_review.json"):
-                    prepare_local(path, root / "run")
-                aliases = json.loads(
-                    (root / "run/chapter_aliases.proposed.json").read_text()
-                )
-                self.assertEqual(aliases, {"第1章 起点": "新起点"})
+            report = {
+                "table_of_contents": {
+                    "volumes": [
+                        {
+                            "title": "始末",
+                            "chapters": [
+                                {"number": 1, "title": "新起点"},
+                                {"number": 2, "title": "回家"},
+                            ],
+                        }
+                    ]
+                }
+            }
+            with patch("src.workflows.prepare.enrich_source", return_value=report):
+                with self.assertRaisesRegex(ValueError, "Edition title differs"):
+                    prepare_local(
+                        path, root / "run", enrich=True, use_jjwxc_outline=True
+                    )
                 result, _, _ = prepare_local(
-                    path, root / "run", chapter_aliases=aliases
+                    path,
+                    root / "run",
+                    enrich=True,
+                    use_jjwxc_outline=True,
+                    chapter_aliases={"第1章 起点": "新起点"},
                 )
             self.assertEqual(result["sections"][0]["title"], "始末")
-            self.assertEqual(
-                result["chapters"]["EPUB/chap_01_001.xhtml"]["title"], "第1章 起点"
-            )
+            self.assertEqual(result["chapters"]["chapter-1-1"]["title"], "第1章 起点")
 
     def test_notion_upload_cli_calls_existing_uploader(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -361,11 +359,12 @@ class LocalImportTests(unittest.TestCase):
             with ZipFile(path) as archive:
                 files = {name: archive.read(name) for name in archive.namelist()}
             files["EPUB/nav.xhtml"] = files["EPUB/nav.xhtml"].replace(
-                b'<li><a href="extra_001.xhtml">', b'<li><a href="chap_01_001.xhtml">'
+                b'<li><a href="chapter_0003.xhtml">',
+                b'<li><a href="chapter_0001.xhtml">',
             )
             # Replace the link independently of serializer whitespace.
             files["EPUB/nav.xhtml"] = files["EPUB/nav.xhtml"].replace(
-                b'href="extra_001.xhtml"', b'href="chap_01_001.xhtml"'
+                b'href="chapter_0003.xhtml"', b'href="chapter_0001.xhtml"'
             )
             with ZipFile(path, "w") as archive:
                 for name, data in files.items():

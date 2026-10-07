@@ -8,9 +8,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from src.crawler.snapshot import write_json
+from src.runtime.files import write_json
 from src.translation.codex_cli import is_failed_translation
-
 
 SCHEMA = "semantic_fallback_merge.v1"
 
@@ -36,7 +35,9 @@ def merge_fallback_repairs(
     primary_outputs = primary_run_dir / "outputs"
     fallback_outputs = fallback_run_dir / "outputs"
     if not primary_outputs.exists() or not fallback_outputs.exists():
-        raise FileNotFoundError("both primary and fallback output directories must exist")
+        raise FileNotFoundError(
+            "both primary and fallback output directories must exist"
+        )
 
     repairs: list[dict[str, Any]] = []
     inspected_chunks: list[str] = []

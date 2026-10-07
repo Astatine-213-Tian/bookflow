@@ -4,15 +4,15 @@ import json
 from pathlib import Path
 from typing import Any
 
-from src.crawler.snapshot import (
-    load_chapter,
-    load_manifest,
-    snapshot_chapter_ids,
-    write_json,
-)
+from src.runtime.files import write_json
 from src.runtime.paths import repo_root
 from src.translation.glossary import glossary_terms, matched_terms
 from src.translation.sentence_translations import sentence_translation_entries
+from src.translation.source import (
+    chapter_ids,
+    load_chapter,
+    load_source,
+)
 
 
 def chunked(items: list[dict[str, Any]], size: int) -> list[list[dict[str, Any]]]:
@@ -99,7 +99,7 @@ def prepare_prompts(
     config: dict[str, Any],
     glossary: dict[str, Any],
 ) -> dict[str, Any]:
-    manifest = load_manifest(snapshot_dir)
+    manifest = load_source(snapshot_dir)
     terms = glossary_terms(glossary)
     sentence_translations = [
         {
@@ -111,10 +111,14 @@ def prepare_prompts(
         for entry in sentence_translation_entries(glossary)
     ]
     translation_config = config.get("translation", {})
-    source_context = str(config.get("source_context") or translation_config.get("source_context") or "")
+    source_context = str(
+        config.get("source_context") or translation_config.get("source_context") or ""
+    )
     chunk_size = int(translation_config.get("chunk_size") or 30)
     context_window = int(translation_config.get("context_paragraphs") or 5)
-    use_existing_in_prompt = bool(translation_config.get("use_existing_translations_in_prompt"))
+    use_existing_in_prompt = bool(
+        translation_config.get("use_existing_translations_in_prompt")
+    )
     existing_dir = (
         (
             Path(str(config["existing_translations_dir"])).expanduser().resolve()
@@ -131,9 +135,11 @@ def prepare_prompts(
     output_dir.mkdir(parents=True, exist_ok=True)
     chunks: list[dict[str, Any]] = []
 
-    for chapter_id in snapshot_chapter_ids(manifest):
-        chapter = load_chapter(snapshot_dir, manifest, chapter_id)
-        paragraphs = sorted(chapter.get("paragraphs") or [], key=lambda item: int(item["index"]))
+    for chapter_id in chapter_ids(manifest):
+        chapter = load_chapter(manifest, chapter_id)
+        paragraphs = sorted(
+            chapter.get("paragraphs") or [], key=lambda item: int(item["index"])
+        )
         current = load_existing_translations(existing_dir, chapter_id)
 
         by_index = {int(item["index"]): item for item in paragraphs}
@@ -164,8 +170,12 @@ def prepare_prompts(
                 )
             prompt_payload = {
                 "pass": "semantic_draft",
-                "book_title": config.get("title") or manifest.get("title") or "",
-                "author": config.get("author") or manifest.get("author") or "",
+                "book_title": config.get("title")
+                or manifest["metadata"].get("title")
+                or "",
+                "author": config.get("author")
+                or manifest["metadata"].get("creator")
+                or "",
                 "source_context": source_context,
                 "chapter_id": chapter_id,
                 "chapter_title": chapter.get("title") or "",

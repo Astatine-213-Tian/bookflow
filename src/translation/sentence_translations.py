@@ -6,11 +6,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from src.crawler.snapshot import (
+from src.runtime.files import write_json
+from src.translation.source import (
+    chapter_ids,
     load_chapter,
-    load_manifest,
-    snapshot_chapter_ids,
-    write_json,
+    load_source,
 )
 
 
@@ -82,7 +82,7 @@ def apply_sentence_translation_overrides(
     entries = sentence_translation_entries(glossary)
     run_manifest = _read_json(run_dir / "run_manifest.json")
     semantic_run_dir = _manifest_path(run_dir, run_manifest.get("semantic_run_dir"))
-    snapshot_manifest = load_manifest(snapshot_dir)
+    snapshot_manifest = load_source(snapshot_dir)
 
     entry_reports = [
         {
@@ -98,8 +98,8 @@ def apply_sentence_translation_overrides(
     changed_count = 0
     occurrence_count = 0
 
-    for chapter_id in snapshot_chapter_ids(snapshot_manifest):
-        chapter = load_chapter(snapshot_dir, snapshot_manifest, chapter_id)
+    for chapter_id in chapter_ids(snapshot_manifest):
+        chapter = load_chapter(snapshot_manifest, chapter_id)
         paragraphs = sorted(
             chapter.get("paragraphs") or [],
             key=lambda item: int(item["index"]),
@@ -268,8 +268,7 @@ def _find_occurrences(
     sources = [_normalize_source(item) for item in entry.source]
     joined_source = _normalize_source(" ".join(entry.source))
     normalized_paragraphs = [
-        _normalize_source(str(item.get("english") or ""))
-        for item in paragraphs
+        _normalize_source(str(item.get("english") or "")) for item in paragraphs
     ]
     occurrences: list[dict[str, Any]] = []
     claimed: set[tuple[int, ...]] = set()
@@ -280,8 +279,7 @@ def _find_occurrences(
         if window != sources:
             continue
         indexes = tuple(
-            int(item["index"])
-            for item in paragraphs[start : start + segment_count]
+            int(item["index"]) for item in paragraphs[start : start + segment_count]
         )
         occurrences.append({"indexes": list(indexes), "mode": "segmented"})
         claimed.add(indexes)

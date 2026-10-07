@@ -43,7 +43,7 @@ def read_txt_source(path: Path, *, title: str = "", author: str = "") -> dict:
     if front and front[0] == "简介":
         front.pop(0)
     source = {
-        "version": 2,
+        "version": 3,
         "identifier": str(uuid5(NAMESPACE_URL, "local-txt:" + digest(data))),
         "source_format": "txt",
         "metadata": {
@@ -74,13 +74,14 @@ def read_txt_source(path: Path, *, title: str = "", author: str = "") -> dict:
         }
 
     if front:
-        source["chapters"]["EPUB/intro.xhtml"] = chapter("简介", front, "intro")
-        source["sections"].append({"member": "EPUB/intro.xhtml"})
+        source["chapters"]["intro"] = chapter("简介", front, "intro")
+        source["sections"].append({"member": "intro"})
     for index, start in enumerate(headings):
         end = headings[index + 1] if index + 1 < len(headings) else len(lines)
-        member = f"EPUB/chap_01_{index + 1:03d}.xhtml"
+        member = f"chapter-{index + 1}"
         value = chapter(lines[start], lines[start + 1 : end])
         if lines[start].startswith("番外"):
+            value.update(id=member, role="extra")
             source["extras"].append(value)
         elif source["extras"]:
             raise ValueError(

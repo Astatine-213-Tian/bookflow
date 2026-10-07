@@ -4,17 +4,15 @@ import re
 from pathlib import Path
 from typing import Any
 
-from src.crawler.snapshot import (
+from src.runtime.files import write_json
+from src.translation.source import (
+    chapter_ids,
     clean_text,
     load_comments,
-    load_manifest,
-    snapshot_chapter_ids,
-    write_json,
+    load_source,
+    source_entries,
 )
 
-
-AUTHORITATIVE_AUTHORS = {"risk", "via lactea press inc.", "via lactea press"}
-VERIFIED_TRANSLATION_STAFF_AUTHORS = {"pengiesama"}
 COMMENT_EVIDENCE_SCHEMA_VERSION = 1
 CJK_RE = re.compile(r"[\u3400-\u9fff]")
 
@@ -23,12 +21,12 @@ def has_cjk(text: str) -> bool:
     return bool(CJK_RE.search(text))
 
 
-def is_authoritative_comment(comment: dict[str, Any]) -> bool:
+def is_authoritative_comment(
+    comment: dict[str, Any], authors: tuple[str, ...] = ()
+) -> bool:
     author = clean_text(str(comment.get("author") or ""))
-    return (
-        author.lower()
-        in AUTHORITATIVE_AUTHORS | VERIFIED_TRANSLATION_STAFF_AUTHORS
-        or bool(comment.get("is_by_creator"))
+    return author.lower() in {name.casefold() for name in authors} or bool(
+        comment.get("is_by_creator")
     )
 
 
@@ -44,11 +42,10 @@ def _evidence_comment(comment: dict[str, Any]) -> dict[str, Any]:
 
 def authoritative_reply_threads(
     comments: list[dict[str, Any]],
+    authors: tuple[str, ...] = (),
 ) -> list[dict[str, Any]]:
     by_id = {
-        str(comment.get("id")): comment
-        for comment in comments
-        if comment.get("id")
+        str(comment.get("id")): comment for comment in comments if comment.get("id")
     }
     replies_by_parent: dict[str, list[dict[str, Any]]] = {}
     for comment in comments:
@@ -56,7 +53,7 @@ def authoritative_reply_threads(
         if (
             parent_id
             and has_cjk(clean_text(str(comment.get("body") or "")))
-            and is_authoritative_comment(comment)
+            and is_authoritative_comment(comment, authors)
         ):
             replies_by_parent.setdefault(parent_id, []).append(comment)
 
@@ -90,20 +87,21 @@ def write_glossary_comment_evidence(
     *,
     snapshot_dir: Path,
     output_path: Path,
+    authors: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     snapshot_dir = snapshot_dir.expanduser().resolve()
     output_path = output_path.expanduser().resolve()
-    manifest = load_manifest(snapshot_dir)
+    manifest = load_source(snapshot_dir)
     chapters: list[dict[str, Any]] = []
     thread_count = 0
     reply_count = 0
 
     chapter_metadata = {
-        str(chapter["id"]): chapter for chapter in manifest.get("chapters") or []
+        str(chapter["id"]): chapter for chapter in source_entries(manifest)
     }
-    for chapter_id in snapshot_chapter_ids(manifest):
+    for chapter_id in chapter_ids(manifest):
         threads = authoritative_reply_threads(
-            load_comments(snapshot_dir, manifest, chapter_id)
+            load_comments(snapshot_dir, manifest, chapter_id), authors
         )
         if not threads:
             continue
@@ -118,9 +116,7 @@ def write_glossary_comment_evidence(
             }
         )
         thread_count += len(threads)
-        reply_count += sum(
-            len(thread["authoritative_replies"]) for thread in threads
-        )
+        reply_count += sum(len(thread["authoritative_replies"]) for thread in threads)
 
     evidence = {
         "schema_version": COMMENT_EVIDENCE_SCHEMA_VERSION,

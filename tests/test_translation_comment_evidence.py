@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from src.cli.translate import main as translate_main
-from src.crawler.snapshot import write_json
+from src.runtime.files import write_json
 from src.translation.comments import write_glossary_comment_evidence
 from src.translation.prompt_builder import prepare_prompts
 
@@ -14,56 +14,42 @@ from src.translation.prompt_builder import prepare_prompts
 class TranslationCommentEvidenceTests(unittest.TestCase):
     def _write_snapshot(self, root: Path) -> Path:
         snapshot = root / "snapshot"
-        write_json(
-            snapshot / "manifest.json",
-            {
-                "schema_version": 1,
-                "title": "Test Book",
-                "author": "Test Author",
-                "chapters": [
-                    {
-                        "id": "001",
-                        "title": "Chapter One",
-                        "source_id": "source-1",
-                        "source_url": "https://example.test/chapter-1",
-                        "path": "chapters/001.json",
-                        "comments_path": "comments/001.json",
-                    }
-                ],
-            },
+        from tests.fixtures import write_source
+
+        write_source(
+            snapshot,
+            ["The Oracle arrived."],
+            key="001",
+            chapter_title="Chapter One",
+            source={"id": "source-1", "url": "https://example.test/chapter-1"},
         )
         write_json(
-            snapshot / "chapters/001.json",
+            snapshot / "evidence.json",
             {
-                "id": "001",
-                "title": "Chapter One",
-                "paragraphs": [{"index": 0, "english": "The Oracle arrived."}],
-            },
-        )
-        write_json(
-            snapshot / "comments/001.json",
-            {
-                "comments": [
-                    {
-                        "id": "question",
-                        "author": "reader",
-                        "body": "What is the official Chinese name?",
-                        "created": "2026-01-01",
-                    },
-                    {
-                        "id": "answer",
-                        "parent_id": "question",
-                        "author": "Risk",
-                        "body": "正式中译是司命。",
-                        "created": "2026-01-02",
-                    },
-                    {
-                        "id": "unanswered",
-                        "author": "reader",
-                        "body": "普通评论。",
-                        "created": "2026-01-03",
-                    },
-                ]
+                "comments": {
+                    "001": [
+                        {
+                            "id": "question",
+                            "author": "reader",
+                            "body": "What is the official Chinese name?",
+                            "created": "2026-01-01",
+                        },
+                        {
+                            "id": "answer",
+                            "parent_id": "question",
+                            "author": "Risk",
+                            "is_by_creator": True,
+                            "body": "正式中译是司命。",
+                            "created": "2026-01-02",
+                        },
+                        {
+                            "id": "unanswered",
+                            "author": "reader",
+                            "body": "普通评论。",
+                            "created": "2026-01-03",
+                        },
+                    ]
+                }
             },
         )
         return snapshot
@@ -114,7 +100,7 @@ class TranslationCommentEvidenceTests(unittest.TestCase):
                 glossary={"terms": {"Oracle": {"zh": "司命"}}},
             )
             write_json(
-                snapshot / "comments/001.json",
+                snapshot / "evidence.json",
                 {
                     "comments": [
                         {

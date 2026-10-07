@@ -115,6 +115,16 @@ async def upload_cover(book: dict, state: Path, *, tools) -> None:
         book["cover_pending"] = id
         write_json(state, book)
         await api.attach_cover(book["work_id"], id)
+    await verify_cover(book, state, tools=tools)
+
+
+async def verify_cover(book: dict, state: Path, *, tools) -> None:
+    """Verify a browser/API upload against prepared bytes before completing it."""
+    if not book.get("cover_asset") or not book.get("cover_sha256"):
+        raise ValueError("Checkpoint has no prepared native cover")
+    if digest(Path(book["cover_asset"]).read_bytes()) != book["cover_sha256"]:
+        raise ValueError("Cover asset changed since preparation")
+    reader = NotionBooks(tools)
     page = await reader.page(book["work_id"])
     if not page.cover_known:
         raise ValueError("Notion did not provide page cover metadata")
@@ -126,6 +136,41 @@ async def upload_cover(book: dict, state: Path, *, tools) -> None:
         response = await client.get(cover["url"])
         if not response.is_success or digest(response.content) != book["cover_sha256"]:
             raise ValueError("CMS uploaded cover bytes differ from the prepared cover")
-    book.pop("cover_pending")
+    book.pop("cover_pending", None)
+    book.pop("cover_browser_task", None)
     book["cover_uploaded"] = True
     write_json(state, book)
+
+
+async def finish_cover(book: dict, state: Path, *, tools) -> None:
+    if book.get("cover_uploaded"):
+        return
+    if book.get("cover_asset"):
+        data = Path(book["cover_asset"]).read_bytes()
+        validate_cover(data)
+        if digest(data) != book["cover_sha256"]:
+            raise ValueError("Cover asset changed since preparation")
+        if os.environ.get("NOTION_API_TOKEN", "").strip():
+            await upload_cover(book, state, tools=tools)
+            return
+        task = state.parent / "cover-browser.json"
+        write_json(
+            task,
+            {
+                "work_id": book["work_id"],
+                "url": "https://www.notion.so/" + book["work_id"],
+                "asset": str(Path(book["cover_asset"]).resolve()),
+                "sha256": book["cover_sha256"],
+                "state": str(state.resolve()),
+                "procedure": ".agents/skills/book-management/references/notion-cover.md",
+            },
+        )
+        book["cover_browser_task"] = str(task)
+        write_json(state, book)
+        raise ValueError(
+            f"Content uploaded; native cover awaits browser upload. Follow .agents/skills/book-management/references/notion-cover.md using {task}, then book-notion verify-cover --state {state}"
+        )
+    elif book.get("cover_url"):
+        from src.notion.presentation import attach_public_cover
+
+        await attach_public_cover(book, state, tools=tools)

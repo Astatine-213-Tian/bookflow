@@ -7,17 +7,15 @@ import re
 from pathlib import Path
 
 from src.content.outline import ordered_members
-from src.epub.source import LocalEdition
+from src.inputs.epub import InputBook
+from src.inputs.load import read_input
 from src.runtime.files import digest
-from src.workflows.local import read_edition
 
 
 def compare_editions(
     left: Path, right: Path, *, title: str = "", author: str = ""
 ) -> dict:
-    editions = [
-        read_edition(path, title=title, author=author) for path in (left, right)
-    ]
+    editions = [read_input(path, title=title, author=author) for path in (left, right)]
     identities = [
         (e.source["metadata"]["title"], e.source["metadata"]["creator"])
         for e in editions
@@ -25,7 +23,7 @@ def compare_editions(
     if identities[0] != identities[1]:
         raise ValueError("Edition title/author identities differ")
 
-    def lines(edition: LocalEdition) -> list[str]:
+    def lines(edition: InputBook) -> list[str]:
         book = edition.source
         chapters = [
             book["chapters"][m] for m in ordered_members(book["sections"])

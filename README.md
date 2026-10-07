@@ -1,336 +1,125 @@
 # EPUB Creator From Web
 
-Crawl and prepare web novels, then upload drafts to Notion or write local EPUBs directly.
-
-The repository root is the maintained production project. Dataset-heavy
-authorship and style-transfer experiments are isolated in the nested
-[`research/`](research/) project and never imported by production code.
+A personal book tool for finding sources, importing EPUB/TXT/images, preparing
+content, translating chapters and writing EPUB, TXT or editable Notion drafts.
+Every path uses the same [content JSON](docs/content-json.md). See the
+[architecture](docs/architecture.md) for module ownership and the system diagram.
 
 ## Setup
 
-Install `uv`, `mise`, and the GitHub CLI (`gh`), then follow the
-[dependency setup](docs/notion-books.md#安装共享依赖). The required private
-`notion-books` package needs GitHub repository access and a Go toolchain at build
-time, including for local EPUB-only use. The setup installs the pinned toolchain
-and Python dependencies; Go is not needed at runtime.
+Install `uv`, `mise` and `gh`, then follow the
+[dependency setup](docs/notion-books.md#安装共享依赖). The pinned private
+`notion-books` dependency requires GitHub access and Go at build time; subsequent
+syncs use `mise exec -- uv sync --locked`. Credentials stay in private local state.
 
-Browser-backed providers require a Chromium-compatible browser. Install Chromium,
-Google Chrome, or Playwright-managed Chromium; set `BOOKLIB_BROWSER_PATH` if the
-browser is not discoverable automatically.
+Browser providers discover Chromium automatically. `BOOKLIB_BROWSER_PATH` can
+select an executable. Patreon manages its own saved login profile; inspect an
+actual crawl failure before opening an interactive browser for recovery.
 
-## Search And Choose A Version
-
-Use `--search` when you know the title but not the best source URL:
+## Find, acquire or import
 
 ```bash
-uv run book-to-epub --search "全球高考" --output-format epub
-```
-
-The pipeline:
-
-1. Searches supported providers.
-2. Builds lightweight previews without downloading full chapter bodies.
-3. Ranks results by query match, chapter count, then provider preference.
-4. Shows each candidate with title, author, chapter count, first two chapters, and last two chapters.
-5. Prompts you to choose one.
-6. Crawls the selected provider, prepares its formatting, and writes a Notion draft or a local EPUB, according to the selected output.
-
-Limit search to one provider:
-
-```bash
-uv run book-to-epub --search "斗破苍穹" --parser quanben --output-format epub
-uv run book-to-epub --search "魔道祖师" --parser mgsf --limit 3 --output-format epub
-uv run book-to-epub --search "锦衣卫" --parser xfxs --author 非天夜翔 --output-format epub
-```
-
-Automatically choose the top ranked result:
-
-```bash
-uv run book-to-epub --search "全球高考" --first --output-format epub -o books/book.epub
-```
-
-## Parse A Known Book URL
-
-Pass a supported book URL directly:
-
-```bash
-uv run book-to-epub "https://www.mangguoshufang.com/1/2574/info.html" --output-format epub -o books/book.epub
-uv run book-to-epub "http://jrkywsy.blog.fc2.com/blog-entry-938.html" --output-format epub -o books/book.epub
-```
-
-Choose the output explicitly. Repeat `--output-format` to combine `epub`,
-`notion` and `txt`; no destination is selected by default. `--output-format epub`
-generates a local EPUB directly. Its default path is `books/<author>/<title>.epub`;
-`-o` overrides that path. Z-Library edition downloads require an explicit EPUB
-or TXT output and do not enter the web-novel source workflow.
-
-List supported providers when you need to choose one explicitly:
-
-```bash
-uv run book-to-epub --list-parsers
-```
-
-For provider-specific IDs, force the provider:
-
-```bash
-uv run book-to-epub 2574 --parser mgsf --output-format epub -o books/book.epub
-uv run book-to-epub doupocangqiong --parser quanben --output-format epub -o books/book.epub
-```
-
-## Ingest For Reading And Training
-
-For existing EPUB/TXT files, use the [local edition workflow](docs/local-editions.md):
-`book-prepare` prepares the supplied source, and `book-notion upload`
-uploads it through the shared package and MCP. `book-ingest FILE --mode ...`
-also accepts local editions; book-specific review decisions are JSON data.
-
-Use `book-ingest` for the normal end-to-end workflow. It crawls the source once,
-writes every selected destination: local EPUB, editable Notion draft and/or
-TXT. It validates EPUB output and upserts only the requested TXT entry in the
-selected dataset manifest. Repeat `--mode` (alias `--output-format`) to combine
-destinations. An explicit `-o` or `--txt-output` can select the corresponding
-format when no modes are provided.
-
-```bash
-# Notion draft
-uv run book-ingest "https://www.mangguoshufang.com/1/2574/info.html" --mode notion
-
-# Local EPUB; no Notion upload
+uv run book-ingest --list-parsers
+uv run book-ingest --search "全球高考" --mode epub
+uv run book-ingest --search "全球高考" --parser mgsf --first --mode epub
 uv run book-ingest "https://www.mangguoshufang.com/1/2574/info.html" --mode epub
-
-# Training only
-uv run book-ingest "https://www.mangguoshufang.com/1/2574/info.html" --mode txt
+uv run book-ingest 2574 --parser mgsf --mode epub --mode txt
+uv run book-ingest original.epub --mode notion --run-dir generated/ingest/reviewed
+uv run book-ingest original.txt --title 书名 --author 作者 --mode txt --txt-output books/作者/书名.txt
 ```
 
-For all three destinations from one crawl:
+Search creates lightweight previews before collection. Known URLs skip search.
+Downloaded EPUB editions use the same input adapter as local EPUBs and can go to
+any supported destination. EPUB/TXT default to `books/<author>/<title>.*`.
+Destinations must be explicit; `-o` or `--txt-output` can select a local format.
+
+Preparation can be run separately for review and reuse:
 
 ```bash
-uv run book-ingest "<url>" --mode epub --mode notion --mode txt
+uv run book-prepare original.epub --run-dir generated/ingest/reviewed
+uv run book-prepare irregular.epub --inventory --run-dir generated/ingest/inventory
+uv run book-prepare agent-content.json --run-dir generated/ingest/transcribed
 ```
 
-`--mode both` remains an alias for EPUB + TXT. Training is a use of TXT output;
-it has no separate crawler or acquisition skill.
-EPUB output defaults to `books/<author>/<title>.epub`. TXT output defaults to
-`research/datasets/raw/<author>/<title>.txt`. Dataset metadata is resolved from
-the maintained Jinjiang research crawl when available, then falls back to Codex
-classification unless `--no-codex-classify` is passed.
+See [local editions](docs/local-editions.md) for EPUB range review and comparison.
+Images and irregular TXT can be parsed by an agent into schema-validated JSON;
+use the [image transcription procedure](.agents/skills/book-management/references/image-transcription.md).
+No traditional OCR is used. Normalization follows [one rule document](docs/normalization.md).
+Metadata enrichment is optional (`--enrich-metadata`) and preserves explicit
+values. Reports and cover assets stay beside prepared JSON under `generated/`.
 
-For an existing EPUB, the Jinjiang metadata query also retrieves official
-volume titles and chapter order:
+## Update an existing book
 
 ```bash
-uv run book-enrich-metadata books/作者/书名.epub --check --report generated/metadata.json
+uv run book-update current.json --change change.json --run-dir generated/updates/run \
+  --mode epub -o books/作者/修订版.epub
+uv run book-notion export --state generated/notion_cms_sources/RUN/import.json --report current.json
+uv run book-notion update --state generated/notion_cms_sources/RUN/import.json --change change.json
 ```
 
-The report's `table_of_contents` follows Jinjiang's HTML volume rows, including
-arbitrary names such as prologues and epilogues. Compare it with the selected
-edition before changing chapter grouping. Retrieval failures appear in
-`table_of_contents_error`; `--check` leaves the EPUB unchanged.
+[Change requests](docs/content-json.md#a-partial-correction-or-new-extra) identify
+specific chapters and the content they were based on. Partial images become a
+reviewed complete replacement chapter. Other content remains untouched. Notion
+updates resume from journals and stop on conflicting editor changes.
 
-For standalone dataset maintenance, use targeted commands:
+## Notion
 
 ```bash
-uv run book-dataset upsert --txt research/datasets/raw/black_di/替罪羊.txt --author black_di --title 替罪羊
-uv run book-dataset export-txt --epub books/black_di/替罪羊.epub
+uv run book-notion login
+uv run book-notion upload --source generated/ingest/reviewed/source.json
+uv run book-notion resume --state generated/notion_cms_sources/RUN/import.json
+uv run book-notion verify --state generated/notion_cms_sources/RUN/import.json
 ```
 
-Bulk EPUB-to-TXT export is still available, but the EPUB tree must be explicit:
+Content uses the existing MCP OAuth connection. Only the optional official API
+cover path needs `NOTION_API_TOKEN`; without it, use the maintained
+[browser cover procedure](.agents/skills/book-management/references/notion-cover.md)
+and existing authenticated Arc session. Covers require byte readback. Details:
+[storage/recovery](docs/notion-books.md), [shared extras](docs/fanwai-notion.md).
+
+## Collect and translate
 
 ```bash
-uv run book-dataset export-txt --books-root books
+uv run book-crawl --config book_specs/eternal_gate/config.json \
+  --output generated/crawls/eternal_gate_NEW --headless
+uv run book-translate --help
 ```
 
-## Ranking
+Collection saves the public `source.json` and separate comments/platform evidence.
+Patreon collection membership is explicit; supplementary post IDs are book
+configuration, never guessed from a creator feed. Other books can reuse the same
+provider with different titles, authors and languages.
 
-Search results are ranked simply:
+Translation currently targets English → Simplified Chinese. Neutral, author-style
+and direct positive-scene methods retain their existing QA/reuse checks and all
+write structured bilingual content through the ordinary EPUB writer. Follow the
+book configuration and [Eternal Gate workflow](AGENTS.md#eternal-gate-updates).
+Historical generated files are preserved, but new runs use the shared contract.
 
-1. Query match level.
-2. More chapters.
-3. Provider preference: `pili45`, then `towasakata`, then `xfxs`, then the rest.
+## Training and research
 
-This helps surface fuller versions when the same book exists on multiple sites.
-
-## Provider Notes
-
-- `pili45` and `xfxs` use browser-backed fetching through a Chromium-compatible browser.
-- Browser discovery checks `BOOKLIB_BROWSER_PATH`, Playwright-managed Chromium, common `chromium` / `google-chrome` executables on `PATH`, then common macOS app bundle paths.
-- To force a browser path:
+TXT output is independent of research. Request dataset bookkeeping explicitly:
 
 ```bash
-BOOKLIB_BROWSER_PATH="/path/to/chromium" uv run book-to-epub --search "全球高考" --parser pili45 --output-format epub
+uv run book-ingest "<url>" --mode txt --dataset-root research/datasets
+uv run book-dataset export-txt --epub books/作者/书名.epub
+uv run book-dataset upsert --txt research/datasets/raw/作者/书名.txt
 ```
 
-- Browser-backed providers may pause on Cloudflare verification.
-- `xfxs` native search currently returns a 404 page. When `--author <name>` is supplied, xfxs searches the fixed author page `/a/<GBK-encoded-author>.html` first and skips external site-search for that provider. Without an author hint, xfxs uses external site-search fallback when available.
-`src.crawler.search.engines.site_search()` tries DuckDuckGo and raw Google result-page fallbacks. Browser-backed providers can also use the same third-party engines through Chromium when raw search pages throttle. All results are still filtered back to the provider's canonical URL pattern.
-- Generated EPUB files belong in `books/<author>/` by default and should not be treated as source code.
-
-## Notion Drafts
-
-This repository uploads editable drafts into the configured
-[Notion library](https://app.notion.com/p/3deca693996b810c8774f3658c89a423),
-using each book's chapter database and the shared-extra database. Use
-`book-notion login` once for MCP OAuth; interrupted uploads resume with `book-notion resume --state <import.json>`.
-
-Automatic native cover upload additionally needs `NOTION_API_TOKEN` in the
-process environment; grant that integration access to the target Notion pages.
-Only covers use the public API. The scripts do not read `.env` or depend on a logged-in browser.
-Local EPUBs retain the cover thumbnail without a cover reading page.
-
-See [output selection, storage, covers and recovery](docs/notion-books.md) and
-[shared extras](docs/fanwai-notion.md). Formatting cleanup happens before either
-output; the existing presentation renderer interprets only block structure and style.
-
-## Crawl Then Translate
-
-The production bilingual workflow has three passes:
-
-1. English to neutral Simplified Chinese.
-2. `content_plan_combined_full_regeneration` author style transfer.
-3. English-grounded semantic QA, followed by EPUB construction.
-
-The second pass builds a paragraph-level content plan from English, uses neutral
-Chinese only as a terminology/content anchor, then regenerates every paragraph
-with retrieved aligned masked examples and a validated style definition. The old
-single-author profile/card/cluster reconstruction and flow-repair pipeline is no
-longer exposed by `book-translate`; its historical evidence remains under
-`research/docs/` and
-`research/generated/style_research/`.
-
-Maintained settings live in `book_specs/eternal_gate/config.json`; glossary data
-lives in `book_specs/eternal_gate/glossary.json`. The prompt and output schema are
-under `book_specs/author_styles/feitianyexiang/`. The local corpus-derived style
-asset is ignored by Git and can be reproduced from the frozen research asset:
-
-```bash
-uv run --project research author-style-research export-production --overwrite
-```
-
-Create an authenticated Patreon crawl snapshot:
-
-```bash
-uv run book-crawl "https://www.patreon.com/collection/2218551?view=condensed" \
-  --provider patreon \
-  --title "永恒之门" \
-  --author "顾雪柔" \
-  --output generated/crawls/eternal_gate
-```
-
-Extract authoritative publisher/creator reply threads into a review artifact:
-
-```bash
-uv run book-translate comment-evidence generated/crawls/eternal_gate \
-  --config book_specs/eternal_gate/config.json
-```
-
-Review `glossary_comment_evidence.json`, then deliberately record confirmed
-terminology or protected quotations in the maintained glossary.
-Raw comments never enter translation prompts; the semantic translator consumes
-only the reviewed glossary and `sentence_translations` data.
-
-Run the complete production pipeline:
-
-```bash
-uv run book-translate all generated/crawls/eternal_gate \
-  --config book_specs/eternal_gate/config.json \
-  --run-dir generated/translation_runs/eternal_gate \
-  --run-codex \
-  -o books/顾雪柔/永恒之门.bilingual.epub
-```
-
-For inspection or resumption, run each stage separately:
-
-```bash
-uv run book-translate prepare generated/crawls/eternal_gate \
-  --config book_specs/eternal_gate/config.json
-uv run book-translate run generated/translation_runs/eternal_gate \
-  --config book_specs/eternal_gate/config.json
-uv run book-translate validate generated/translation_runs/eternal_gate \
-  --config book_specs/eternal_gate/config.json
-uv run book-translate transfer-style generated/translation_runs/eternal_gate \
-  --config book_specs/eternal_gate/config.json \
-  --run-codex
-uv run book-translate validate \
-  generated/translation_runs/eternal_gate/author_style_transfer \
-  --config book_specs/eternal_gate/config.json
-uv run book-translate build-epub generated/crawls/eternal_gate \
-  --run-dir generated/translation_runs/eternal_gate/author_style_transfer \
-  --config book_specs/eternal_gate/config.json \
-  -o books/顾雪柔/永恒之门.bilingual.epub
-```
-
-Neutral validation always writes `glossary_candidates.json` as a review queue.
-It does not mutate the maintained glossary. A candidate becomes canonical only
-after review and an explicit edit to the book spec.
-
-The default model order is `gpt-5.6-sol`, `gpt-5.6-terra`,
-`gpt-5.6-luna`, `gpt-5.5`, `gpt-5.3-codex-spark`, then `gpt-5.4`.
-The runner advances only after an explicit capacity, quota, unsupported-model,
-or availability failure. Contract and fidelity failures retry on the same model
-and recursively bisect the block; a single paragraph can fall back to the
-validated neutral text only after the style output fails deterministic fidelity
-checks and all non-fidelity checks pass.
-
-`validate --config ...` automatically runs semantic QA for author style-transfer
-runs. The QA stage reviews the highest-risk deterministic candidates, applies
-only low-risk repairs that pass acceptance checks, and validates repaired output
-again. EPUB construction requires a current, non-dry-run QA summary bound to the
-styled outputs. Any failed style chunk, failed QA batch, or rejected QA candidate
-stops the production command. A `true_loss` verdict must be repaired and accepted;
-unresolved true-loss findings also block EPUB construction.
-
-The same three-pass pipeline can be used for another book by providing a config,
-glossary, and hash-locked author-style asset for that target author.
-
-## Author Style Research
-
-Author identification, corpus masking, style-meter evaluation, and transfer
-experiments are isolated in the nested [`research/`](research/) project. Its
-copyrighted corpora and generated evidence stay under `research/datasets/` and
-`research/generated/`; production code does not import research modules.
-
-```bash
-cd research
-uv sync
-uv run author-style-research verify
-```
-
-The research project has its own dependency lock and imports shared crawler and
-snapshot primitives through an editable dependency on the production project.
-See [`research/README.md`](research/README.md) for the active reports and
-reproduction entry points.
-
-## Book Workflow Skill
-
-Use the single [book-management skill](.agents/skills/book-management/SKILL.md)
-for adding, updating or repairing books. It asks for missing output choices and
-routes to crawler-development or formatting references only when needed.
-A training request selects TXT, the requested dataset path and a targeted
-manifest update in this same workflow.
-
-## Architecture
-
-The [architecture guide](docs/architecture.md) describes module ownership,
-input/output contracts and dependency boundaries. The main modules are:
-
-- `src/crawler/`: providers, search, fetching and reusable snapshots.
-- `src/content/`: shared source models, cleanup and formatting preparation.
-- `src/epub/`: local EPUB presentation, validation and edition repair.
-- `src/notion/`: Notion draft upload, storage adaptation and cover upload.
-- `src/translation/`: translation, style transfer and semantic QA.
-- `src/workflows/`: compose those modules and select the output destination.
-
-`src/dataset/`, `src/metadata/` and `src/runtime/` own dataset manifests,
-metadata lookup and runtime utilities respectively. CLI modules parse arguments
-and call these modules; providers never choose output destinations.
+Only the selected book's manifest entry is changed. Dataset classification can
+use maintained metadata and the configured classifier. `research/` is an
+independent nested uv project; production never imports experiments or corpora.
 
 ## Validation
 
-Useful checks after parser or search changes:
-
 ```bash
-uv run book-to-epub --list-parsers
-uv run book-to-epub --search "known title" --parser provider_name --output-format epub
-uv run python -m compileall -q src
 uv run python -m unittest discover -s tests -p 'test_*.py'
+uv run book-crawl --help
+uv run book-translate --help
 ```
+
+Tests use synthetic content and substitute external transports. Live Notion
+validation requires the scoped workflow in [tests/LIVE_NOTION.md](tests/LIVE_NOTION.md).
+Reader files, source text, browser profiles, credentials and generated runs stay
+out of Git. Use the [book-management skill](.agents/skills/book-management/SKILL.md)
+for operational book tasks.

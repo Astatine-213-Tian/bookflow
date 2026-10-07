@@ -106,14 +106,12 @@ async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
     if not book.get("uploaded"):
         # Resolve possible shared duplicates before creating a work or uploading rows.
         await preflight_extras(book, state, config, reader)
-    if book.get("cover_asset") and not book.get("cover_uploaded"):
-        from src.notion.cover import api_token, validate_cover
-
-        api_token()
-        validate_cover(Path(book["cover_asset"]).read_bytes())
     await ensure_work(book, state, config, tools=tools)
     await ensure_views(book, state, config, tools=tools)
     if book.get("uploaded"):
+        from src.notion.cover import finish_cover
+
+        await finish_cover(book, state, tools=tools)
         print("Draft already uploaded; later Notion edits are preserved")
         return
     # Existing unknown rows indicate manual edits or an ambiguous earlier create.
@@ -199,16 +197,11 @@ async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
             raise ValueError(
                 "CMS manual order differs from source; reorder the draft view, then resume"
             )
-    if book.get("cover_asset"):
-        from src.notion.cover import upload_cover
-
-        await upload_cover(book, state, tools=tools)
-    elif book.get("cover_url"):
-        from src.notion.presentation import attach_public_cover
-
-        await attach_public_cover(book, state, tools=tools)
     book["uploaded"] = True
     write_json(state, book)
+    from src.notion.cover import finish_cover
+
+    await finish_cover(book, state, tools=tools)
 
 
 def upload_source(
@@ -218,6 +211,9 @@ def upload_source(
     cover_url: str | None = None,
     config_path: Path = CONFIG,
 ) -> Path:
+    from src.notion.capabilities import validate_notion_content
+
+    validate_notion_content(source)
     if cover_bytes and cover_url:
         raise ValueError("Choose a local cover asset or a public cover URL")
     if cover_url:

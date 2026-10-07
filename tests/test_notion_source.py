@@ -11,24 +11,24 @@ from lxml import etree as ET
 from notion_books import NotionBooks, from_markdown, text_blocks, to_markdown
 
 from src.content.blocks import content_signature
-from src.content.formatting import prepare_blocks
 from src.content.models import Chapter, Volume
-from src.content.prepare import prepare_crawl
-from src.content.xhtml import read_xhtml
+from src.content.normalize import normalize_chapter
 from src.crawler.models import CrawledBook
 from src.epub.archive import install_archive
 from src.epub.writer import create_book
+from src.inputs.html import read_html_blocks
 from src.notion.upload import upload_row
 from src.runtime.files import digest
 from src.workflows.ingest import OutputOptions, write_outputs
+from tests.fixtures import prepared_crawl as prepare_crawl
 
 
 class SourceTests(unittest.TestCase):
     def test_source_whitespace_becomes_paragraph_layout_and_explicit_line_breaks(self):
         data = '<html xmlns="http://www.w3.org/1999/xhtml"><body><h2>标题</h2><p> A sentence.\u2028</p><p> </p></body></html>'.encode()
-        blocks = prepare_blocks(
-            data, "chapter.xhtml", {}, read_xhtml(data, title="标题")
-        )
+        blocks = normalize_chapter(
+            {"title": "标题", "blocks": read_html_blocks(data, "chapter.xhtml", {})[1:]}
+        )["blocks"]
         self.assertEqual(text_blocks(blocks), ["A sentence.\n", ""])
         self.assertIn("<br>", to_markdown(blocks))
         self.assertEqual(
@@ -70,7 +70,7 @@ class SourceTests(unittest.TestCase):
             intro_paragraphs=["简介内容。"],
         )
         source["identifier"] = "fixture-source"
-        chapter = source["chapters"]["EPUB/chap_01_001.xhtml"]
+        chapter = source["chapters"]["chapter-1-1"]
         self.assertEqual(chapter["blocks"][1]["alignment"], "center")
         # The presentation layer must obey changed layout even for marker words.
         chapter["blocks"][-1].pop("alignment", None)
@@ -85,13 +85,15 @@ class SourceTests(unittest.TestCase):
             path = Path(directory) / "book.epub"
             create_book(source, path)
             with zipfile.ZipFile(path) as archive:
-                blocks = read_xhtml(
-                    archive.read("EPUB/chap_01_001.xhtml"), title=chapter["title"]
-                )
+                blocks = read_html_blocks(
+                    archive.read("EPUB/chapter_0002.xhtml"),
+                    "EPUB/chapter_0002.xhtml",
+                    {n: archive.read(n) for n in archive.namelist()},
+                )[1:]
                 self.assertEqual(
                     content_signature(blocks), content_signature(chapter["blocks"])
                 )
-                root = ET.fromstring(archive.read("EPUB/chap_01_001.xhtml"))
+                root = ET.fromstring(archive.read("EPUB/chapter_0002.xhtml"))
                 self.assertIn("font-size: 1.1em", root.find(".//{*}h3").get("style"))
 
     def test_italic_whitespace_and_unicode_line_separator_preserve_prose(self):
@@ -114,7 +116,7 @@ class SourceTests(unittest.TestCase):
                 "src.notion.upload.upload_source",
                 return_value=Path("source.json"),
             ) as publish_source,
-            patch("src.content.prepare.enrich_source", return_value={}),
+            patch("src.workflows.prepare.enrich_source", return_value={}),
         ):
             result = write_outputs(
                 CrawledBook(

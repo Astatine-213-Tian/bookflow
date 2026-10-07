@@ -71,5 +71,18 @@
     "reasoning_effort": "high",
     "timeout_seconds": 900,
     "workers": 6
-  }
+  },
+  "source": {
+    "provider": "patreon",
+    "url": "https://www.patreon.com/collection/2218551?view=condensed",
+    "language": "en",
+    "comments": true,
+    "extra_post_ids": []
+  },
+  "comment_authorities": [
+    "Risk",
+    "Via Lactea Press Inc.",
+    "Via Lactea Press",
+    "Pengiesama"
+  ]
 }

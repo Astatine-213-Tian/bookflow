@@ -45,7 +45,12 @@ async def inspect_state(
         store = TokenStore(AUTH_FILE)
         with store.locked():
             async with connect(store) as tools:
-                if command == "recover-template":
+                if command == "verify-cover":
+                    from src.notion.cover import verify_cover
+
+                    await verify_cover(book, state, tools=tools)
+                    print("Native cover bytes verified")
+                elif command == "recover-template":
                     await recover_template(book, state, config, tools=tools)
                     print("Template ready; resume the existing checkpoint")
                 else:
@@ -61,10 +66,13 @@ def run(argv: list[str] | None = None) -> None:
         "command",
         choices=[
             "login",
+            "export",
+            "update",
             "logout",
             "upload",
             "resume",
             "verify",
+            "verify-cover",
             "recover-template",
             "resolve-extra",
         ],
@@ -80,7 +88,9 @@ def run(argv: list[str] | None = None) -> None:
     )
     covers = parser.add_mutually_exclusive_group()
     covers.add_argument(
-        "--cover", type=Path, help="PNG/JPEG; requires NOTION_API_TOKEN"
+        "--cover",
+        type=Path,
+        help="PNG/JPEG; API token or maintained browser cover procedure",
     )
     covers.add_argument("--cover-url", help="Public PNG/JPEG URL; attaches through MCP")
     parser.add_argument("--report", type=Path, help="Fresh verification report")
@@ -94,7 +104,40 @@ def run(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Confirm this extra is separate content",
     )
+    parser.add_argument("--change", type=Path, help="Explicit chapter change JSON")
     args = parser.parse_args(argv)
+    if args.command in {"export", "update"}:
+        if not args.state:
+            parser.error("export/update requires --state")
+        if args.command == "update" and not args.change:
+            parser.error("update requires --change")
+
+        async def edit():
+            from src.notion.update import apply_update, read_current
+
+            with exclusive_lock(args.state.parent / "import.lock"):
+                store = TokenStore(AUTH_FILE)
+                with store.locked():
+                    async with connect(store) as tools:
+                        result = (
+                            await apply_update(
+                                args.state,
+                                json.loads(args.change.read_text()),
+                                json.loads(args.config.read_text()),
+                                tools=tools,
+                            )
+                            if args.command == "update"
+                            else await read_current(
+                                json.loads(args.state.read_text()), tools=tools
+                            )
+                        )
+                if args.report:
+                    write_json(args.report, result)
+                else:
+                    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+        asyncio.run(edit())
+        return
     if args.command != "resolve-extra" and (
         args.extra is not None or args.use_existing or args.create_new
     ):
@@ -119,7 +162,7 @@ def run(argv: list[str] | None = None) -> None:
         return
     if args.source or args.cover or args.cover_url:
         parser.error("--source and cover options require upload")
-    if args.command in {"verify", "recover-template"}:
+    if args.command in {"verify", "verify-cover", "recover-template"}:
         if args.state is None:
             parser.error(f"{args.command} requires --state")
         asyncio.run(inspect_state(args.command, args.state, args.config, args.report))

@@ -1,157 +1,160 @@
 # Architecture
 
-The production pipeline collects source material, prepares editable content, then
-chooses a destination. Collection, Notion storage and local EPUB rendering have
-separate interfaces.
+A task can begin with a title, a known URL, local files, or an existing book that
+needs a correction. All paths converge on the same book JSON. This is a personal
+CLI tool: no workflow engine, service layer, compatibility facade or second
+content format is required.
 
 ```mermaid
 flowchart LR
-    CLI[CLI] --> Workflow[Ingest workflow]
-    Workflow --> Crawler[Crawler and search]
-    Workflow --> Edition[Local EPUB or TXT]
-    Edition --> Content
-    Crawler --> Raw[CrawledBook]
-    Raw --> Content[Source preparation]
-    Content --> Draft[Prepared book]
-    Draft --> Notion[Notion draft upload]
-    Draft --> EPUB[Local EPUB writer]
-    Raw --> Dataset[Targeted TXT and dataset manifest]
-    Crawler --> Snapshot[Crawl snapshot]
-    Snapshot --> Translation[Translation and style transfer]
-    Translation --> Bilingual[Bilingual EPUB writer]
+    Task[Task: find / import / translate / update] --> W[workflows]
+    W --> S[Sources: crawler + inputs]
+    S --> Search[Optional search and preview]
+    Search --> Collect[Provider collection]
+    S --> Collect
+    S --> Files[EPUB / TXT / agent transcription]
+    Collect --> JSON[Book JSON + local cover]
+    Files --> JSON
+    JSON --> P[Content processing]
+    P --> N[Shared normalization]
+    P --> T[Optional translation or explicit changes]
+    P --> M[Optional metadata enrichment]
+    M --> N
+    T --> N
+    N --> D[Destination writers]
+    D --> EPUB[EPUB]
+    D --> TXT[TXT]
+    D --> Notion[Notion draft]
+    Notion --> Current[Read current editor content]
+    Current --> P
 ```
 
-## Ownership
+These are six logical responsibilities, not six mandatory sequential steps.
+The workflow composes ordinary functions. A correction reads current content,
+checks the target fingerprint and normalizes only its replacement. Translation
+retains its method-specific QA artifacts but reads and produces the same content
+JSON as imports.
 
-| Module | Responsibility | Main entry points |
+| Responsibility | Modules under `src/` | Public seam |
 | --- | --- | --- |
-| `crawler/` | Site parsing, browser/parallel fetch, search/previews, reusable snapshots | `registry.find_parser`, `ParserSpec.crawl`, `snapshot` |
-| `content/` | Shared chapter models, source cleanup, explicit headings/emphasis/alignment | `prepare.prepare_source`, `normalization.normalize_member` |
-| `epub/` | Local archive creation, XHTML presentation, validation and existing-edition repair | `writer.export_local`, `bilingual.create_bilingual_book`, `maintenance.normalize_new_epub` |
-| `notion/` | OAuth/API transport, import decisions, duplicate review, upload checkpoints and cover orchestration | `upload.upload_source`, `upload.upload_draft` |
-| `translation/` | Glossary/comment evidence, translation, style transfer, semantic QA and joining translations to snapshots | `pipeline`, `output.build_bilingual_epub` |
-| `dataset/` | Targeted TXT export, classification and manifest maintenance | `library.upsert_txt_dataset_entry`, `library.export_single_epub_txt` |
-| `metadata/` | Authoritative source lookup and book classification | `catalog.MetadataLookup`, `jjwxc`, `classifier` |
-| `workflows/` | Join collection, preparation and output selection | `ingest.ingest`, `ingest.OutputOptions` |
-| `runtime/` | Output paths, atomic state files, hashes and progress | `paths`, `files`, `progress` |
-| `cli/` | Argument parsing and command dispatch | Installed commands in `pyproject.toml` |
+| Workflows | `workflows/` | `prepare_book`, `prepare_file`, `collect_source`, `update_book`, `write_book`, translation orchestration |
+| Sources | `crawler/`, `inputs/` | `ParserSpec.crawl`, optional search/preview, `read_input` |
+| Processing | `content/`, `translation/` | `normalize_book`, `apply_changes`, `translated_source` |
+| Metadata | `metadata/` | `enrich_source`, authoritative lookup/classification |
+| Destinations | `epub/`, `notion/`, `dataset/text.py` | EPUB/TXT renderers; Notion upload, current-content export, update/readback |
+| Contracts | `content/book.schema.json`, `content/contract.py` | Strict book and change validation; chapter/block definitions shared by both |
 
-Notion schema, Markdown encoding/decoding, paginated reads and writes live in the
-versioned `notion-books` dependency. Its Python adapter calls back into this
-project's authenticated transport. The importer maps its prepared chapter tree
-to Notion rows, supplies its language default, and explicitly selects the
-editorial-view contract to preserve complete content and manual chapter order.
-Dependency upgrades update this project's version/tag and lockfile, then run its
-own verification against the pinned release.
+`cli/` parses arguments. `runtime/` contains paths, hashing, atomic JSON files and
+progress. Production never imports `research/`; targeted dataset bookkeeping is
+an optional consumer of TXT, selected with `--dataset-root`. Plain TXT output
+does not trigger dataset classification or network metadata lookup.
 
-Paths in this table are relative to `src/`. Dependencies point toward the shared
-contracts and services, never back into `cli/`. Production does not import the
-independent `research/` project. `tests/test_architecture.py` checks the module
-boundaries and keeps renderers separate from source cleanup and remote services.
+## Shared content
 
-## Runnable stages
+See [content-json.md](content-json.md) for supported fields and change examples.
+A run contains `source.json`, an optional relative cover asset, and separate
+`report.json` / `evidence.json` files. Platform responses, comments, normalization
+findings and Notion transport IDs are not added to the public content contract.
+Notion's internal checkpoint stores its own page IDs and progress alongside a
+copy of the content; `book-notion export` strips that transport state.
 
-| Stage | Maintained command | Owner |
-| --- | --- | --- |
-| Web collection and selected outputs | `book-ingest URL --mode ...` | `workflows/ingest.py` |
-| Local source preparation | `book-prepare FILE` | `workflows/local.py`, `epub/source.py`, `content/text_source.py` |
-| Unified local import | `book-ingest FILE --mode ...` | `workflows/local.py` |
-| Metadata and official directory | `book-enrich-metadata` | `metadata/`, `epub/metadata.py` |
-| Archive cleanup and review | `book-normalize` | `epub/maintenance.py` |
-| Prepared-source upload | `book-notion upload --source source.json` | `notion/upload.py` |
-| Readback and recovery | `book-notion verify`, `resume`, `recover-template` | `notion/verification.py`, `upload.py`, `recovery.py` |
+The source JSON is the reusable intermediate output. An EPUB is a destination,
+not a mandatory preparation artifact. EPUB 2, EPUB 3, downloaded editions and
+existing local EPUBs all use `inputs/epub.py`. Ambiguous spine/navigation coverage
+is resolved by an exhaustive reviewed range map, not by a second legacy parser.
+Images and irregular text can be parsed in an agent session into the same schema;
+see the [image workflow](../.agents/skills/book-management/references/image-transcription.md).
 
-The local adapter reads the complete EPUB navigation/spine or explicit TXT
-chapter structure into the shared contract. `content/edition_outline.py` aligns
-Jinjiang chapter identities and accepts reviewed edition aliases as data. The
-workflow owns copying, maintenance and report persistence; output
-modules receive prepared content. See [local-editions.md](local-editions.md) for
-the staged commands and review requirements. Generated run folders contain data
-and evidence, not the maintained implementation of book import.
+Normalization follows [normalization.md](normalization.md), operating on text
+and rich-text blocks. Uncertain findings stay in its report. It never invents
+chapter boundaries, silently removes uncertain content, searches the web, or
+round-trips through EPUB/Notion. Metadata enrichment fills missing values only;
+explicit overrides and original metadata remain authoritative. Preparation
+caches bind input bytes, rules, implementation and options, and verify cover
+assets on resume. Changing those inputs requires a fresh run directory.
 
-The standard workflow accepts one supplied source. Comparing alternative
-editions is a separate user-requested task, available through `book-compare`;
-it reports differences without preparing, selecting an import input or uploading.
+## Sources and Patreon
 
-Notion chapter CRUD, schema inspection and content codecs continue through
-`notion-books`. Import-specific presentation policy and template recovery use
-the authenticated MCP transport for select-color statements, external covers
-and `apply_template`, with checkpointed writes and subsequent readback. These
-commands do not control a browser or replace the package's chapter operations.
+Search and collection are independent capabilities. `ParserSpec.searchable`
+controls discovery; known source URLs/IDs go straight to collection. Previews
+must not fetch the full book. Patreon has collection support and no search.
+Both `book-crawl` and `book-ingest` call the same registered collector.
 
-## Contracts and output selection
+Patreon owns authentication/profile handling, platform APIs, post parsing and
+comment pagination/deduplication. It returns platform metadata, stable post IDs,
+chapter content and optional evidence. Book title/author overrides, source
+language, required comments and explicit supplementary post IDs belong to
+`book_specs/<book>/config.json` or task options. It does not scan the creator's
+feed for similarly numbered chapters. Required comment failures abort collection;
+`comments_status=not_requested` is distinct from a successful empty result.
+Incomplete/paginated collection membership is rejected instead of exporting a
+partial book; a provider extension must handle that response shape explicitly.
 
-`CrawlOptions` contains request/browser controls. A provider returns a
-`CrawledBook`: title, author, ordered `Volume`/`Chapter` objects, source URL,
-intro and optional cover bytes. It has no output path or Notion configuration.
-`OutputOptions` belongs to the workflow: explicitly selected EPUB, Notion draft
-and/or TXT. Repeat the output flag to combine destinations; `both` remains the
-EPUB + TXT alias. An explicit output path can select its format, and a missing
-choice stops before collection. `IngestResult` records each actual output path
-and Notion checkpoint, so dataset updates never guess a TXT path from enriched
-EPUB metadata.
+The current translation methods translate English to Simplified Chinese and
+reject other source languages. That restriction belongs to translation, not
+Patreon. Source JSON chapters and independent extras feed the same translation
+views; stable source IDs and content hashes support existing delta reuse.
+Comments remain review evidence and never enter prompts as instructions.
+Configured comment authorities and reviewed glossaries belong to the book spec.
 
-`content.prepare` resolves source wording and formatting before either Notion or
-local EPUB output. The prepared book contains:
+## Changes and destination guarantees
 
-- `metadata`: title, creator, language, source, description, subjects and series.
-- `sections`: an ordered tree whose groups have `title`/`children`, and leaves
-  refer to a chapter `member`.
-- `chapters`: chapter titles and editable block lists keyed by member.
-- `extras`: independent shared-extra candidates in source order.
+A change task contains explicit chapter replacement/addition, independent extra,
+metadata or outline operations. Replacement requires the current chapter hash.
+Partial images must first be reconciled into a complete replacement chapter;
+untargeted chapters are never normalized or replaced as a side effect.
 
-Blocks carry kind, rich-text runs, heading level and optional alignment.
-Renderers follow these properties without interpreting phrases in the prose.
-The reading CSS lives in `content/styles.py`; H3 is `1.1em`, independent of
-alignment. Covers are thumbnail assets without a separate reading page.
+Local updates produce a new JSON in a fresh run directory, then optionally EPUB
+or TXT. Notion updates support chapter replacement/addition and independent
+extras. Catalog/outline edits are rejected by that adapter until implemented.
+Each run freshly reads editor content. A journal binds task ID, request, book
+and destination, records partial writes and permits resuming a body/title write
+independently. Conflicting editor changes stop the task. Notion has no atomic
+compare-and-swap across content and properties: fresh checks and independent
+readback detect conflicts but do not make concurrent editing transactional.
 
-The Jinjiang metadata lookup also returns its official table of contents,
-grouped by the HTML volume-heading rows. Prepared-source `metadata_report`
-and EPUB enrichment reports retain that structure and any retrieval error.
-It is source evidence for edition alignment; the OPF metadata writer does not
-rewrite chapter navigation or assign Notion parent titles.
+Notion additions reuse duplicate review, uncertain-create recovery, author/work
+linking and complete-content readback. A lost create response never triggers
+blind recreation. Manual view order is verified; if an append lands at the top,
+reorder the existing rows through the browser and resume the same checkpoint.
+Shared-extra reuse preserves all existing work relations.
 
-Notion stores prepared chapters in the book-owned database and independent
-extras in the shared library. Notion schema and recovery details live in
-[notion-books.md](notion-books.md). The local writer consumes the same prepared
-book directly, validates a candidate EPUB, then backs up and atomically replaces
-an observed destination. It neither authenticates with nor reads from Notion.
+Destination capability checks run before selected writes. Notion rejects rich
+content it cannot preserve, including bilingual language/variant annotations
+and unsupported directory depth. TXT is the plain-text projection; EPUB retains
+rich formatting and language annotations. Writers never run source cleanup.
+EPUB creation validates ZIP/XML/navigation before atomic installation. Native
+covers are thumbnails, with no separate reading page.
 
-Z-Library returns a `DownloadedEdition` instead of editable crawl chapters.
-The workflow requires explicit EPUB/TXT output, repairs a temporary candidate
-before replacing an existing edition, and keeps the repair report at the final
-output's report path. TXT-only output extracts from the downloaded edition.
+Notion covers use the API when configured, otherwise the maintained
+[browser cover procedure](../.agents/skills/book-management/references/notion-cover.md).
+Content progress and pending cover work are separate, so retries do not recreate
+chapters. Completion requires readback of the prepared cover bytes.
 
-Translation consumes persisted snapshots and reviewed book specs. Its output
-adapter joins original blocks and translated paragraphs; `epub/bilingual.py`
-owns EPUB construction. The translation workflow then explicitly runs its
-existing metadata/normalization review. Translation, style-transfer and glossary
-semantics are unchanged by the module reorganization.
+## Maintained commands
 
-## Maintenance versus presentation
+| Intent | Command |
+| --- | --- |
+| Search or acquire, then output | `book-ingest --search TITLE --mode epub` / `book-ingest URL --mode txt` |
+| Collect once for later tasks | `book-crawl URL --provider patreon --output generated/crawls/run` |
+| Prepare files/agent JSON | `book-prepare FILE --run-dir generated/ingest/run` |
+| Inspect ambiguous EPUB | `book-prepare FILE --inventory --run-dir generated/ingest/review` |
+| Apply local explicit changes | `book-update source.json --change change.json --run-dir generated/updates/run` |
+| Read/edit existing Notion content | `book-notion export` / `book-notion update` |
+| Translate and verify | `book-translate prepare`, `scene-positive`, `validate`, `transfer-style`, `build-epub` |
+| Repair an existing archive explicitly | `book-normalize`, `book-enrich-metadata` |
 
-Existing-edition repair is explicit:
+Removed: `book-to-epub`, the legacy EPUB preparation workflow, render-to-parse
+preparation, raw crawler TXT export, the crawler-specific manifest/chapter
+snapshot format and the separate bilingual EPUB writer. Existing generated
+artifacts remain untouched; new runs use the shared contract. Do not reintroduce
+old-format adapters merely to make historical run scripts work.
+Historical translation baselines must first be extracted/reviewed into shared
+source JSON with matching chapter identities and paragraph coverage; the old
+snapshot directory is not a valid input to the new translation commands.
 
-- `content/normalization.py`: text/XHTML rules and findings.
-- `epub/normalize.py`: inspect and rewrite archive members and navigation.
-- `epub/review.py`: resolve ambiguous findings through Codex, preserving cached decisions.
-- `epub/metadata.py`: inspect and update package metadata using `metadata/catalog.py`.
-- `epub/reports.py`: persistent findings and repair history.
-- `epub/maintenance.py`: combine those steps for the maintenance commands.
-
-These repair stages are not invoked by the prepared-content EPUB renderer.
-Site-specific cleanup stays in providers; shared wording/formatting rules stay
-in source preparation. A presentation change belongs in the EPUB renderer or
-`notion-books` content codec and must work for arbitrary text.
-
-## Removed paths
-
-The old native-page migration and Notion-to-local publishing flows have been
-removed, along with `notion_books/`, `fanwai/`, obsolete per-book mapping files
-and `book-fanwai`. The active draft uploader is `notion/upload.py`.
-
-The duplicate legacy EPUB writer, provider-specific CLI forwarding functions,
-unused EPUB outline-import helpers and unused `.env` loader were also removed.
-Use the installed CLI commands; there are no compatibility wrappers for old
-internal Python module paths. Existing crawl snapshots, translation artifacts,
-Notion upload checkpoints and reader files retain their formats and locations.
+`tests/test_architecture.py` enforces dependency direction. Fixture tests cover
+collection/preparation/output, fragment EPUBs, rich text, normalization rules,
+translation/protected quotations, stale changes, interrupted writes and readback.
+Live Notion/browser actions are separate, authorized operational checks; unit
+fixtures do not imply a live upload has been verified.

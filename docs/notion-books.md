@@ -47,13 +47,11 @@ uv run book-ingest "作品URL" --mode epub -o books/作者/书名.epub
 uv run book-ingest "作品URL" --mode epub --mode notion --mode txt
 ```
 
-`book-ingest` 的 `--mode`（别名 `--output-format`）可重复；`book-to-epub`
-使用可重复的 `--output-format`。未指定模式时，`-o` 选择 EPUB，
-`--txt-output` 选择 TXT；都未指定时 CLI 报错，避免隐式上传。
-`both` 保留为 EPUB + TXT 的别名。训练用途选择 TXT、数据集路径和对应的
-manifest 更新，与普通抓书使用同一流程。组合输出逐项执行，失败时先核对
-已有文件及上传检查点，再恢复未完成的输出。
-翻译流程 `book-translate build-epub` 仍然输出本地文件。
+`book-ingest --mode` 可重复指定 EPUB、Notion、TXT。未指定模式时，
+`-o` 选择 EPUB，`--txt-output` 选择 TXT；都未指定时 CLI 报错。
+训练导出另加 `--dataset-root research/datasets`，普通 TXT 不触发分类。
+组合输出逐项执行，失败时核对已有文件及检查点，再恢复未完成的输出。
+翻译流程使用同一个内容 JSON 和 EPUB writer。
 
 正文、目录、作者关联和书籍属性通过独立 MCP 客户端读写。
 OAuth 凭据保存在用户私有状态目录，可刷新；无需保持 Notion 网页登录。
@@ -61,12 +59,16 @@ OAuth 凭据保存在用户私有状态目录，可刷新；无需保持 Notion 
 
 ### 封面
 
-Notion 路径自动上传爬虫取得的封面，保存为书页的原生 cover。
-MCP 的 cover 参数只接受外部 URL，因此仅封面使用官方 File Upload API。
-在运行脚本的环境中设置 `NOTION_API_TOKEN`，并给该 integration 目标 Notion 页面的访问权限。
-脚本不读取 `.env`，不保存 token 或上传后的临时下载 URL。
-未提供封面时无需 API token；封面为 PNG/JPEG，最大 10 MiB、2500 万像素。
-封面不可读取、上传失败或回读不一致时停止，保留上传检查点。
+封面有两条路径：现有登录浏览器上传，或可选的官方 File Upload API。
+只有官方 API 路径需要进程环境里的 `NOTION_API_TOKEN`；正文 MCP 不需要它。
+没有该 token 时，正文先完成，检查点旁生成 `cover-browser.json`，按
+[固定浏览器流程](../.agents/skills/book-management/references/notion-cover.md)
+复用已登录的 Arc，然后运行 `book-notion verify-cover --state ...`。
+不需要为了导入一本书额外配置 API token。
+
+PNG/JPEG 最大 10 MiB、2500 万像素。封面不可读取或回读字节不一致时保留
+待处理状态，不重复创建正文。脚本不读取 `.env`，不保存 token 或签名下载 URL。
+公开 URL 封面仍可用 `--cover-url` 经 MCP 附加。
 
 本地 EPUB 嵌入封面图片及 cover metadata，供书库显示缩略图；
 不生成 `cover.xhtml` 或 `cover.html`，也不加入封面阅读页。
@@ -102,13 +104,13 @@ uv run book-notion resume --state generated/notion_cms_sources/<来源摘要>/im
 - 疑似重复番外：上传前暂停，在检查点同目录生成 `extra-review.md`。按报告选择
   复用已有正文或新建，再续传；操作与判定范围见[共享番外](fanwai-notion.md)。
 - 实际顺序不同：在对应手动视图整理为源目录顺序，再续传；不会添加数字排序列。
-- `cover_pending` 表示封面附加结果不确定。核对页面封面及原文件；确认成功后标记
-  `cover_uploaded: true` 并移除 `cover_pending`，确认未附加才清除该标记重试。
+- `cover_pending` 表示封面附加结果不确定。运行 `book-notion verify-cover --state ...`
+  核对当前原生图片字节后完成恢复；不要手工把 `cover_uploaded` 改成 true。
 
 不同目标库之间不能复用导入检查点。
 
 本地 EPUB/TXT 的内容准备、卷标签颜色、公开 URL 封面和
-`recover-template` 模板恢复使用[本地版本导入流程](local-editions.md)中的固定命令。
+模板恢复可用 `book-notion recover-template --state ...`，然后 resume 原检查点。
 `book-notion upload` 接收已审查的共享 source.json；无需每次编写上传脚本。
 新建作者时，通过晋江作者检索查找唯一匹配的主页；找到后在同一次创建中
 填写「晋江主页」URL，并回读验证。检索失败会中止创建，明确无匹配才留空。

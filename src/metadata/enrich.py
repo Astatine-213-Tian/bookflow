@@ -23,18 +23,21 @@ def enrich_source(book: dict, *, lookup: MetadataLookup | None = None) -> dict:
     source = (lookup or MetadataLookup()).find(package, primary_subject="")
     if source is None:
         return {"status": "unmatched"}
-    data.update(
-        title=source.title,
-        language=source.language,
-        date=source.date,
-        source=source.source,
-        description=source.description or data["description"],
-        subjects=list(source.subjects),
-    )
+    candidates = {
+        "title": source.title,
+        "language": source.language,
+        "date": source.date,
+        "source": source.source,
+        "description": source.description,
+        "subjects": list(source.subjects),
+    }
     if source.series_verified:
-        data.update(
+        candidates.update(
             series=source.series or "", series_position=source.series_position or ""
         )
+    for key, value in candidates.items():
+        if not data.get(key) or key == "language" and data[key] == "und":
+            data[key] = value
     return {
         "status": "matched",
         "provider": source.provider,

@@ -1,21 +1,17 @@
 from __future__ import annotations
 
-import json
-import os
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from src.cli.ingest import main as crawl_main
 from src.cli.ingest import main as ingest_main
-from src.cli.main import main as crawl_main
 from src.content.models import Chapter, Volume
 from src.crawler.models import CrawledBook, CrawlOptions, DownloadedEdition
 from src.crawler.registry import ParserSpec
 from src.dataset.library import export_txt_dataset, load_manifest
-from src.epub.reports import automatic_report_path
-from src.metadata.catalog import MetadataEnrichmentReport
 from src.workflows.ingest import (
     IngestResult,
     OutputOptions,
@@ -41,7 +37,7 @@ class IngestWorkflowTests(unittest.TestCase):
         options = CrawlOptions(delay=0.1, concurrency=2, headless=True)
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch("src.content.prepare.enrich_source", return_value={}):
+            with patch("src.workflows.prepare.enrich_source", return_value={}):
                 result = ingest(
                     "https://example.org/book",
                     parser=parser,
@@ -57,7 +53,7 @@ class IngestWorkflowTests(unittest.TestCase):
             self.assertIn("第二段。", (root / "book.txt").read_text())
             with zipfile.ZipFile(result.epub_path) as archive:
                 self.assertIn(
-                    "第二段。", archive.read("EPUB/chap_01_001.xhtml").decode()
+                    "第二段。", archive.read("EPUB/chapter_0001.xhtml").decode()
                 )
 
     def test_invalid_output_and_unsupported_draft_stop_before_collection(self):
@@ -65,7 +61,6 @@ class IngestWorkflowTests(unittest.TestCase):
         for formats, is_edition in [
             ((), False),
             (("invalid",), False),
-            (("notion",), True),
         ]:
             with self.subTest(formats=formats), self.assertRaises(ValueError):
                 ingest(
@@ -100,7 +95,7 @@ class IngestWorkflowTests(unittest.TestCase):
             target.write_bytes(b"original")
             with (
                 patch(
-                    "src.epub.maintenance.normalize_new_epub",
+                    "src.inputs.epub.read_epub_source",
                     side_effect=ValueError("bad edition"),
                 ),
                 self.assertRaisesRegex(ValueError, "bad edition"),
@@ -117,27 +112,17 @@ class IngestWorkflowTests(unittest.TestCase):
                 )
             self.assertEqual(target.read_bytes(), b"original")
 
-    def test_downloaded_edition_keeps_report_at_final_destination(self):
+    def test_downloaded_edition_uses_shared_preparation_for_every_output(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source = root / "source.epub"
-            target = root / "result.epub"
-            with patch("src.content.prepare.enrich_source", return_value={}):
-                write_outputs(
-                    book(), OutputOptions(output=source, output_formats=("epub",))
-                )
+            write_outputs(book(), OutputOptions(output=source))
             edition = DownloadedEdition(
                 "书", "作者", "https://example.org/book", source.read_bytes()
             )
-            metadata = MetadataEnrichmentReport(
-                path=source, applied=False, status="fixture"
-            )
-            with (
-                patch.dict(os.environ, {"BOOKLIB_CODEX_REVIEW": "0"}),
-                patch(
-                    "src.epub.maintenance.enrich_epub_metadata", return_value=metadata
-                ),
-            ):
+            with patch(
+                "src.notion.upload.upload_source", return_value=root / "state.json"
+            ) as upload:
                 result = ingest(
                     edition.source_url,
                     parser=ParserSpec(
@@ -145,22 +130,21 @@ class IngestWorkflowTests(unittest.TestCase):
                     ),
                     crawl_options=CrawlOptions(),
                     output_options=OutputOptions(
-                        output=target, output_formats=("epub",)
+                        output=root / "result.epub",
+                        txt_output=root / "result.txt",
+                        output_formats=("epub", "txt", "notion"),
                     ),
                 )
-            self.assertEqual(result.epub_path, target)
-            report = json.loads(automatic_report_path(target).read_text())["reports"][0]
-            self.assertEqual(report["path"], str(target))
-            self.assertEqual(report["metadata_enrichment"]["path"], str(target))
-            with zipfile.ZipFile(target) as archive:
-                self.assertIsNone(archive.testzip())
+            upload.assert_called_once()
+            self.assertIn("第二段。", result.txt_path.read_text())
+            self.assertTrue(result.epub_path.is_file())
 
     def test_txt_only_does_not_prepare_epub_or_contact_notion(self):
         with tempfile.TemporaryDirectory() as temporary:
             target = Path(temporary) / "book.txt"
             with (
                 patch(
-                    "src.workflows.ingest.prepare_source",
+                    "src.epub.writer.export_local",
                     side_effect=AssertionError("EPUB preparation called"),
                 ),
                 patch(
@@ -194,7 +178,7 @@ class IngestWorkflowTests(unittest.TestCase):
             self.assertFalse((root / "dataset").exists())
 
     def test_cli_requires_choice_and_paths_can_express_it(self):
-        for entry, module in [(crawl_main, "main"), (ingest_main, "ingest")]:
+        for entry, module in [(crawl_main, "ingest"), (ingest_main, "ingest")]:
             with self.subTest(command=module):
                 with (
                     patch(f"src.cli.{module}.ingest") as run,
@@ -211,7 +195,7 @@ class IngestWorkflowTests(unittest.TestCase):
         ]:
             with (
                 self.subTest(args=args),
-                patch("src.cli.main.ingest", return_value=IngestResult()) as run,
+                patch("src.cli.ingest.ingest", return_value=IngestResult()) as run,
             ):
                 self.assertEqual(crawl_main(["2574", "--parser", "mgsf", *args]), 0)
                 self.assertEqual(
@@ -220,7 +204,7 @@ class IngestWorkflowTests(unittest.TestCase):
 
     def test_conflicting_output_path_stops_before_collection(self):
         for entry, module, flag in [
-            (crawl_main, "main", "--output-format"),
+            (crawl_main, "ingest", "--output-format"),
             (ingest_main, "ingest", "--mode"),
         ]:
             with (
@@ -244,7 +228,7 @@ class IngestWorkflowTests(unittest.TestCase):
 
             with (
                 patch("src.cli.ingest.find_parser", return_value=provider),
-                patch("src.content.prepare.enrich_source", side_effect=enriched),
+                patch("src.workflows.prepare.enrich_source", side_effect=enriched),
                 patch(
                     "src.notion.upload.upload_source", return_value=root / "notion.json"
                 ) as upload,
@@ -252,6 +236,7 @@ class IngestWorkflowTests(unittest.TestCase):
                 code = ingest_main(
                     [
                         "https://example.org/book",
+                        "--enrich-metadata",
                         "--mode",
                         "epub",
                         "--mode",
@@ -275,7 +260,7 @@ class IngestWorkflowTests(unittest.TestCase):
             rows = load_manifest(root / "dataset")
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]["title"], "官方书名")
-            self.assertEqual(rows[0]["txt_path"], "raw/作者/书.txt")
+            self.assertEqual(rows[0]["txt_path"], "raw/作者/官方书名.txt")
             self.assertIn(
                 "第二段。", (root / "dataset" / rows[0]["txt_path"]).read_text()
             )
@@ -293,7 +278,7 @@ class IngestWorkflowTests(unittest.TestCase):
                 ):
                     root = Path(temporary)
                     with (
-                        patch("src.content.prepare.enrich_source", return_value={}),
+                        patch("src.workflows.prepare.enrich_source", return_value={}),
                         patch(
                             "src.notion.upload.upload_source",
                             return_value=root / "notion.json",
@@ -328,7 +313,7 @@ class IngestWorkflowTests(unittest.TestCase):
             provider = ParserSpec("fixture", (), "fixture", Mock(return_value=book()))
             with (
                 patch("src.cli.ingest.find_parser", return_value=provider),
-                patch("src.content.prepare.enrich_source", return_value={}),
+                patch("src.workflows.prepare.enrich_source", return_value={}),
             ):
                 code = ingest_main(
                     [
@@ -352,7 +337,7 @@ class IngestWorkflowTests(unittest.TestCase):
     def test_explicit_dataset_export_records_relative_paths(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch("src.content.prepare.enrich_source", return_value={}):
+            with patch("src.workflows.prepare.enrich_source", return_value={}):
                 write_outputs(
                     book(),
                     OutputOptions(

@@ -104,6 +104,10 @@ async def verify_draft(book: dict, config: dict, *, tools) -> dict:
             actual.get(name) != color for name, color in book["volume_colors"].items()
         ):
             raise ValueError("Volume colors differ from the import checkpoint")
+    if (book.get("cover_asset") or book.get("cover_url")) and not book.get(
+        "cover_uploaded"
+    ):
+        raise ValueError("Prepared cover has not been uploaded and verified")
     if book.get("cover_uploaded"):
         if not page.cover_known or not page.cover:
             raise ValueError("Imported cover is missing")

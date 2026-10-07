@@ -5,12 +5,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.crawler.snapshot import write_json
+from src.runtime.files import write_json
 from src.translation.sentence_translations import (
     apply_sentence_translation_overrides,
     sentence_translation_entries,
 )
-
 
 SOURCE = (
     "If ever should I taste of love’s sweet savor,",
@@ -108,10 +107,7 @@ class SentenceTranslationTests(unittest.TestCase):
             self.assertEqual(first["occurrence_count"], 2)
             self.assertEqual(first["changed_occurrence_count"], 2)
             self.assertEqual(
-                [
-                    item["mode"]
-                    for item in first["entries"][0]["occurrences"]
-                ],
+                [item["mode"] for item in first["entries"][0]["occurrences"]],
                 ["canonical_segments", "semantic_paragraph_restore"],
             )
 
@@ -150,48 +146,23 @@ class SentenceTranslationTests(unittest.TestCase):
 
             report = json.loads(
                 (
-                    style_run
-                    / "sentence_translations"
-                    / "session_summary.json"
+                    style_run / "sentence_translations" / "session_summary.json"
                 ).read_text(encoding="utf-8")
             )
             self.assertEqual(len(report["unresolved"]), 1)
 
     @staticmethod
     def _write_snapshot(snapshot: Path) -> None:
-        write_json(
-            snapshot / "manifest.json",
-            {
-                "schema_version": 1,
-                "title": "test",
-                "author": "test",
-                "chapters": [
-                    {
-                        "id": "01",
-                        "title": "Chapter 1",
-                        "path": "chapters/01.json",
-                    }
-                ],
-            },
-        )
-        write_json(
-            snapshot / "chapters" / "01.json",
-            {
-                "title": "Chapter 1",
-                "paragraphs": [
-                    {"index": 0, "english": SOURCE[0]},
-                    {"index": 1, "english": SOURCE[1]},
-                    {
-                        "index": 2,
-                        "english": (
-                            "He murmured, “If ever should I taste of love’s sweet "
-                            "savor, all things I shall forsake and seek no more "
-                            "the Eternal Gate.”"
-                        ),
-                    },
-                    {"index": 3, "english": "Unrelated."},
-                ],
-            },
+        from tests.fixtures import write_source
+
+        write_source(
+            snapshot,
+            [
+                SOURCE[0],
+                SOURCE[1],
+                "He murmured, “If ever should I taste of love’s sweet savor, all things I shall forsake and seek no more the Eternal Gate.”",
+                "Unrelated.",
+            ],
         )
 
     @staticmethod
@@ -213,10 +184,7 @@ class SentenceTranslationTests(unittest.TestCase):
         data = json.loads(
             (run_dir / "translations" / "01.json").read_text(encoding="utf-8")
         )
-        return {
-            int(item["index"]): str(item["zh"])
-            for item in data["translations"]
-        }
+        return {int(item["index"]): str(item["zh"]) for item in data["translations"]}
 
 
 if __name__ == "__main__":

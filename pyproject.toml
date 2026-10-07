@@ -22,12 +22,13 @@ dependencies = [
     "tinycss2>=1.5.1",
     "tqdm==4.67.1",
     "zendriver==0.15.3",
+    "jsonschema>=4.23,<5",
 ]
 
 [project.scripts]
-book-to-epub = "src.cli.main:main"
 book-ingest = "src.cli.ingest:main"
 book-prepare = "src.cli.prepare_book:main"
+book-update = "src.cli.update_book:main"
 book-compare = "src.cli.compare_editions:main"
 book-crawl = "src.cli.crawl:main"
 book-translate = "src.cli.translate:main"
@@ -41,3 +42,6 @@ include = ["src*"]
 
 [tool.uv.sources]
 notion-books = { git = "https://github.com/Astatine-213-Tian/notion-books", tag = "v0.4.1" }
+
+[tool.setuptools.package-data]
+"src.content" = ["*.json"]

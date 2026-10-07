@@ -83,6 +83,87 @@ def write_raw_fixture(*, identifier, title, author, volumes, out_path):
 
 
 class EpubNormalizerTests(unittest.TestCase):
+    def test_fullwidth_alphanumeric_text_precedes_mixed_width_spacing(self) -> None:
+        from src.content.normalization import NormalizationReport, normalize_member
+
+        raw = (
+            '<html xmlns="http://www.w3.org/1999/xhtml"><head>'
+            "<title>第３０章 ＭＳＮ</title></head><body>"
+            "<h2>第３０章 ＭＳＮ</h2><p>ＭＳＮ，ＱＱ</p>"
+            '<p>重装<strong data-label="ＭＳＮ">ＭＳＮ</strong>，去Ｋ歌。</p>'
+            "<p>到２０１２年，读ａｂｃ。</p>"
+            "<p>用&#xFF2D;&#65331;&#65326;和&#xFF31;&#xFF31;。</p>"
+            "<p>符号①、Ⅰ、㎏，【 ＼／ 】。</p></body></html>"
+        ).encode()
+        report = NormalizationReport(path=Path("fixture.epub"), applied=True)
+        result = normalize_member(
+            "chapter.xhtml", raw, report, grouped_fanwai_titles=set()
+        )
+        root = ET.fromstring(result)
+        self.assertEqual(root.findtext("{*}head/{*}title"), "第30章 MSN")
+        self.assertEqual(
+            ["".join(p.itertext()) for p in root.findall("{*}body/{*}p")],
+            [
+                "MSN，QQ",
+                "重装 MSN，去 K 歌。",
+                "到 2012 年，读 abc。",
+                "用 MSN 和 QQ。",
+                "符号①、Ⅰ、㎏，【 ＼／ 】。",
+            ],
+        )
+        self.assertEqual(
+            root.find("{*}body/{*}p/{*}strong").get("data-label"), "ＭＳＮ"
+        )
+        self.assertGreater(report.change_counts["fullwidth_alphanumeric_normalized"], 0)
+        second = NormalizationReport(path=Path("fixture.epub"), applied=False)
+        self.assertEqual(
+            normalize_member(
+                "chapter.xhtml", result, second, grouped_fanwai_titles=set()
+            ),
+            result,
+        )
+        self.assertEqual(second.total_changes, 0)
+
+    def test_self_closing_empty_paragraph_interrupts_comma_merge(self):
+        from src.content.normalization import NormalizationReport, normalize_member
+
+        raw = (
+            '<html xmlns="http://www.w3.org/1999/xhtml"><body>'
+            "<p>甲，</p><p/><p>乙。</p></body></html>"
+        ).encode()
+        report = NormalizationReport(path=Path("fixture.epub"), applied=True)
+        result = normalize_member(
+            "chapter.xhtml", raw, report, grouped_fanwai_titles=set()
+        )
+        self.assertEqual(
+            [p.text for p in ET.fromstring(result).findall("{*}body/{*}p")],
+            ["甲，", None, "乙。"],
+        )
+
+    def test_self_closing_empty_paragraph_before_end_marker(self):
+        from src.content.normalization import NormalizationReport, normalize_member
+
+        raw = (
+            '<html xmlns="http://www.w3.org/1999/xhtml"><body>'
+            "<p/><p>——全文完——</p></body></html>"
+        ).encode()
+        report = NormalizationReport(path=Path("fixture.epub"), applied=True)
+        result = normalize_member(
+            "chapter.xhtml", raw, report, grouped_fanwai_titles=set()
+        )
+        paragraphs = ET.fromstring(result).findall("{*}body/{*}p")
+        self.assertEqual(len(paragraphs), 2)
+        self.assertIsNone(paragraphs[0].text)
+        self.assertNotIn("style", paragraphs[0].attrib)
+        self.assertIn("text-align: center", paragraphs[1].get("style"))
+        second = NormalizationReport(path=Path("fixture.epub"), applied=False)
+        self.assertEqual(
+            normalize_member(
+                "chapter.xhtml", result, second, grouped_fanwai_titles=set()
+            ),
+            result,
+        )
+
     def test_normalizes_content_titles_structure_and_reports_bad_characters(
         self,
     ) -> None:

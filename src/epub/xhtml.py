@@ -16,6 +16,12 @@ def render_blocks(parent: ET._Element, blocks: list[dict]) -> None:
             "divider": "hr",
         }[block["kind"]]
         el = ET.SubElement(parent, f"{{{X}}}{tag}", **block.get("attributes", {}))
+        if block.get("language"):
+            el.set("{http://www.w3.org/XML/1998/namespace}lang", block["language"])
+        if block.get("variant"):
+            el.set("data-variant", block["variant"])
+            if block["variant"] == "translation":
+                el.set("class", "zh-translation")
         # Content H3 has one global size, independent of alignment and template.
         if tag == "h3":
             style = re.sub(

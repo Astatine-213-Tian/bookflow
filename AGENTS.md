@@ -16,7 +16,7 @@ For “update eternal gate” / “更新永恒之门”, use this workflow:
 
 1. Identify the latest successful crawl and translation run under `generated/`
    as the reuse baseline; preserve existing artifacts and glossary edits.
-2. Run the maintained `uv run book-crawl` command below with `--headless` and a
+2. Run the maintained `uv run book-crawl --config book_specs/eternal_gate/config.json` command below with `--headless` and a
    fresh dated `--output` directory. The Patreon crawler manages its own browser
    and saved login profile; running it requires no browser skill setup.
 
@@ -45,7 +45,8 @@ When changing module boundaries or adding an output destination, read
 [docs/architecture.md](docs/architecture.md). Keep collection in `src/crawler/`,
 source cleanup in `src/content/`, local EPUB writing/repair in `src/epub/`, Notion
 upload in `src/notion/`, and translation/QA in `src/translation/`.
-`src/workflows/ingest.py` chooses outputs after collection; `src/cli/` handles
+`src/inputs/` extracts files and provider content into the shared JSON;
+`src/workflows/ingest.py` chooses outputs after shared preparation; `src/cli/` handles
 arguments. Reusable logic belongs outside CLI modules. `tests/test_architecture.py`
 checks dependency direction and the separation of cleanup from rendering.
 
@@ -75,53 +76,45 @@ Use `mise exec -- uv sync --locked` for subsequent dependency syncs.
 Run the unified entry point:
 
 ```bash
-uv run book-to-epub "https://www.mangguoshufang.com/1/2574/info.html" --output-format epub -o books/book.epub
-uv run book-to-epub "http://jrkywsy.blog.fc2.com/blog-entry-938.html" --output-format epub -o books/book.epub
-uv run book-to-epub 2574 --parser mgsf --output-format epub -o books/book.epub
+uv run book-ingest "https://www.mangguoshufang.com/1/2574/info.html" --mode epub -o books/book.epub
+uv run book-ingest "http://jrkywsy.blog.fc2.com/blog-entry-938.html" --mode epub -o books/book.epub
+uv run book-ingest 2574 --parser mgsf --mode epub -o books/book.epub
 ```
 
 Run the search-and-preview pipeline:
 
 ```bash
-uv run book-to-epub --search "全球高考" --output-format epub
-uv run book-to-epub --search "斗破苍穹" --parser quanben --output-format epub
-uv run book-to-epub --search "全球高考" --first --output-format epub -o books/book.epub
+uv run book-ingest --search "全球高考" --mode epub
+uv run book-ingest --search "斗破苍穹" --parser quanben --mode epub
+uv run book-ingest --search "全球高考" --first --mode epub -o books/book.epub
 ```
 
-Use `uv run book-to-epub --list-parsers` to inspect supported sites. Browser-backed providers such as xfxs and pili45 use `src.crawler.fetch.browser.resolve_browser_executable()` to find a Chromium-compatible browser. Set `BOOKLIB_BROWSER_PATH` to force a specific executable; otherwise discovery checks Playwright-managed Chromium, common executables on `PATH`, and common macOS app bundle paths.
+Use `uv run book-ingest --list-parsers` to inspect supported sites. Browser-backed providers such as xfxs and pili45 use `src.crawler.fetch.browser.resolve_browser_executable()` to find a Chromium-compatible browser. Set `BOOKLIB_BROWSER_PATH` to force a specific executable; otherwise discovery checks Playwright-managed Chromium, common executables on `PATH`, and common macOS app bundle paths.
 
 Run the reusable crawl-then-translate stages as separate tasks. For Eternal Gate
 updates, apply the reuse workflow above and use fresh dated crawl/run paths:
 
 ```bash
 uv run book-crawl "https://www.patreon.com/collection/2218551?view=condensed" \
-  --provider patreon \
-  --title "永恒之门" \
-  --author "顾雪柔" \
+  --config book_specs/eternal_gate/config.json \
   --output generated/crawls/eternal_gate \
   --headless
 
-uv run book-translate prepare generated/crawls/eternal_gate \
-  --config book_specs/eternal_gate/config.json
-
-uv run book-translate run generated/translation_runs/eternal_gate \
-  --config book_specs/eternal_gate/config.json
-uv run book-translate validate generated/translation_runs/eternal_gate \
-  --config book_specs/eternal_gate/config.json
-uv run book-translate transfer-style generated/translation_runs/eternal_gate \
+uv run book-translate scene-positive generated/crawls/eternal_gate \
   --config book_specs/eternal_gate/config.json \
-  --run-codex
-uv run book-translate validate \
-  generated/translation_runs/eternal_gate/author_style_transfer \
+  --run-dir generated/translation_runs/eternal_gate_NEW \
+  --baseline-snapshot generated/crawls/eternal_gate_BASELINE \
+  --baseline-run generated/translation_runs/eternal_gate_BASELINE
+uv run book-translate validate generated/translation_runs/eternal_gate_NEW \
   --config book_specs/eternal_gate/config.json
 uv run book-translate build-epub generated/crawls/eternal_gate \
-  --run-dir generated/translation_runs/eternal_gate/author_style_transfer \
+  --run-dir generated/translation_runs/eternal_gate_NEW \
   --config book_specs/eternal_gate/config.json \
-  -o books/顾雪柔/永恒之门.bilingual.epub
+  -o books/顾雪柔/永恒之门.method4.bilingual.epub
 ```
 
 Dataset TXT output and manifests live under `research/datasets/`. The production
-`book-ingest` and `book-dataset` commands write there by default so crawling and
+`book-ingest --dataset-root research/datasets` and `book-dataset` write there so crawling and
 EPUB generation remain centralized while research owns the resulting corpus.
 Run author-style experiments from `research/` with its own environment:
 
@@ -135,9 +128,9 @@ uv run author-style-research verify
 
 Target modern Python 3 with `from __future__ import annotations`. Use 4-space indentation, type hints for data models and helpers, and `dataclass` for structured records. Keep constants in `UPPER_SNAKE_CASE`, classes in `PascalCase`, and functions or variables in `snake_case`. Prefer small parser/fetcher/build functions over large monolithic changes. Preserve the existing section-divider comment style for readability.
 
-For new providers, create `src/crawler/providers/<provider>/parser.py` and `src/crawler/providers/<provider>/search.py`. Keep provider-specific selectors, URL normalization, boilerplate cleanup, and browser work inside the provider package. Register a collector in `src/crawler/registry.py` that accepts `CrawlOptions` and returns `CrawledBook`; keep output selection in `src/workflows/ingest.py` and ranking/selection in `src/crawler/search/orchestrator.py`.
+For new providers, create `src/crawler/providers/<provider>/parser.py` and, only when search is supported, `src/crawler/providers/<provider>/search.py`. Keep provider-specific selectors, URL normalization, boilerplate cleanup, and browser work inside the provider package. Register a collector in `src/crawler/registry.py` that accepts `CrawlOptions` and returns `CrawledBook`; keep output selection in `src/workflows/ingest.py` and ranking/selection in `src/crawler/search/orchestrator.py`.
 
-For crawl snapshots, keep site-specific crawling in `src/crawler/providers/<provider>/` and write the normalized reusable snapshot format consumed by `src/translation/`. Do not put book-specific translation choices in provider code; use `book_specs/<book_slug>/config.json` and `book_specs/<book_slug>/glossary.json`.
+Keep platform collection in `src/crawler/providers/<provider>/`. The workflow extracts its result to the shared `source.json`; keep comments/platform responses in `evidence.json`. Do not add another provider-specific snapshot format. Do not put book-specific translation choices in provider code; use `book_specs/<book_slug>/config.json` and `book_specs/<book_slug>/glossary.json`.
 
 For browser-backed providers, do not hard-code Chrome or Chromium paths. Use `resolve_browser_executable()` from `src.crawler.fetch.browser`.
 
@@ -162,7 +155,7 @@ Focused production contract tests live under `tests/` and run with
 `uv run python -m unittest discover -s tests -p 'test_*.py'`. For parser
 changes, also validate manually with a small known book or saved HTML fixture
 when possible. For search changes, verify
-`uv run book-to-epub --search "known title" --parser <provider> --output-format epub`
+`uv run book-ingest --search "known title" --parser <provider> --mode epub`
 shows sensible previews without immediately
 downloading the whole book. For EPUB output, open the generated file and confirm
 metadata, table of contents, chapter order, and cover handling.
@@ -178,3 +171,20 @@ Use Conventional Commits for commit messages, such as `fix(xfxs): repair preview
 ## Security & Configuration Tips
 
 Do not commit credentials, browser profiles, temporary downloads, generated crawl snapshots, generated translation runs, generated EPUBs, or copyrighted source text. Keep final book outputs in `books/`, production crawl/translation artifacts under `generated/`, research corpora and experiment outputs under `research/datasets/` and `research/generated/`, and maintained per-book specs under `book_specs/`. Avoid hard-coded absolute paths.
+
+## Agent skills
+
+### Issue tracker
+
+Use GitHub Issues for issues and specs. Read `docs/agents/issue-tracker.md`
+before tracker operations.
+
+### Triage labels
+
+Use the five canonical triage labels. Read `docs/agents/triage-labels.md`
+before applying or interpreting triage labels.
+
+### Domain docs
+
+Use a single-context layout. Read `docs/agents/domain.md` before exploring
+domain concepts or architectural decisions.

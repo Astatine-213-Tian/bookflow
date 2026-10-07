@@ -28,7 +28,8 @@ def create_book(
     package.set_identifier(book["identifier"])
     package.set_title(metadata["title"])
     package.set_language(metadata["language"] or "zh-CN")
-    package.add_author(metadata["creator"])
+    for index, creator in enumerate(metadata.get("creators") or [metadata["creator"]]):
+        package.add_author(creator, uid=f"creator-{index + 1}")
     for key in ("date", "source", "description"):
         if metadata.get(key):
             package.add_metadata("DC", key, metadata[key])
@@ -61,7 +62,7 @@ def create_book(
     if cover:
         package.set_cover(cover_name, cover, create_page=False)
     items = {}
-    for member, chapter in book["chapters"].items():
+    for index, (member, chapter) in enumerate(book["chapters"].items(), 1):
         root = ET.Element(f"{{{X}}}html", nsmap={None: X})
         head = ET.SubElement(root, f"{{{X}}}head")
         ET.SubElement(head, f"{{{X}}}title").text = chapter["title"]
@@ -72,14 +73,18 @@ def create_book(
             href="style/main.css",
             type="text/css",
         )
-        body = ET.SubElement(root, f"{{{X}}}body")
+        container = ET.SubElement(root, f"{{{X}}}body")
+        # EbookLib rebuilds <body>; keep source identities on its content wrapper.
+        body = ET.SubElement(container, f"{{{X}}}div")
+        body.set("data-book-chapter-id", member)
+        body.set("data-book-role", chapter.get("role", "chapter"))
         if chapter.get("role") == "intro":
             body.set("class", "intro")
         ET.SubElement(body, f"{{{X}}}h2").text = chapter["title"]
         render_blocks(body, chapter["blocks"])
         item = epub.EpubHtml(
             title=chapter["title"],
-            file_name=member.removeprefix("EPUB/"),
+            file_name=f"chapter_{index:04d}.xhtml",
             content=ET.tostring(root),
             lang=metadata["language"] or "zh-CN",
         )
@@ -103,7 +108,42 @@ def create_book(
     package.toc = toc(book["sections"])
     package.spine = ["nav"] + [items[m] for m in ordered_members(book["sections"])]
     package.add_item(epub.EpubNcx())
-    package.add_item(epub.EpubNav())
+    nav_root = ET.Element(
+        f"{{{X}}}html", nsmap={None: X, "epub": "http://www.idpf.org/2007/ops"}
+    )
+    nav_head = ET.SubElement(nav_root, f"{{{X}}}head")
+    ET.SubElement(nav_head, f"{{{X}}}title").text = metadata["title"]
+    nav_body = ET.SubElement(nav_root, f"{{{X}}}body")
+    nav = ET.SubElement(nav_body, f"{{{X}}}nav")
+    nav.set("{http://www.idpf.org/2007/ops}type", "toc")
+
+    def navigation(parent, nodes):
+        ol = ET.SubElement(parent, f"{{{X}}}ol")
+        for node in nodes:
+            li = ET.SubElement(ol, f"{{{X}}}li")
+            if "children" in node:
+                if node.get("id"):
+                    li.set("data-volume-id", node["id"])
+                first = ordered_members(node["children"])[0]
+                ET.SubElement(li, f"{{{X}}}a", href=items[first].file_name).text = node[
+                    "title"
+                ]
+                navigation(li, node["children"])
+            else:
+                member = node["member"]
+                ET.SubElement(
+                    li, f"{{{X}}}a", href=items[member].file_name
+                ).text = book["chapters"][member]["title"]
+
+    navigation(nav, book["sections"])
+    nav_item = epub.EpubItem(
+        uid="nav",
+        file_name="nav.xhtml",
+        media_type="application/xhtml+xml",
+        content=ET.tostring(nav_root, encoding="utf-8", xml_declaration=True),
+    )
+    nav_item.properties = ["nav"]
+    package.add_item(nav_item)
     output.parent.mkdir(parents=True, exist_ok=True)
     epub.write_epub(str(output), package, {})
     validate_archive(output)
@@ -125,8 +165,10 @@ def export_local(
     book = copy.deepcopy(source)
     extras = []
     for index, story in enumerate(book.get("extras", []), 1):
-        member = f"EPUB/extra_{index:03d}.xhtml"
-        book["chapters"][member] = story
+        member = story.get("id") or f"extra-{index}"
+        if member in book["chapters"]:
+            raise ValueError(f"Duplicate extra ID: {member}")
+        book["chapters"][member] = {**story, "role": "extra"}
         extras.append({"member": member})
     if extras:
         book["sections"].append({"title": "番外", "children": extras})

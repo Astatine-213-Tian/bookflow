@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from src.crawler.snapshot import write_json
+from src.runtime.files import write_json
 from src.translation.style_transfer_assets import (
     ASSET_SCHEMA,
     METHOD_ID,
@@ -14,12 +14,10 @@ from src.translation.style_transfer_assets import (
     sha256_json,
 )
 
-
 RESEARCH_ROOT = Path(__file__).resolve().parents[1]
 PRODUCTION_ROOT = RESEARCH_ROOT.parent
 DEFAULT_SOURCE_ASSET = (
-    RESEARCH_ROOT
-    / "generated/style_research/style_transfer_experiments/iterations/"
+    RESEARCH_ROOT / "generated/style_research/style_transfer_experiments/iterations/"
     "full_regeneration_v1/method_assets/style_transfer_payloads.v1/"
     "assets.497a0db8919ccc9cfd97f6a729ff0528953d2d97477e83e07e55c42e4bb994d8.json"
 )
@@ -36,9 +34,7 @@ def read_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def load_source_asset(
-    asset_path: Path, *, expected_file_sha256: str
-) -> dict[str, Any]:
+def load_source_asset(asset_path: Path, *, expected_file_sha256: str) -> dict[str, Any]:
     if file_sha256(asset_path) != expected_file_sha256:
         raise ValueError(f"frozen research asset file hash mismatch: {asset_path}")
     bundle = read_json(asset_path)
@@ -47,7 +43,9 @@ def load_source_asset(
     return bundle
 
 
-def build_production_bundle(source_path: Path, source_bundle: dict[str, Any]) -> dict[str, Any]:
+def build_production_bundle(
+    source_path: Path, source_bundle: dict[str, Any]
+) -> dict[str, Any]:
     source_assets = source_bundle["assets"]
     method = source_assets["methods"][METHOD_ID]["intensities"]["strong"]
     assets = {
@@ -81,9 +79,7 @@ def parse_args() -> argparse.Namespace:
         description="Export the frozen content-plan style method as a production asset."
     )
     parser.add_argument("--source-asset", type=Path, default=DEFAULT_SOURCE_ASSET)
-    parser.add_argument(
-        "--source-file-sha256", default=DEFAULT_SOURCE_FILE_SHA256
-    )
+    parser.add_argument("--source-file-sha256", default=DEFAULT_SOURCE_FILE_SHA256)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--overwrite", action="store_true")
     return parser.parse_args()
@@ -100,7 +96,9 @@ def main() -> int:
     if output.exists() and not args.overwrite:
         existing = read_json(output)
         if existing != bundle:
-            raise FileExistsError(f"production asset already exists with different content: {output}")
+            raise FileExistsError(
+                f"production asset already exists with different content: {output}"
+            )
     else:
         write_json(output, bundle)
     print(

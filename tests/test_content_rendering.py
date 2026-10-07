@@ -3,10 +3,10 @@ from __future__ import annotations
 import unittest
 
 from lxml import etree as ET
-
-from src.content.xhtml import read_xhtml
-from src.epub.xhtml import render_blocks
 from notion_books import from_markdown, text_blocks, to_markdown
+
+from src.epub.xhtml import render_blocks
+from src.inputs.html import read_html_blocks
 
 
 class ContentTests(unittest.TestCase):
@@ -32,7 +32,7 @@ class ContentTests(unittest.TestCase):
         <p>* * * 是正文</p><p>1. 不是列表</p><p>换行<br/>下一行</p>
         <p></p><h3>（一）</h3><p><em>斜体</em>与普通文字</p>
         </body></html>""".encode()
-        before = read_xhtml(xml, title="第1章 开始")
+        before = read_html_blocks(xml, "chapter.xhtml", {})[1:]
         after = from_markdown(to_markdown(before))
         self.assertEqual(text_blocks(before), text_blocks(after))
         self.assertEqual(after[0]["runs"][1]["styles"], ["bold"])
@@ -40,9 +40,10 @@ class ContentTests(unittest.TestCase):
 
     def test_unknown_source_blocks_stop_instead_of_dropping_text(self):
         with self.assertRaises(ValueError):
-            read_xhtml(
-                b'<html xmlns="http://www.w3.org/1999/xhtml"><body><h2>Title</h2><table/></body></html>',
-                title="Title",
+            read_html_blocks(
+                b'<html xmlns="http://www.w3.org/1999/xhtml"><body><h2>Title</h2><video>Unsupported content</video></body></html>',
+                "chapter.xhtml",
+                {},
             )
         with self.assertRaises(ValueError):
             from_markdown("![Unconverted image](https://example.com/a.png)")
@@ -65,7 +66,7 @@ class ContentTests(unittest.TestCase):
         <p>——本卷完——</p>
         <p style="text-align: center; text-indent: 0;"><strong>（一）</strong></p>
         </body></html>""".encode()
-        original = read_xhtml(xml, title="标题")
+        original = read_html_blocks(xml, "chapter.xhtml", {})[1:]
         blocks = from_markdown(to_markdown(original))
         self.assertEqual(blocks, original)
         self.assertEqual(blocks[0]["alignment"], "center")

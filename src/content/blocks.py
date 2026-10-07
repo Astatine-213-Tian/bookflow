@@ -12,6 +12,8 @@ def content_signature(blocks: list[dict]) -> list[tuple]:
             b["kind"],
             b.get("level", 3) if b["kind"] == "heading" else None,
             b.get("alignment", "left"),
+            b.get("language"),
+            b.get("variant"),
             tuple(
                 (char, tuple(sorted(r["styles"])) if not char.isspace() else ())
                 for r in b["runs"]

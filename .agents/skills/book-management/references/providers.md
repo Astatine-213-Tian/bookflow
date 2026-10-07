@@ -2,7 +2,7 @@
 
 ## Expected File Layout
 
-- Entry point: `src/cli/main.py`, exposed as `uv run book-to-epub`.
+- Entry point: `src/cli/ingest.py`, exposed as `uv run book-ingest`.
 - Registry: `src/crawler/registry.py`.
 - Parser modules: `src/crawler/providers/<site>/parser.py`.
 - Search modules: `src/crawler/providers/<site>/search.py`.
@@ -174,7 +174,7 @@ Convert after parsing and before source preparation.
 Run at least:
 
 ```bash
-uv run book-to-epub --list-parsers
+uv run book-ingest --list-parsers
 uv run python -m compileall -q src
 ```
 

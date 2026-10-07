@@ -6,21 +6,17 @@ import hashlib
 import html
 import json
 import re
-import sys
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
 
-
 from experiments.shared.paths import RESEARCH_ROOT
-
 
 REPO_ROOT = RESEARCH_ROOT
 
-from src.crawler.snapshot import write_json  # noqa: E402
-
+from src.runtime.files import write_json  # noqa: E402
 
 REFUSAL_RE = re.compile(
     r"抱歉|无法(?:完成|提供|翻译)|I can.?t|I cannot|As an AI|作为.{0,8}AI|```|"
@@ -98,13 +94,17 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def audit(*, epub_path: Path, snapshot_dir: Path, style_run_dir: Path) -> dict[str, Any]:
+def audit(
+    *, epub_path: Path, snapshot_dir: Path, style_run_dir: Path
+) -> dict[str, Any]:
     failures: list[str] = []
     manifest = read_json(snapshot_dir / "manifest.json")
     chapters = list(manifest.get("chapters") or [])
     repair_path = style_run_dir / "audits/independent_semantic_repairs.v1.json"
     repair_spec = read_json(repair_path) if repair_path.exists() else {"repairs": []}
-    repair_texts = [str(row["replacement_zh"]) for row in repair_spec.get("repairs") or []]
+    repair_texts = [
+        str(row["replacement_zh"]) for row in repair_spec.get("repairs") or []
+    ]
 
     chapter_reports: list[dict[str, Any]] = []
     all_zh: list[str] = []
@@ -149,7 +149,9 @@ def audit(*, epub_path: Path, snapshot_dir: Path, style_run_dir: Path) -> dict[s
                 title = ""
             else:
                 root = ElementTree.fromstring(archive.read(member))
-                title_nodes = [node for node in root.iter() if local_name(node.tag) == "h2"]
+                title_nodes = [
+                    node for node in root.iter() if local_name(node.tag) == "h2"
+                ]
                 title = element_text(title_nodes[0]) if title_nodes else ""
                 observed = [
                     element_text(node)
@@ -190,14 +192,10 @@ def audit(*, epub_path: Path, snapshot_dir: Path, style_run_dir: Path) -> dict[s
             f"chap_01_{number:03d}.xhtml" for number in range(1, len(chapters) + 1)
         }
         nav_chapters = {
-            href
-            for href in nav_hrefs
-            if re.fullmatch(r"chap_01_\d{3}\.xhtml", href)
+            href for href in nav_hrefs if re.fullmatch(r"chap_01_\d{3}\.xhtml", href)
         }
         if nav_chapters != expected_chapter_targets:
-            failures.append(
-                "nav chapter targets do not match source chapters"
-            )
+            failures.append("nav chapter targets do not match source chapters")
 
         ncx_root = ElementTree.fromstring(archive.read("EPUB/toc.ncx"))
         ncx_sources = [
@@ -206,14 +204,10 @@ def audit(*, epub_path: Path, snapshot_dir: Path, style_run_dir: Path) -> dict[s
             if local_name(node.tag) == "content"
         ]
         ncx_chapters = {
-            src
-            for src in ncx_sources
-            if re.fullmatch(r"chap_01_\d{3}\.xhtml", src)
+            src for src in ncx_sources if re.fullmatch(r"chap_01_\d{3}\.xhtml", src)
         }
         if ncx_chapters != expected_chapter_targets:
-            failures.append(
-                "NCX chapter targets do not match source chapters"
-            )
+            failures.append("NCX chapter targets do not match source chapters")
 
         opf_text = archive.read("EPUB/content.opf").decode("utf-8", errors="replace")
         if html.escape(str(manifest["title"])) not in opf_text:
@@ -227,7 +221,9 @@ def audit(*, epub_path: Path, snapshot_dir: Path, style_run_dir: Path) -> dict[s
         failures.append(f"refusal/JSON residue found: {residue_hits}")
     missing_repairs = [text for text in repair_texts if text not in all_zh]
     if missing_repairs:
-        failures.append(f"missing independently repaired paragraphs: {len(missing_repairs)}")
+        failures.append(
+            f"missing independently repaired paragraphs: {len(missing_repairs)}"
+        )
 
     return {
         "schema_version": 1,
