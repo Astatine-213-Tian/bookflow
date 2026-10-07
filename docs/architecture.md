@@ -1,9 +1,7 @@
 # Architecture
 
-A task can begin with a title, a known URL, local files, or an existing book that
-needs a correction. All paths converge on the same book JSON. This is a personal
-CLI tool: no workflow engine, service layer, compatibility facade or second
-content format is required.
+Acquisition, local imports, translation and corrections share one book JSON.
+CLI workflows compose the modules below as ordinary functions.
 
 ```mermaid
 flowchart LR
@@ -29,11 +27,8 @@ flowchart LR
     Current --> P
 ```
 
-These are six logical responsibilities, not six mandatory sequential steps.
-The workflow composes ordinary functions. A correction reads current content,
-checks the target fingerprint and normalizes only its replacement. Translation
-retains its method-specific QA artifacts but reads and produces the same content
-JSON as imports.
+Corrections check the current fingerprint and normalize only the replacement.
+Translation keeps method-specific QA artifacts alongside the shared content JSON.
 
 | Responsibility | Modules under `src/` | Public seam |
 | --- | --- | --- |
@@ -61,7 +56,7 @@ copy of the content; `book-notion export` strips that transport state.
 The source JSON is the reusable intermediate output. An EPUB is a destination,
 not a mandatory preparation artifact. EPUB 2, EPUB 3, downloaded editions and
 existing local EPUBs all use `inputs/epub.py`. Ambiguous spine/navigation coverage
-is resolved by an exhaustive reviewed range map, not by a second legacy parser.
+requires an exhaustive reviewed range map.
 Images and irregular text can be parsed in an agent session into the same schema;
 see the [image workflow](../.agents/skills/book-management/references/image-transcription.md).
 
@@ -143,18 +138,17 @@ covers are thumbnails, with no separate reading page.
 and XHTML/CSS rendering shared with CMS. Local ZIP/navigation/metadata packaging
 remains in `epub/`; `notion/content.py` projects the app's book model and persists
 write plans. Official MCP retains discovery, linked views, metadata and manual
-chapter order. Body reads/writes require `NOTION_API_TOKEN`, with no Markdown or
-browser anchor discovery. Ordinary internal links target chapter/extra starts;
+chapter order. Body reads/writes require `NOTION_API_TOKEN`. Ordinary internal
+links target chapter/extra starts;
 unsupported paragraph targets fail before upload. Shared readback reconstructs
 notes without checkpoints and verifies real destinations before removing old blocks.
 
 [CMS ADR-0003](https://github.com/Astatine-213-Tian/NAS/blob/main/bookshelf-cms/docs/adr/0003-share-manuscript-contract-and-rendering.md)
 records this boundary. Shared releases and both consumer pins move together.
 
-Notion covers use the API when configured, otherwise the maintained
-[browser cover procedure](../.agents/skills/book-management/references/notion-cover.md).
-Content progress and pending cover work are separate, so retries do not recreate
-chapters. Completion requires readback of the prepared cover bytes.
+Notion covers use the REST File Upload API and independent byte readback.
+Pending browser cover tasks follow the [cover procedure](../.agents/skills/book-management/references/notion-cover.md).
+Cover recovery is separate from content progress, so retries preserve chapters.
 
 ## Maintained commands
 
@@ -169,14 +163,8 @@ chapters. Completion requires readback of the prepared cover bytes.
 | Translate and verify | `book-translate prepare`, `scene-positive`, `validate`, `transfer-style`, `build-epub` |
 | Repair an existing archive explicitly | `book-normalize`, `book-enrich-metadata` |
 
-Removed: `book-to-epub`, the legacy EPUB preparation workflow, render-to-parse
-preparation, raw crawler TXT export, the crawler-specific manifest/chapter
-snapshot format and the separate bilingual EPUB writer. Existing generated
-artifacts remain untouched; new runs use the shared contract. Do not reintroduce
-old-format adapters merely to make historical run scripts work.
-Historical translation baselines must first be extracted/reviewed into shared
-source JSON with matching chapter identities and paragraph coverage; the old
-snapshot directory is not a valid input to the new translation commands.
+Translation baselines use shared source JSON with matching chapter identities
+and paragraph coverage.
 
 `tests/test_architecture.py` enforces dependency direction. Fixture tests cover
 collection/preparation/output, fragment EPUBs, rich text, normalization rules,

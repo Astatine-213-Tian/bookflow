@@ -124,13 +124,17 @@ uv run book-notion resume --state generated/notion_cms_sources/<来源摘要>/im
 `src/workflows/ingest.py` 决定输出目的地；本地输出调用 `src/epub/writer.py`，不经 Notion。
 模块边界见[架构说明](architecture.md)。
 
-正文和番外使用同一组块和渲染规则。保持现有 CSS：正文行高 `1.7`、段间距 `0.3em`，
-正文内 H3 为 `1.1em`。标题级别和对齐独立；居中用三列中间列存内容、两侧留空，
-右对齐用最右列。粗斜体、下划线、删除线、段内换行、空段、引用和分隔线保持语义。
-渲染只解释排版属性，不根据「全文完」或其他具体文字推断格式。
-引用使用左边框、内缩和浅色背景；超链接、脚注及回链使用深红褐色 `#570E05`。
-可运行 `mise exec -- uv run --locked notion-books preview --output generated/format-preview`，
-打开生成的 `index.html` 查看共享渲染器的格式示例。
+正文和番外使用同一套共享块与渲染规则；格式由显式属性决定，不根据正文猜测。
+Notion 用三列中的唯一非空列表示居中或右对齐；这不是任意多栏布局。
+支持范围以 [notion-books 内容契约](https://github.com/Astatine-213-Tian/notion-books#content-contract)
+为准，链接与脚注字段见 [content-json.md](content-json.md#hyperlinks-and-footnotes)。
+
+用生产渲染器预览标题、引用、链接和脚注：
+
+```bash
+mise exec -- uv run --locked notion-books preview --output generated/format-preview
+open generated/format-preview/index.html
+```
 
 平铺编号条目保存为带字面量 `1. `、`2. ` 前缀的 paragraph。REST 回读保留文本、
 格式和段落边界；原生列表及其他未支持块在读取时明确拒绝。
@@ -155,7 +159,7 @@ verifying the uploaded content and preserved page identities.
 上传先保存页面身份及共享库返回的 `content_write` 计划；每次推进最多修改一次，
 随后回读并保存进度。丢失响应时核对远端前后状态，不能盲重试。新块及实际双向链接
 全部验证后才逐个归档旧块。中断可能暂时显示新旧正文，应恢复同一计划；人工并发编辑
-会中止操作。旧版未完成的更新日志需要明确核对，不能作为新版写入计划继续。
+会中止操作；恢复时使用原检查点和写入计划。
 
 同书章节及关联独立番外的首页链接写为 Notion 页面 URL，导出时根据本书内容目录
 恢复为本地链接；内容身份不包含 Notion 页面 ID。

@@ -1,8 +1,7 @@
 # Local input and preparation
 
-All local EPUBs, TXT and agent-created content JSON use the same input and
-preparation path. There is no legacy EPUB mode or intermediate EPUB render.
-Original input files are preserved. Content selection belongs in reviewed data;
+Local EPUBs, TXT and agent-created JSON share one preparation path that preserves
+the original input. Content selection belongs in reviewed data;
 reusable extraction fixes belong in `src/inputs/`.
 
 ```bash

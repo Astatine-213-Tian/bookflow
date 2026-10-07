@@ -27,7 +27,9 @@ local EPUB, a Notion draft, TXT, or any combination of these.
   implement or repair the provider, then resume acquisition if a book output was requested.
   A provider-development-only task ends with its fixture and CLI checks.
 - **Append images or correct part of a chapter:** follow [content-json.md](../../../docs/content-json.md). Read current content, transcribe into the shared schema, then apply an explicit change task with `book-update` or `book-notion update`.
-- **Upload a Notion cover:** follow [notion-cover.md](references/notion-cover.md); use the saved browser task and verify actual uploaded bytes.
+- **Upload or recover a Notion cover:** use the native API and byte readback in
+  [notion-books.md](../../../docs/notion-books.md#封面). For a pending browser task
+  or an explicit browser upload, follow [notion-cover.md](references/notion-cover.md).
 - **Correct existing content, formatting, TOC or metadata:** read
   [formatting.md](references/formatting.md). Edit uploaded content in Notion;
   repair a local archive when requested.

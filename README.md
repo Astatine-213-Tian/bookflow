@@ -12,7 +12,7 @@ Install `uv`, `mise` and `gh`, then follow the
 `notion-books` dependency requires GitHub access and Go at build time; subsequent
 syncs use `mise exec -- uv sync --locked`. Credentials stay in private local state.
 Content validation, REST manuscript access and XHTML rendering use the shared
-`notion-books` contract. See [dependency setup](docs/notion-books.md#安装共享依赖).
+`notion-books` contract.
 
 Browser providers discover Chromium automatically. `BOOKLIB_BROWSER_PATH` can
 select an executable. Patreon manages its own saved login profile; inspect an
@@ -79,8 +79,8 @@ uv run book-notion verify --state generated/notion_cms_sources/RUN/import.json
 
 Official MCP preserves catalog metadata, linked views and manual chapter order.
 Manuscript reads/writes use official REST and require `NOTION_API_TOKEN` with
-access to the destination. Footnote binding uses REST block IDs; browser anchor
-binding is removed. Covers require byte readback. Details: [storage/recovery](docs/notion-books.md),
+access to the destination. Footnotes bind to REST block IDs; covers require
+byte readback. Details: [storage/recovery](docs/notion-books.md),
 [shared extras](docs/fanwai-notion.md) and the [reference contract](docs/content-json.md#hyperlinks-and-footnotes).
 EPUB retains quotes, links and notes; TXT projects them to readable text.
 
@@ -101,7 +101,6 @@ Translation currently targets English → Simplified Chinese. Neutral, author-st
 and direct positive-scene methods retain their existing QA/reuse checks and all
 write structured bilingual content through the ordinary EPUB writer. Follow the
 book configuration and [Eternal Gate workflow](AGENTS.md#eternal-gate-updates).
-Historical generated files are preserved, but new runs use the shared contract.
 
 ## Training and research
 
