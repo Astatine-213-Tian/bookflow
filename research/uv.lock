@@ -411,7 +411,7 @@ requires-dist = [
     { name = "jsonschema", specifier = ">=4.23,<5" },
     { name = "lxml", specifier = "==6.1.0" },
     { name = "mcp", specifier = "==1.26.0" },
-    { name = "notion-books", git = "https://github.com/Astatine-213-Tian/notion-books?tag=v0.6.0" },
+    { name = "notion-books", git = "https://github.com/Astatine-213-Tian/notion-books?tag=v0.7.0" },
     { name = "opencc-python-reimplemented", specifier = "==0.1.7" },
     { name = "pillow", specifier = ">=11.3,<13" },
     { name = "referencing", specifier = ">=0.36,<1" },
@@ -656,8 +656,8 @@ wheels = [
 
 [[package]]
 name = "notion-books"
-version = "0.6.0"
-source = { git = "https://github.com/Astatine-213-Tian/notion-books?tag=v0.6.0#0aca5a7feef476a113ff3aa658b0829f39a06130" }
+version = "0.7.0"
+source = { git = "https://github.com/Astatine-213-Tian/notion-books?tag=v0.7.0#b7c2101b411552fca2e0715c5b06ed7c8790b816" }
 
 [[package]]
 name = "numpy"

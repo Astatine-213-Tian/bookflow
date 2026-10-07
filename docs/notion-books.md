@@ -128,6 +128,9 @@ uv run book-notion resume --state generated/notion_cms_sources/<来源摘要>/im
 正文内 H3 为 `1.1em`。标题级别和对齐独立；居中用三列中间列存内容、两侧留空，
 右对齐用最右列。粗斜体、下划线、删除线、段内换行、空段、引用和分隔线保持语义。
 渲染只解释排版属性，不根据「全文完」或其他具体文字推断格式。
+引用使用左边框、内缩和浅色背景；超链接、脚注及回链使用深红褐色 `#570E05`。
+可运行 `mise exec -- uv run --locked notion-books preview --output generated/format-preview`，
+打开生成的 `index.html` 查看共享渲染器的格式示例。
 
 平铺编号条目保存为带字面量 `1. `、`2. ` 前缀的 paragraph。REST 回读保留文本、
 格式和段落边界；原生列表及其他未支持块在读取时明确拒绝。
