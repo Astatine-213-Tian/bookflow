@@ -191,7 +191,7 @@ async def apply_update(state: Path, change: dict, config: dict, *, tools) -> dic
             raise ValueError(f"Concurrent edit: {key}")
         if page.properties[FIELDS["chapter_title"]] != desired["title"]:
             await reader.write_properties(
-                item["page_id"], {FIELDS["chapter_title"]: desired["title"]}
+                page, {FIELDS["chapter_title"]: desired["title"]}
             )
         page = await reader.document(item["page_id"])
         if page.properties[FIELDS["chapter_title"]] != desired[

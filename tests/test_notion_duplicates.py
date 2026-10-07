@@ -97,9 +97,9 @@ class Library:
     async def create_page(self, data_source, properties, **kwargs):
         return await NotionBooks(self).create_page(data_source, properties, **kwargs)
 
-    async def write_properties(self, id, properties):
+    async def write_properties(self, page, properties):
         return await NotionBooks(self, api=self.call_api).write_properties(
-            id, properties
+            page, properties
         )
 
     async def inventory(self, database):
@@ -125,6 +125,9 @@ class Library:
             revision="1",
             fingerprint=content_signature(prose(page["content"])),
             properties=copy.deepcopy(page["properties"]),
+            property_data=(
+                await self.call_api({"method": "GET", "path": "pages/" + id})
+            )["body"]["properties"],
             blocks=prose(page["content"]) if page["content"] else [],
             cover=None,
             cover_known=False,

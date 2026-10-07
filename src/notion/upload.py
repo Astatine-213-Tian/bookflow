@@ -214,7 +214,7 @@ async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
             works = relation_ids(props.get(FIELDS["related_works"]))
             if book["work_id"] not in works:
                 await reader.write_properties(
-                    item["page_id"],
+                    document,
                     {FIELDS["related_works"]: works + [book["work_id"]]},
                 )
         await upload_row(
