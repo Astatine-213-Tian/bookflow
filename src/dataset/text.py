@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from html import unescape
+from itertools import groupby
 from pathlib import Path
 
 SPACE_RE = re.compile(r"[ \t\u3000]+")
@@ -46,17 +47,27 @@ def write_prepared_txt(book: dict, out_path: Path) -> None:
         "作者：" + "、".join(metadata.get("creators") or [metadata["creator"]]),
     ]
 
+    def render_text(block: dict) -> str:
+        if block["kind"] == "divider":
+            return "***"
+        parts = []
+        for (href, role), runs in groupby(
+            block["runs"], key=lambda run: (run.get("href"), run.get("link_role"))
+        ):
+            if role == "backlink":
+                continue
+            text = "".join(run["text"] for run in runs)
+            if href and not role:
+                text += "（" + href + "）"
+            parts.append(text)
+        return "".join(parts).rstrip() if block.get("footnote") else "".join(parts)
+
     def add_chapter(chapter: dict) -> None:
         sections.append(
             "\n".join(
                 [
                     chapter["title"],
-                    *[
-                        "***"
-                        if block["kind"] == "divider"
-                        else "".join(r["text"] for r in block["runs"])
-                        for block in chapter["blocks"]
-                    ],
+                    *[render_text(block) for block in chapter["blocks"]],
                 ]
             )
         )

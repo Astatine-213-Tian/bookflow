@@ -25,6 +25,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Extract EPUB blocks for agent review without normalizing",
     )
     parser.add_argument("--enrich-metadata", action="store_true")
+    parser.add_argument(
+        "--quote-review",
+        type=Path,
+        help="Codex/session decisions for saved quotation candidates",
+    )
+    parser.add_argument(
+        "--scan-quotes",
+        action="store_true",
+        help="Save quotation candidates for a Codex session without preparing outputs",
+    )
     parser.add_argument("--chapter-layout", type=Path)
     parser.add_argument("--chapter-aliases", type=Path)
     parser.add_argument("--official-outline", action="store_true")
@@ -43,12 +53,29 @@ def main(argv: list[str] | None = None) -> int:
             write_json(directory / "inventory.json", inventory)
             print(directory / "inventory.json")
             return 0
+        review = json.loads(args.review.read_text()) if args.review else None
+        if args.scan_quotes:
+            from src.inputs.load import read_input
+            from src.content.quote_review import find_quote_candidates
+
+            edition = read_input(
+                args.source, title=args.title, author=args.author, review=review
+            )
+            write_json(
+                directory / "quote-candidates.json",
+                find_quote_candidates(edition.source, edition.evidence),
+            )
+            print(directory / "quote-candidates.json")
+            return 0
         prepare_file(
             args.source,
             directory,
             title=args.title,
             author=args.author,
-            review=json.loads(args.review.read_text()) if args.review else None,
+            review=review,
+            quote_decisions=json.loads(args.quote_review.read_text())
+            if args.quote_review
+            else None,
             chapter_layout=json.loads(args.chapter_layout.read_text())
             if args.chapter_layout
             else None,

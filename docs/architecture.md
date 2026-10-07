@@ -44,8 +44,8 @@ JSON as imports.
 | Destinations | `epub/`, `notion/`, `dataset/text.py` | EPUB/TXT renderers; Notion upload, current-content export, update/readback |
 | Contracts | `content/book.schema.json`, `content/contract.py` | Strict book and change validation; chapter/block definitions shared by both |
 
-`cli/` parses arguments. `runtime/` contains paths, hashing, atomic JSON files and
-progress. Production never imports `research/`; targeted dataset bookkeeping is
+`cli/` parses arguments. `runtime/` contains paths, hashing, atomic JSON files,
+progress and the read-only Codex CLI transport. Production never imports `research/`; targeted dataset bookkeeping is
 an optional consumer of TXT, selected with `--dataset-root`. Plain TXT output
 does not trigger dataset classification or network metadata lookup.
 
@@ -72,6 +72,19 @@ round-trips through EPUB/Notion. Metadata enrichment fills missing values only;
 explicit overrides and original metadata remain authoritative. Preparation
 caches bind input bytes, rules, implementation and options, and verify cover
 assets on resume. Changing those inputs requires a fresh run directory.
+
+Local file preparation first scans quotation candidates in `content/quote_review.py`;
+`workflows/quote_review.py` runs or reuses fingerprint-bound Codex judgments.
+Only approved block types change. Source CSS and locations stay in evidence;
+the runtime transport does not decide whether a paragraph is a quotation.
+Direct crawler ingestion uses provider-declared structure; save its JSON and
+run `book-prepare` when a separate semantic quotation review is needed.
+
+`inputs/references.py` resolves source destinations into portable anchors before
+preparation. `content/references.py` canonicalizes notes and validates their
+relationships. Visible-text normalization preserves these identities and URLs.
+`content/titles.py` owns volume label rules; `epub/cleanup.py` adapts shared rules
+to explicit archive maintenance without making XML processing part of content.
 
 ## Sources and Patreon
 
@@ -125,6 +138,14 @@ and unsupported directory depth. TXT is the plain-text projection; EPUB retains
 rich formatting and language annotations. Writers never run source cleanup.
 EPUB creation validates ZIP/XML/navigation before atomic installation. Native
 covers are thumbnails, with no separate reading page.
+
+EPUB writes local hyperlinks and semantic notes. Notion writes explicit paired
+note markers, then `notion/references.py` binds real block URLs via the logged-in
+Arc adapter and verifies native destinations as well as recovered content.
+Ordinary internal links are limited to chapter/independent-extra starts; unsupported paragraph
+targets fail before upload. The shared `notion-books` codec recovers identities
+without import checkpoints. Its pending release and consumer-upgrade status are
+tracked in [dependency setup](notion-books.md#安装共享依赖).
 
 Notion covers use the API when configured, otherwise the maintained
 [browser cover procedure](../.agents/skills/book-management/references/notion-cover.md).

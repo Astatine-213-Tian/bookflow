@@ -12,6 +12,7 @@ from zipfile import ZipFile
 from src.content.contract import metadata_defaults
 from src.epub.metadata import _find_opf_member, _package_metadata
 from src.inputs.html import parse_xml, read_html_blocks
+from src.inputs.references import resolve_book_references
 from src.runtime.files import digest
 
 
@@ -20,6 +21,7 @@ class InputBook:
     source: dict
     cover: bytes | None = None
     cover_mime: str = "image/jpeg"
+    evidence: dict | None = None
 
 
 def inventory_epub(path: Path) -> dict:
@@ -70,7 +72,7 @@ def inventory_epub(path: Path) -> dict:
     metadata["subjects"] = list(metadata["subjects"])
     metadata = {key: value for key, value in metadata.items() if value is not None}
     metadata = metadata_defaults(metadata)
-    pages, anchors, titles, identities, roles = {}, {}, {}, {}, {}
+    pages, anchors, titles, identities, roles, block_evidence = {}, {}, {}, {}, {}, {}
     navs = [m for m, n in manifest.values() if "nav" in n.get("properties", "").split()]
     for ref in package.findall("{*}spine/{*}itemref"):
         member, item = manifest[ref.get("idref")]
@@ -90,7 +92,10 @@ def inventory_epub(path: Path) -> dict:
         )
         roles[member] = body.get("data-book-role") if body is not None else None
         found = {}
-        blocks = read_html_blocks(files[member], member, files, anchors=found)
+        block_evidence[member] = {}
+        blocks = read_html_blocks(
+            files[member], member, files, anchors=found, evidence=block_evidence[member]
+        )
         if blocks and all(
             b["kind"] == "image" and b["asset"] == cover_member for b in blocks
         ):
@@ -202,6 +207,7 @@ def inventory_epub(path: Path) -> dict:
         "files": files,
         "identities": identities,
         "roles": roles,
+        "block_evidence": block_evidence,
         "identifier": package.findtext(".//{*}identifier"),
         "cover_member": cover_member,
         "cover_mime": cover_node.get("media-type")
@@ -213,6 +219,7 @@ def inventory_epub(path: Path) -> dict:
 def read_epub_source(path: Path, *, review: dict | None = None) -> InputBook:
     inventory = inventory_epub(path)
     pages, toc = inventory["pages"], inventory["toc"]
+    evidence = {}
     book = {
         "version": 3,
         "identifier": inventory["identifier"]
@@ -225,7 +232,12 @@ def read_epub_source(path: Path, *, review: dict | None = None) -> InputBook:
     }
 
     def chapter(
-        key: str, title: str, blocks: list[dict], role: str = "chapter"
+        key: str,
+        title: str,
+        blocks: list[dict],
+        role: str = "chapter",
+        *,
+        start: int = 0,
     ) -> dict:
         member = key.split("#")[0]
         key = (
@@ -235,6 +247,10 @@ def read_epub_source(path: Path, *, review: dict | None = None) -> InputBook:
         )
         role = role if review is not None else inventory["roles"].get(member) or role
         blocks = copy.deepcopy(blocks)
+        hints = [
+            inventory["block_evidence"].get(member, {}).get(start + i, {})
+            for i in range(len(blocks))
+        ]
         if any(b["kind"] == "image" for b in blocks):
             raise ValueError(
                 f"Body image in {key}; use --review to explicitly omit or transcribe it"
@@ -245,11 +261,13 @@ def read_epub_source(path: Path, *, review: dict | None = None) -> InputBook:
             and "".join(r["text"] for r in blocks[0]["runs"]).strip() == title.strip()
         ):
             blocks.pop(0)
+            hints.pop(0)
         if role == "chapter" and title.strip() == "简介":
             role = "intro"
         if key in book["chapters"] or any(x.get("id") == key for x in book["extras"]):
             raise ValueError(f"Duplicate chapter identity: {key}")
         book["chapters"][key] = {"title": title, "blocks": blocks, "role": role}
+        evidence[key] = hints
         if role == "extra":
             book["chapters"][key]["id"] = key
         return {"member": key}
@@ -292,7 +310,7 @@ def read_epub_source(path: Path, *, review: dict | None = None) -> InputBook:
                     if len(review["pages"][member]) == 1
                     else f"{member}#part-{index + 1}"
                 )
-                node = chapter(key, part["title"], chosen, part["role"])
+                node = chapter(key, part["title"], chosen, part["role"], start=start)
                 if part["role"] == "extra":
                     book["extras"].append(book["chapters"].pop(node["member"]))
                     continue
@@ -371,7 +389,7 @@ def read_epub_source(path: Path, *, review: dict | None = None) -> InputBook:
                         "#" + n["fragment"] if n.get("fragment") else ""
                     )
                     a, b = ranges[key]
-                    node = chapter(key, n["title"], pages[n["member"]][a:b])
+                    node = chapter(key, n["title"], pages[n["member"]][a:b], start=a)
                     if book["chapters"][node["member"]]["role"] == "extra":
                         book["extras"].append(book["chapters"].pop(node["member"]))
                     else:
@@ -379,9 +397,25 @@ def read_epub_source(path: Path, *, review: dict | None = None) -> InputBook:
             return output
 
         book["sections"] = convert(toc)
+    for ch in [*book["chapters"].values(), *book["extras"]]:
+        for b in ch["blocks"]:
+            for run in b["runs"]:
+                overrides = (review or {}).get("link_overrides", {})
+                if run.get("href") in overrides:
+                    replacement = overrides[run["href"]]
+                    if not replacement["reason"]:
+                        raise ValueError("Link override requires source evidence")
+                    if replacement["href"] is None:
+                        run.pop("href")
+                        run.pop("link_role", None)
+                    else:
+                        run["href"] = replacement["href"]
+    resolve_book_references(book, inventory)
+    evidence["reference_repairs"] = inventory.get("reference_repairs", [])
     cover_member = inventory["cover_member"]
     return InputBook(
         book,
         inventory["files"][cover_member] if cover_member else None,
         inventory["cover_mime"],
+        evidence,
     )

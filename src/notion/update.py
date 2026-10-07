@@ -7,12 +7,19 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
-from notion_books import FIELDS, NotionBooks, from_markdown, to_markdown
+from notion_books import FIELDS, NotionBooks, to_markdown
 
 from src.content.blocks import content_signature
 from src.content.changes import apply_changes, content_hash
 from src.content.contract import SCHEMA, validate_book, validate_change
-from src.notion.capabilities import validate_notion_content
+from src.notion.capabilities import read_content, validate_notion_content
+from src.notion.references import (
+    plain_references,
+    finish_references,
+    expected_content,
+    localize_chapter_links,
+    checkpoint_page_ids,
+)
 from src.notion.cms import STORAGE
 from src.notion.upload import source_digest, upload_draft
 from src.runtime.files import write_json
@@ -49,7 +56,7 @@ async def read_current(checkpoint: dict, *, tools, allow_pending: bool = False) 
             raise ValueError("Complete or recover the import before editing")
         page = await reader.document(row["page_id"])
         chapter["title"] = page.properties[FIELDS["chapter_title"]]
-        chapter["blocks"] = from_markdown(page.markdown)
+        chapter["blocks"] = read_content(page.markdown)
     for index, chapter in enumerate(book["extras"]):
         row = checkpoint["extras"][index]
         if not row.get("page_id"):
@@ -58,7 +65,8 @@ async def read_current(checkpoint: dict, *, tools, allow_pending: bool = False) 
             raise ValueError("Complete or recover the extras import first")
         page = await reader.document(row["page_id"])
         chapter["title"] = page.properties[FIELDS["extra_title"]]
-        chapter["blocks"] = from_markdown(page.markdown)
+        chapter["blocks"] = read_content(page.markdown)
+    localize_chapter_links(book, checkpoint_page_ids(checkpoint))
     validate_book(book)
     return book
 
@@ -127,6 +135,7 @@ async def apply_update(state: Path, change: dict, config: dict, *, tools) -> dic
         } and content_signature(actual["blocks"]) in [
             content_signature(before["blocks"]),
             content_signature(after["blocks"]),
+            content_signature(plain_references(after["blocks"])),
         ]
 
     for op in replacements:
@@ -139,6 +148,13 @@ async def apply_update(state: Path, change: dict, config: dict, *, tools) -> dic
             raise ValueError(
                 f"Notion chapter changed since the task was prepared: {key}"
             )
+
+    def page_content(page, key):
+        scope = copy.deepcopy(current)
+        scope["chapters"][key]["blocks"] = read_content(page.markdown)
+        localize_chapter_links(scope, checkpoint_page_ids(checkpoint))
+        return scope["chapters"][key]["blocks"]
+
     for op in replacements:
         key = op["chapter_id"]
         desired = candidate["chapters"][key]
@@ -146,23 +162,28 @@ async def apply_update(state: Path, change: dict, config: dict, *, tools) -> dic
         page = await reader.document(page_id)
         actual = {
             "title": page.properties[FIELDS["chapter_title"]],
-            "blocks": from_markdown(page.markdown),
+            "blocks": page_content(page, key),
         }
         if not compatible(actual, journal["before"]["chapters"][key], desired):
             raise ValueError(f"Concurrent edit: {key}")
         if content_signature(actual["blocks"]) != content_signature(desired["blocks"]):
             await reader.replace_content(
                 page_id,
-                replace(page, markdown=to_markdown(desired["blocks"]), blocks=None),
+                replace(
+                    page,
+                    markdown=to_markdown(plain_references(desired["blocks"])),
+                    blocks=None,
+                ),
             )
         if actual["title"] != desired["title"]:
             page = await reader.document(page_id)
             if page.properties[FIELDS["chapter_title"]] not in {
                 actual["title"],
                 desired["title"],
-            } or content_signature(from_markdown(page.markdown)) != content_signature(
-                desired["blocks"]
-            ):
+            } or content_signature(page_content(page, key)) not in [
+                content_signature(desired["blocks"]),
+                content_signature(plain_references(desired["blocks"])),
+            ]:
                 raise ValueError(f"Concurrent edit: {key}")
             await reader.write_properties(
                 page_id, {FIELDS["chapter_title"]: desired["title"]}
@@ -170,9 +191,10 @@ async def apply_update(state: Path, change: dict, config: dict, *, tools) -> dic
         actual = await reader.document(page_id)
         if actual.properties[FIELDS["chapter_title"]] != desired[
             "title"
-        ] or content_signature(from_markdown(actual.markdown)) != content_signature(
-            desired["blocks"]
-        ):
+        ] or content_signature(page_content(actual, key)) not in [
+            content_signature(desired["blocks"]),
+            content_signature(plain_references(desired["blocks"])),
+        ]:
             raise ValueError(f"Notion update readback differs: {key}")
         if key not in journal["written"]:
             journal["written"].append(key)
@@ -200,6 +222,15 @@ async def apply_update(state: Path, change: dict, config: dict, *, tools) -> dic
     write_json(state, checkpoint)
     if additions:
         await upload_draft(checkpoint, state, config, tools=tools)
+    if not additions:
+        await finish_references(checkpoint, state, tools=tools)
+    for op in replacements:
+        item = checkpoint["chapters"][op["chapter_id"]]
+        page = await reader.document(item["page_id"])
+        if content_signature(read_content(page.markdown)) != content_signature(
+            expected_content(item["blocks"], checkpoint.get("reference_bindings", {}))
+        ):
+            raise ValueError("Final reference readback differs")
     checkpoint["source_sha256"] = source_digest(content_from_checkpoint(checkpoint))
     write_json(state, checkpoint)
     journal["complete"] = True

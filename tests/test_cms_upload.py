@@ -352,7 +352,7 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
                 ["简介", "第1章", "第2章"],
             )
             self.assertEqual(
-                created[rows["main"][1]["id"]]["properties"]["所属标题"], "卷一"
+                created[rows["main"][1]["id"]]["properties"]["所属标题"], "卷1"
             )
             count = len(calls)
             created[rows["main"][1]["id"]]["content"] = "User edit after upload"

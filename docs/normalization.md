@@ -1,294 +1,157 @@
-# Book Formatting and EPUB Repair
+# 内容规范化规则
 
-## Source Text Normalization
+本文是内容 normalization 的唯一规则来源，适用于 EPUB、TXT、爬虫、图片转录和译文。
+各输入先转为共享 JSON，再清洗；Notion、EPUB、TXT writer 只渲染已确定的结构。
+保留原始来源和完整正文。不猜字、不改写、不凭格式删除有意义的重复段落。
+用户明确指定的本次范围和格式优先；既有 Notion 内容以新鲜回读为准，只应用审查后的差异。
 
-Apply the same text formatting before Notion, EPUB or TXT output regardless of
-source, including Codex image transcriptions. Keep raw source evidence separately;
-use a formatted copy for output unless the user explicitly requests verbatim text.
-Use `src/content/normalize.py` for shared JSON preparation; do not implement
-separate quote or spacing rules for images.
+## 范围与规则优先级
 
-- Correct contextually clear quotation direction, for example `“哦。“` -> `“哦。”`.
-  Review unresolved findings with neighboring paragraphs; preserve valid nested
-  and multi-paragraph quotations and Latin apostrophes.
-- Apply the mixed-width spacing rules below by default, for example `S级` ->
-  `S 级` and `成功率是100%` -> `成功率是 100%`. Keep Chinese punctuation flush.
-- Review the full before/after diff for unintended wording or paragraph changes.
-  Formatting does not authorize guessing words, rewriting prose or correcting
-  uncertain source typos. Rescan after normalization and require an unchanged
-  second pass, then compare the complete output readback with the formatted copy.
-- For existing Notion content, start from a fresh fetch and patch only the
-  reviewed differences; preserve edits made since the original transcription.
+- 通用正文规则先处理字符宽度，再处理标点、引号、空格；标题按下面对应类型处理。
+- **卷名、章名、章内小标题、正文列表是四种不同的字段/结构**，不能用一个编号规则替代。
+  卷名的无空格规则优先于通用中西文空格；小标题和列表规则不影响脚注标记。
+- 链接目标、锚点、脚注身份和样式必须保留；只清洗可见文字，不改 URL 或属性。
+- `variant: original` 的双语原文块保持原样；译文可清洗文字，但不跨对齐段落合并。
+- 搜索、元数据补全、章节选择、卷边界和拆合章不属于 normalization。
+  由[输入审查与书籍维护](local-editions.md)提供明确结构；正文出现“卷一”不等于新增一卷。
 
-## Local Archive Rule
+## 字符、空格与标点
 
-For an explicitly requested local EPUB repair, patch the archive and keep every reader-visible surface in sync:
+- 只把全角拉丁字母和数字转为半角：`ＭＳＮ，ＱＱ` → `MSN，QQ`。
+  不做全局 NFKC；保留中文标点、`①`、`Ⅰ`、`㎏` 等其他字符。
+- 汉字与拉丁字母、希腊字母、阿拉伯数字的直接边界加一个半角空格：
+  `S级` → `S 级`，`仙女座β星系` → `仙女座 β 星系`，`2012年` → `2012 年`。
+  标题的编号标记内部不拆开，卷名的空格另按卷名规则处理。
+- 拉丁词或数字之间的全角空格改为一个普通空格：`NICE　DOGS` → `NICE DOGS`。
+  清除段首排版缩进；保留段内换行，不把词间空格删成连写。
+- 中文标点紧贴相邻文字，去除其旁边多余的排版空格。中文语境的 ASCII 逗号、
+  句号、问号、叹号、冒号、分号及含中文的括号转换为对应中文形式。
+  保留小数、千位分隔、网址、文件扩展名、时间、表情和英文句子的合法标点。
+- 坐标、元组或代码式串保留 ASCII 逗号，其后一个空格：`X337,Y160` → `X337, Y160`。
+  `B-11`、`F+`、`γ-B11`、百分号等 token 内部不插入空格。
+- 中文语境的 ASCII 省略号和连续连字符分别规范为省略号和破折号；保留真实的省略号。
+  合并重复中文逗号，修复 `，。`、`。！`、`。？` 这类明确的句末标点残留。
+- 汉字之间的空格、反斜杠只清除确定的断词/转义残留；短标签、元数据、刻意分隔、
+  多处歧义保留并列入审查。`○` 只在中文数字串中变成 `〇`，独立装饰圆圈不变。
 
-- `EPUB/nav.xhtml`
-- `EPUB/toc.ncx`
-- affected chapter XHTML files
-- `EPUB/content.opf` manifest/spine when adding, deleting, splitting, merging, or moving reading-order files
+## 引号与可疑文本
 
-Before archive surgery, make one overwriteable temp backup per target EPUB under `/private/tmp/epub-creator-from-web-codex-backups/<relative path under books/>` (for example `/private/tmp/epub-creator-from-web-codex-backups/非天夜翔/锦衣卫.epub`), never beside the EPUB; rewrite to a temporary archive, replace atomically, then validate.
+- 中文引文使用方向正确的弯引号。只修复上下文明确的直引号、反向引号和重复引号，
+  例如 `“哦。“` → `“哦。”`；保留嵌套引号、多段引文和英文撇号（如 `I’ll`）。
+- 引号检查按段落连同前后文判断，不凭全章开闭引号总数决定增删。
+- 只自动去除明确匹配的资源群广告残留。网址、账号或“加群”等文本本身不足以删除正文。
+- 乱码、私用字、异常控制符、疑似广告和不明确的断词进入审查报告，不猜测替换。
+  保留 emoji、必要的连接符及 `/(ㄒoㄒ)/~~` 等颜文字。
+- 保留篇末作者的话；其自由文本不参加正文异常筛查，但仍检查独立结构标记。
+  简介保留为独立内容，不把它与第 1 章合并。
 
-## Workflow
+## 卷名与章节标题
 
-For books stored in Notion, follow [the content workflow](notion-books.md):
-edit chapter rows in the owned 正文 database, set their optional 所属标题 and
-preserve the manual 正文 view order.
-Shared independent extras follow [the shared library workflow](fanwai-notion.md).
-Keep one editable body with book relations and independent per-book view order.
+### 卷名
 
-Source preparation identifies content-sensitive formatting before uploading or
-local rendering. Afterward the presentation layer interprets only explicit block
-structure and style. Use H3 at `1.1em` for in-page subheadings, with alignment
-independent of size; Notion centering uses the middle of three columns with empty
-outer columns. Preserve complete prose and paragraph boundaries. Local creation
-embeds a cover thumbnail without a separate cover reading page.
+已确认的卷/父级目录标题使用以下规则，不改变目录层级、章节归属、顺序或稳定 ID：
 
-For explicitly requested local archive repairs:
+- 原文明写的数字卷号统一为 `卷N`，N 为半角阿拉伯数字；有标题时接一个中点 `·`。
+  `卷一 初识`、`第一卷：初识`、`卷１·初识` → `卷1·初识`；`第零卷` → `卷0`。
+- 只有明确的 `卷N` / `第N卷` 编号标记才转换。`续卷`、`中卷`、`上卷`、`终卷`不补号，
+  `2015 年续篇`中的年份也不是卷号。含书名等前缀、不能确定编号边界的标签交输入审查。
+- 所有卷名去掉首尾空白，内部任何连续空白改为一个 `·`，与已有中点合并，避免 `··`。
+  这条空格规则也适用于无编号卷名：`续卷 新的开始` → `续卷·新的开始`，
+  `正文 上（2008）` → `正文·上（2008）`。无副标题的 `卷1` 不加尾点。
+- 不把书名、普通章节标题、正文中的数字或装饰性完结标记当作卷名。
 
-1. Inspect `nav.xhtml`, `toc.ncx`, `content.opf`, and the affected chapter XHTML.
-2. Enrich package metadata with `uv run book-enrich-metadata <epub>` or let
-   `uv run book-normalize <epub>` run it automatically. Use Jinjiang as the
-   authority and KadoKado only after a confirmed Jinjiang miss.
-3. Decide hierarchy from actual chapter titles and source markers, not only parser output.
-4. Patch chapter files first, then rebuild `nav.xhtml` and `toc.ncx` from the intended hierarchy.
-5. If reading order changes, reorder `content.opf` spine to match.
-6. Validate:
-   - `python3 -m zipfile -t books/<author>/<book>.epub`
-   - XML parse `EPUB/nav.xhtml`, `EPUB/toc.ncx`, `EPUB/content.opf`, and changed chapter files
-   - `uv run python src/cli/validate_epub_chapters.py books/<author>/<book>.epub`
+### 章节标题与番外标题
 
-## Hierarchy Rules
+- 生成或修正主章节编号时使用 `第12章 标题`，编号与标题间一个普通空格。
+  排版清洗不重排章节、不补缺号；源文特意保留的中文章号不擅自重编号。
+- 标题中的分隔句点用 `·`，英文逗号按中文标题语境改为 `，`；保护小数、扩展名和省略号。
+- 独立番外章去掉主章节的 `第N章` 前缀；原作明确的 `番外卷` 属于正文卷，保留主章节编号。
+  番外编号用中文数字：`番外 1 飞天猫` → `番外一·飞天猫`，裸标签 `番外十` 不加尾点。
+- `番外：蜜月` → `番外·蜜月`；明确的中秋番外年份补“年”：
+  `2022 中秋番外·游园` → `2022 年中秋番外·游园`。
+  清除单个误留的标题尾部分隔点，保留真实省略号。
+- 已经位于 `番外` 目录下的标题可以去除冗余的开头“番外”，但保留裸 `番外` 和非前缀用法。
+  重复的当前书名仅在来源审查确认后删除；跨书番外中的其他书名保留。
 
-- Treat an author-defined or user-confirmed `番外卷` as part of the main book,
-  separate from standalone `番外`. Preserve its source title and chapter order
-  (for example, `番外卷·万妖殿`), and continue sequential chapter numbering using
-  the EPUB's existing chapter-merging convention. These chapters belong to the
-  main-text workflow, outside the independent fanwai library. When migrating
-  previously managed extras, preserve their complete prose in the destination
-  before retiring obsolete fanwai records and mappings. Do not add permanent
-  per-book sync exceptions.
-- `番外` must be a top-level group.
-- If a source `番外卷...` marker appears in a chapter body, determine its boundary
-  from the source directory and move it into the TOC as a volume heading; remove
-  the redundant body marker without removing prose.
-- Detect trailing `番外` from both TOC labels and chapter body content. Common signals:
-  - everything after final-main markers such as `终章`, `尾声`, `后记`, or body text like `全文完` / `正文完`
-  - chapter titles that start with `番外` or contain obvious extra labels such as `中秋番外`, `特典`, `番外一`
-- If the `番外` boundary is ambiguous after inspecting TOC labels and chapter body markers, stop and confirm the start chapter with the user instead of guessing.
-- Merge consecutive multipart fanwai chapters when they share the same base title and differ only by part suffix, for example `第114章 沧浪之龙（一）`, `第115章 沧浪之龙（二）`, etc. The merged chapter title should drop the part suffix, each original part should be separated by a centered H3 subheading such as `（一）`, `（二）`, and all following numbered chapter titles must be renumbered incrementally across chapter XHTML, nav, and NCX. Use `<h3 style="font-size: 1.1em; text-align: center; text-indent: 0;">（一）</h3>`. For Notion-managed content, use Heading 3 in the middle column of the shared centering structure.
-- `后记` should be top-level and should appear before any `番外` group.
-- `尾声` usually belongs to the last main volume. If the user says it should be top-level, place it before `后记` and before `番外`.
-- `序言` / `序章` / prologue text is chapter-like content, not intro metadata. Treat it like chapter 0: split it into its own top-level chapter before `第1章`, add it to spine/nav/toc, and remove it from `intro.xhtml`.
-- Detect common volume marker forms in intro/chapter content and convert them to TOC hierarchy instead of leaving them as prose:
-  - `卷一·标题`, `卷一：标题`, `卷一 标题`, `卷一标题`
-  - `第一卷·标题`, `第一卷：标题`, `第一卷 标题`
-  - `第零卷`, `序卷`, `终卷`
-  - title-prefixed forms such as `银河咏叹曲卷四 波拉利斯`
-  - Markdown-like forms such as `# 卷二·魔王`
-- Volume groups should be top-level and use Chinese numeral labels, for example `卷一·...`, `第一卷·...`, `第零卷·...`, or `终卷·...`.
-- Volume numbers must use Chinese numerals, for example `卷一`, `第一卷`, `第零卷`, `终卷`; never `卷1` or `第0卷`.
-- If a final volume has a title, prefer `终卷·标题` over a bare title.
-- For special parent sections like `尾声·玉满堂`, make them top-level like a volume when the book already has volume groups and the content below that marker is a numbered chapter. Example: in `我和妲己抢男人`, `尾声·玉满堂` is treated as a volume-like parent because prior content is organized into volumes and the content below it is `第56章 紫霄听道`.
-- Some readers hide non-linked parent headers. For important parent groups such as `番外`, use a linked parent pointing at the first child if needed.
+## 章内结构与空白
 
-## Cleanup Rules
+- 已确定的章内小标题使用 H3（EPUB 为 `1.1em`），大小与对齐独立。
+  编号小标题居中，编号统一为普通中文数字：`（1）` → `（一）`、`2、标题` → `二、标题`；
+  保留括号、标题措辞和标题中其他数字，不改成“壹、贰、叁”。无编号小标题保留明确对齐。
+- 纯数字正文段落只有形成从一开始的连续序列、至少两节且每节有正文，才推断为小标题。
+  孤立数字、相邻数字列表、缺号序列、引文、右对齐日期和双语对齐块不能据此推断。
+- 正文列表仍是普通段落，用 `1. `、`2. `：`１，第一项。` → `1. 第一项。`。
+  自动识别要求从 1 连续编号且至少两项，可夹有续段；保留日期、小数、千位数及孤立编号。
+- 删除章首空段落和编号小标题前后连续空段落，不添加分割线。其他有意义的场景空白、
+  重复段落和已有场景分隔保留。带锚点/脚注身份或双语对齐标记的空块不得静默删除。
+- `作者有话说：` / `作者有话要说：` 独立成段；正文中偶然提到这些词不算标题。
+  明确的错误断段可合并：孤立的闭引号，或逗号结尾后紧接的连续正文。
+  不跨空段、作者的话、场景标记、对齐段落或引用身份边界合并；不能复制或丢掉锚点。
+- 独立 `***` 场景标记居中。明确的装饰性完结标记统一破折号和标题/结束词间的中点，
+  如 `--书名终--` → `——书名·终——`；只改变该标记，不改写普通正文中的“完”“终”。
 
-- Every finished EPUB needs a reader-visible contents page in the spine, not
-  only device navigation metadata. For an EPUB 2 package that has `toc.ncx` but
-  no `nav.xhtml`, create `nav.xhtml` as a real XHTML contents page, register it
-  in the OPF manifest, insert it in the spine before the prologue or first main
-  chapter, and add an OPF guide reference with `type="toc"`. Keep the existing
-  NCX as the EPUB 2 device-navigation source.
-- For EPUB 3 Apple Books compatibility, keep the navigation vocabulary on the
-  canonical literal `epub` prefix: declare
-  `xmlns:epub="http://www.idpf.org/2007/ops"` and use
-  `<nav epub:type="toc">`. Rewrite serializer-generated aliases such as
-  `xmlns:ns1` / `ns1:type`; even though the namespace URI is equivalent XML,
-  Apple Books may render an empty Contents panel for that form.
-- When a flat EPUB 2 NCX has `序章` or `序言` followed by bare main-chapter
-  titles, and every NCX label exactly matches both the linked chapter
-  `<title>` and its first heading, add sequential Arabic prefixes beginning
-  with `第1章 ` after the prologue. Keep the prologue unnumbered and do not
-  number `番外`, `后记`, `尾声`, `终章`, `附录`, or other special sections.
-  If the NCX is nested, the labels are mixed numbered/unnumbered, or the
-  chapter surfaces disagree, report the ambiguity instead of guessing.
-- Center every visible main-chapter and prologue heading. Prefer the book's
-  existing centered heading class; otherwise add a minimal inline
-  `text-align: center; text-indent: 0` style. This affects the visible heading,
-  not ordinary body paragraphs.
-- Remove duplicate book title/author boilerplate from intro chapters, such as `《书名》作者：非天夜翔` or standalone `书名 非天夜翔`.
-- Remove repeated book title lines from intros when they duplicate EPUB metadata or reader excerpt headers.
-- Keep `作者有话说` and `作者有话要说` headings in their own paragraph. If a heading is
-  attached to the end of preceding prose, split it before the heading; never
-  merge a preceding paragraph into an author-note paragraph during structural
-  cleanup. Do not treat incidental prose such as `这里作者有话说 4000` as a heading.
-- Remove standalone volume-start markers from chapter bodies when the volume is represented in TOC, for example `卷一：鸿渐于陆`, `# 卷二·魔王`, `银河咏叹曲卷四 波拉利斯`.
-- After parsing a volume marker, do not leave it in the previous chapter's main body. It may exist as a separate generated volume heading in `nav.xhtml`/`toc.ncx`, but it should not appear as reader body text inside the previous chapter or intro unless the user explicitly wants body volume pages.
-- Do not remove prose that merely mentions a volume, such as `第四卷里...`.
-- Remove `其他番外` or similar navigation-only marker text from chapter bodies when it is not real content.
-- Normalize chapter-title punctuation:
-  - Replace bottom dots `.` with middle dots `·` in visible chapter titles and headings.
-  - Replace English commas `,` with Chinese commas `，` in Chinese visible chapter titles.
-  - Collapse full-width or repeated spaces between `第N章` and title to one normal space.
-  - Ensure there is one and only one normal space after the chapter number marker, for example `第12章 标题`.
-- In standalone `番外` chapter titles, remove the leading `第N章` marker instead of
-  displaying main-text numbering; retain numbering inside `番外卷`. Apply this to chapter XHTML `<title>` and
-  heading text, `nav.xhtml`, and `toc.ncx` together. For example,
-  `第152章 番外一承前启后` becomes `番外一·承前启后`.
-- Separate a numbered `番外` marker from its following title with one middle
-  dot: `番外十一扬帆`, `番外十一 扬帆`, and `番外十一：扬帆` all become
-  `番外十一·扬帆`. Keep a bare numbered label such as `番外四` unchanged,
-  and preserve an existing correct middle dot.
-- Write numbered `番外` markers with Chinese numerals and no intervening
-  space: `番外 1 飞天猫`, `番外1·飞天猫`, and `番外 1·飞天猫` all become
-  `番外一·飞天猫`; a bare `番外 10` becomes `番外十`.
-- In a visible `番外` title, replace a colon immediately after `番外` with a
-  middle dot: `番外：蜜月流水账` becomes `番外·蜜月流水账`, and
-  `2021 年中秋节番外：前年风月满江湖` becomes
-  `2021 年中秋节番外·前年风月满江湖`.
-- In a visible Mid-Autumn `番外` title, write `年` after a four-digit year:
-  `2022 中秋番外·游园` becomes `2022 年中秋番外·游园`. Apply this only
-  when the year is immediately followed by `中秋番外` or `中秋节番外`.
-- Remove a single stray terminal separator from a `番外` title instead of
-  converting or preserving it, for example
-  `2018 年戊戌年中秋番外·啷里个啷.` and
-  `2018 年戊戌年中秋番外·啷里个啷·` both become
-  `2018 年戊戌年中秋番外·啷里个啷`. Preserve a real ellipsis.
-- When normalizing any visible chapter title, update all three places together: chapter XHTML `<title>`/heading, `EPUB/nav.xhtml`, and `EPUB/toc.ncx`. Do not fix only nav or only toc.
-- When the user asks for comma cleanup in the book content, normalize prose too: replace ASCII commas with Chinese commas when the comma is adjacent to Chinese characters or Chinese quotation/bracket punctuation, for example `说道,“` -> `说道，“` and `躺,迟小多` -> `躺，迟小多`.
-- Collapse repeated Chinese commas such as `，，` to a single `，`.
-- In fanwai chapter titles, remove the current book title if it repeats, for example `相见欢番外...` -> `番外...`. Preserve other referenced book names in crossover titles.
-- Prettify standalone decorative ending markers when the boundary is obvious: insert middle dots between the book, volume, or section title and terminal words such as `终`, `完`, `正文完`, or `全文完`. Restore missing volume-title separators when the source collapsed them, for example `卷四羽觞醉月终` -> `卷四·羽觞醉月·终`. Normalize marker wrappers made from any number of ASCII hyphens to exactly `——` on each side, for example `--相见欢终--` -> `——相见欢·终——` and `-----卷四羽觞醉月终-----` -> `——卷四·羽觞醉月·终——`. Preserve existing correct separators, for example `——卷四·羽觞醉月·终——`. Center the marker paragraph in the chapter XHTML, using the book's existing centered paragraph style if available or a minimal `text-align: center` style if not. Patch body text only unless the marker also appears in `nav.xhtml` or `toc.ncx`. If the intended boundary is ambiguous, confirm before changing it.
+## 链接、脚注与引用块
 
-## Metadata Enrichment Rules
+- 保留超链接显示文字、样式及目标；正文引用 `[1]` 与章末 `[1] 注释 ↩1` 明确配对。
+  多次引用保留各自回链。结构由共享 JSON 表达，见[内容契约](content-json.md)。
+- 引文不是代码块。明确的 quote 保留；仅凭字体、缩进或引号无法确定时，先筛选候选，
+  再由 Codex 审查。只有高置信度结论能改变块类型，不改原文，见[引用审查](local-editions.md#review-possible-quotations)。
+- Notion 的对齐和脚注往返表示见[Notion 排版约定](notion-books.md#排版约定)。
+  渲染器不再靠匹配正文猜结构；TXT 是保留链接文字/URL 和注释内容的纯文本投影。
 
-- Inspect the live `EPUB/content.opf` first. Treat `<dc:date>` as the
-  publication date and `dcterms:modified` as the archive edit timestamp.
-- Search Jinjiang by exact `dc:creator`, match the exact `dc:title` on that
-  author catalog, and use the established Jinjiang publication date by default.
-  A verified Jinjiang date replaces a conflicting local or KadoKado date.
-- Use the same lookup's `table_of_contents` for Jinjiang volume names and
-  chapter boundaries. For local EPUBs, obtain it with
-  `book-enrich-metadata <epub> --check --report <path>`; prepared crawls retain
-  it in `metadata_report`. Volume rows come from the directory's HTML
-  structure (`.volumnfont`), regardless of their wording. Compare every
-  returned group and its chapter identities/order with the selected edition
-  before assigning Notion `所属标题` or rebuilding navigation. Record edition
-  mismatches and `table_of_contents_error` explicitly; a metadata match alone
-  does not verify the volume structure.
-- Use KadoKado only when the Jinjiang author/title lookup completed without a
-  defensible match. Do not use KadoKado merely because Jinjiang was temporarily
-  unreachable.
-- Write official title, creator, `zh-CN`, publication date, source URL,
-  description, and ordered subjects. Keep subjects in the order `耽美`, the
-  Jinjiang theme/genre, then the Jinjiang time-area category.
-- Use the `〖...〗` label attached to a Jinjiang work as its EPUB 3 series name,
-  with its position among works bearing that same label. Write
-  `belongs-to-collection`, `collection-type=series`, and `group-position`.
-- For a locked Jinjiang row, accept a unique masked-title match under the
-  verified author, use its published date/source, preserve local description
-  and subjects when the source hides them, and report ambiguity instead of
-  guessing.
-- Patch only `EPUB/content.opf`, refresh `dcterms:modified`, preserve `mimetype`
-  as the first uncompressed ZIP member, and make the rewrite idempotent.
+## 实现与验收
 
-## Mixed-Width Spacing Rules
+- `src/content/normalize.py` 处理共享块；`titles.py` 处理卷名；`normalization.py` 处理文字与可疑项。
+  `src/epub/cleanup.py` 只处理既有档案的 XHTML 适配，调用同一套文字和卷名规则。
+- 每次改规则同步修改实现和下面的可执行示例，并更新 `normalize.py` 的 `RULES_SHA256`。
+  Markdown 是规则来源；Python 是受测试约束的实现，不在运行时从文字自动生成代码。
+- 验证完整前后差异、原文/链接身份保留和幂等性（第二次清洗不再改变内容）。
+  写入后回读完整正文、结构、标题和链接；可疑项须记录处理或保留理由。
+- 目录移动、拆合章、出版信息查证及原地 EPUB 修复按[书籍维护流程](local-editions.md#existing-epub-maintenance)执行，
+  不把这些操作隐含在普通导入的文字清洗中。
 
-- During source preparation or a requested spacing repair, scan all target visible
-  text for the complete defect family, not only the cited example. For EPUBs,
-  inspect parsed text across the whole requested archive scope.
-- Convert full-width Latin letters `Ａ–Ｚ` / `ａ–ｚ` and digits `０–９` to
-  ASCII before applying spacing rules: `ＭＳＮ，ＱＱ` -> `MSN，QQ`,
-  `２０１２年` -> `2012 年`. Apply this to visible text, including character
-  references and text split by inline emphasis. Preserve Chinese punctuation,
-  other compatibility symbols such as `①`, `Ⅰ`, and `㎏`, and markup attributes;
-  use the targeted width conversion rather than whole-text NFKC normalization.
-- Insert exactly one ASCII space at a direct boundary between a Han character and a half-width Latin letter, Greek letter, or Arabic digit in either direction, for example:
-  - `主星VCU07` -> `主星 VCU07`
-  - `E7头顶` -> `E7 头顶`
-  - `仙女座β星系` -> `仙女座 β 星系`
-  - `光纪元20103年` -> `光纪元 20103 年`
-- Keep full-width Chinese punctuation flush with the adjacent token, for example `主星 VCU07。”`; do not insert a space before `。`, `，`, `”`, or similar punctuation.
-- Preserve punctuation inside half-width tokens such as `B-11`, `F+`, and `γ-B11`. Do not force spaces around hyphens, operators, percent signs, tildes, or other ASCII punctuation merely because they touch Chinese text.
-- Preserve ASCII commas in coordinate, tuple, and code-like runs, but ensure exactly one space after each comma: `X337,Y160,Z19 γ-B11` -> `X337, Y160, Z19 γ-B11` and `(0,0,0)` -> `(0, 0, 0)`. Continue to convert an ASCII comma to `，` when it is instead acting as punctuation in Chinese prose.
-- For a body-text request, default to chapter paragraph text. If a mixed-width defect occurs in a visible chapter title, update the chapter XHTML title/heading, `nav.xhtml`, and `toc.ncx` together.
-- Parse XHTML and inspect text nodes or element text; do not scan raw archive bytes or markup. Preserve inline elements and edit their text/tail nodes without flattening the structure.
-- Before rewriting, record match counts and examples by pattern. After rewriting, rerun the same parsed-text audit and require zero direct Han/half-width alphanumeric boundaries and zero ASCII commas without a following space in coordinate/code-like runs.
-
-## Numbering Repairs
-
-- If the validator reports duplicate numbered chapters and the first duplicate fills a gap, rename the first duplicate to the missing number across chapter XHTML, nav, and NCX.
-- Chapter numbers should stay Arabic in generated titles, for example `第131章 标题`, not `第一百三十一章 标题`, unless the source intentionally uses Chinese numerals and the user asks to preserve it.
-- Do not renumber `尾声`, `后记`, or parent group headers unless the user explicitly asks.
-- Treat validator warnings from embedded problem headings or source quirks as separate from TOC structure; inspect the chapter text before changing.
-
-## Implementation Notes
-
-Prefer a short Python `zipfile` plus `xml.etree.ElementTree` patch script. Avoid broad regex rewrites of NCX; parse XML and rebuild nav points where possible. Keep namespace registration stable so EPUB files remain parseable.
-
-All inputs and translated output use `src/content/` before writing. Only
-explicit existing-archive maintenance calls `src/epub/maintenance.py`; prepared
-renderers never run text cleanup. For archive maintenance,
-its required order is:
-
-1. Run Jinjiang-first metadata enrichment and record the source, publication
-   date, and changed OPF fields in the normalization report.
-2. Apply deterministic punctuation, spacing, quote-direction, ad-removal, and
-   other context-safe normalization rules.
-3. Rescan the normalized XHTML rather than the raw source. Quote findings must
-   identify the exact paragraph plus neighboring context; do not use only
-   chapter-wide quote totals. Ignore Latin apostrophes such as `I’ll`, and
-   accept structurally valid multi-paragraph quotations.
-   - Keep trailing `作者有话说` / `作者有话要说` content, but exclude that
-     free-form tail from prose anomaly, quote, spacing, ad, and suspicious-
-     character review. Continue scanning it for standalone structural markers
-     such as `番外卷`.
-   - Do not report Unicode emoji or recognized 颜文字 components as bad
-     characters. In particular, preserve emoji joiners and Bopomofo-shaped
-     glyphs inside forms such as `/(ㄒoㄒ)/~~` or `ㄒ_____ㄒ`; still report the
-     same unusual characters when they occur in ordinary prose.
-4. Automatically invoke a read-only Codex review for every remaining
-   `requires_codex_review` finding. Use source lookup for suspicious
-   characters or corruption, following the repository browser/session rules.
-5. Apply only exact, unique, high-confidence text replacements. Do not let the
-   review stage perform broad prose rewrites or direct structural archive edits.
-6. Normalize and validate again, and write the complete metadata changes,
-   automatic fixes,
-   review decisions, kept findings, and genuinely unresolved cases to the
-   visible report under `reports/normalization/` for books under `books/`.
-
-When reporting completion, list changed books, hierarchy changes, and validation results. Mention any remaining validator warnings as source-numbering quirks only after inspecting them.
-
-## Shared JSON implementation contract
-
-This document is the source of truth for content normalization. Its implementation
-is `src/content/normalize.py` (block structure) and `src/content/normalization.py`
-(text rules and uncertain-content findings). EPUB archive repair consumes the
-same text rules when archive repair is explicitly requested; ordinary ingestion
-never builds an intermediate EPUB. Every destination receives prepared blocks.
-
-When editing a rule, update its implementation and the examples below in the
-same change, then update `RULES_SHA256` in `normalize.py` to this document's SHA-256.
-The contract test rejects a stale rule fingerprint and runs every JSON example.
-The implementation is maintained code: prose changes do not execute or regenerate
-Python at runtime. Agent-assisted edits must pass these examples and behavioral
-tests before they become the executable rule.
-
-Original bilingual blocks (`variant: original`) retain their exact text. Chinese
-translation blocks use shared text cleanup but are not merged across aligned
-paragraph boundaries. Empty paragraphs at the start of a chapter are removed;
-meaningful empty paragraphs inside it and meaningful repeated paragraphs remain.
-Uncertain findings are recorded for contextual review, never guessed away.
+## 可执行示例
 
 ```normalization-examples
 [
   {"input":"他说ＭＳＮ，ＱＱ都是１００分。","expected":"他说 MSN，QQ 都是 100 分。"},
   {"input":"第１章","expected":"第1章","title":true},
+  {"input":"第12章 番外卷·旅途","expected":"第12章 番外卷·旅途","title":true},
   {"input":"中文English１２３测试。","expected":"中文 English123 测试。"},
   {"input":"A sentence, with words.","expected":"A sentence, with words."},
+  {"input":"“ＮＩＣＥ　ＤＯＧＳ！”","expected":"“NICE DOGS！”"},
+  {"input":"BOYS　DONT　CRY","expected":"BOYS DONT CRY"},
   {"input":"①与Ⅳ不是全角英数字。","expected":"①与Ⅳ不是全角英数字。"}
+]
+```
+
+```normalization-block-examples
+[
+  {
+    "input": [{"kind":"paragraph","runs":[{"text":"１，第一项。","styles":[]}]},{"kind":"paragraph","runs":[{"text":"２，第二项。","styles":[]}]}],
+    "expected": [{"kind":"paragraph","runs":[{"text":"1. 第一项。","styles":[]}]},{"kind":"paragraph","runs":[{"text":"2. 第二项。","styles":[]}]}]
+  },
+  {
+    "input": [{"kind":"heading","level":3,"runs":[{"text":"（１）开场","styles":[]}]}],
+    "expected": [{"kind":"heading","level":3,"alignment":"center","runs":[{"text":"（一）开场","styles":[]}]}]
+  },
+  {
+    "input": [{"kind":"paragraph","runs":[{"text":"一","styles":[]}]},{"kind":"paragraph","runs":[{"text":"起。","styles":[]}]},{"kind":"paragraph","runs":[{"text":"二","styles":[]}]},{"kind":"paragraph","runs":[{"text":"承。","styles":[]}]}],
+    "expected": [{"kind":"heading","level":3,"alignment":"center","runs":[{"text":"一","styles":[]}]},{"kind":"paragraph","runs":[{"text":"起。","styles":[]}]},{"kind":"heading","level":3,"alignment":"center","runs":[{"text":"二","styles":[]}]},{"kind":"paragraph","runs":[{"text":"承。","styles":[]}]}]
+  }
+]
+```
+
+```normalization-volume-examples
+[
+  {"input":"卷一 初识","expected":"卷1·初识"},
+  {"input":"第一卷：初识","expected":"卷1·初识"},
+  {"input":"卷１·初识","expected":"卷1·初识"},
+  {"input":"第十二卷 新的 世界","expected":"卷12·新的·世界"},
+  {"input":"第零卷","expected":"卷0"},
+  {"input":"续卷 新的开始","expected":"续卷·新的开始"},
+  {"input":"中卷","expected":"中卷"},
+  {"input":"正文 上（2008）","expected":"正文·上（2008）"},
+  {"input":"2015 年续篇","expected":"2015·年续篇"}
 ]
 ```

@@ -100,3 +100,26 @@ Missing fields do not mean deletion. Each chapter can be targeted once per task.
 Unknown fields/operations or stale fingerprints fail before writing. Notion
 currently accepts only the three chapter operations; metadata/outline changes
 remain local JSON operations. Never reuse a completed task ID for new content.
+
+## Hyperlinks and footnotes
+
+A text run can add `href`; its displayed text and styles remain separate from
+its destination. External HTTP(S)/mailto links retain their complete URL.
+Portable internal links use `#anchor`. Blocks declare unique `anchor` values;
+all internal targets must exist. A footnote block adds `footnote` with the same
+ID, and reference runs use `link_role: "noteref"` or `"backlink"`.
+Crawler links resolve against the chapter's source URL (book URL as fallback);
+unambiguous collected destinations become internal anchors, while other web
+links remain absolute URLs. Source IDs are namespaced per chapter.
+
+Prepared footnotes use linked `[n]` in the body and `[n] note text ↩n` at the
+chapter end. Multiple references get return labels `↩n.1`, `↩n.2`, in source
+order. A multi-paragraph note is one note block with explicit paragraph breaks.
+Footnotes belong to their referring chapter; unresolved cross-chapter notes are
+rejected for review. Original unlinked editorial notes remain ordinary text.
+
+The Notion codec recovers this explicit paired structure from the document
+itself. Platform block URLs are bound only by the Notion writer; an EPUB renders
+local destinations, `epub:type="noteref"`, `epub:type="footnote"`, and return links.
+TXT retains `[n]` plus endnotes and writes ordinary links as `text（URL）`.
+URLs, anchor identities and note relationships are never text-normalized.

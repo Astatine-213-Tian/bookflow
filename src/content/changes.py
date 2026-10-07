@@ -10,6 +10,7 @@ from pathlib import Path
 from src.content.contract import override_metadata, validate_book, validate_change
 from src.content.normalize import normalize_chapter
 from src.content.normalization import NormalizationReport
+from src.content.titles import normalize_outline, normalize_volume_colors
 from src.runtime.files import digest
 
 
@@ -85,7 +86,9 @@ def apply_changes(current: dict, change: dict) -> tuple[dict, dict]:
         elif kind == "set_outline":
             if content_hash(result["sections"]) != op["expected_sha256"]:
                 raise ValueError("Outline changed")
-            result["sections"] = copy.deepcopy(op["sections"])
+            result["sections"] = normalize_outline(op["sections"], report=report)
+            if "volume_colors" in result:
+                result["volume_colors"] = normalize_volume_colors(result["volume_colors"])
         else:
             fields = op["fields"]
             if not isinstance(fields, dict):

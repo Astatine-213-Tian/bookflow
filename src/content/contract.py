@@ -45,6 +45,10 @@ def validate_book(book: dict) -> None:
             if block["kind"] != "heading" and "level" in block:
                 raise ValueError("Only headings have a level")
 
+    from src.content.references import validate_references
+
+    validate_references(book)
+
 
 def metadata_defaults(metadata: dict) -> dict:
     return {

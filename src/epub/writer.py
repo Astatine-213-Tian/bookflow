@@ -16,6 +16,15 @@ from src.epub.xhtml import render_blocks
 from src.runtime.files import digest
 
 
+class PreparedChapter(epub.EpubHtml):
+    """Package our complete XHTML without adding whitespace inside rich text."""
+
+    def get_content(self, default=None):
+        # EpubHtml rebuilds and pretty-prints the body. That inserts visible
+        # whitespace around links/emphasis whose text begins with a line break.
+        return self.content
+
+
 def create_book(
     book: dict,
     output: Path,
@@ -61,9 +70,25 @@ def create_book(
     package.add_item(css)
     if cover:
         package.set_cover(cover_name, cover, create_page=False)
+    from src.content.contract import validate_book
+
+    validate_book(book)
+    anchors = {
+        block["anchor"]: f"chapter_{index:04d}.xhtml#{block['anchor']}"
+        for index, chapter in enumerate(book["chapters"].values(), 1)
+        for block in chapter["blocks"]
+        if block.get("anchor")
+    }
     items = {}
     for index, (member, chapter) in enumerate(book["chapters"].items(), 1):
-        root = ET.Element(f"{{{X}}}html", nsmap={None: X})
+        root = ET.Element(
+            f"{{{X}}}html", nsmap={None: X, "epub": "http://www.idpf.org/2007/ops"}
+        )
+        root.set("lang", metadata["language"] or "zh-CN")
+        root.set(
+            "{http://www.w3.org/XML/1998/namespace}lang",
+            metadata["language"] or "zh-CN",
+        )
         head = ET.SubElement(root, f"{{{X}}}head")
         ET.SubElement(head, f"{{{X}}}title").text = chapter["title"]
         ET.SubElement(
@@ -74,18 +99,18 @@ def create_book(
             type="text/css",
         )
         container = ET.SubElement(root, f"{{{X}}}body")
-        # EbookLib rebuilds <body>; keep source identities on its content wrapper.
+        # Source identities stay on a content wrapper for extraction.
         body = ET.SubElement(container, f"{{{X}}}div")
         body.set("data-book-chapter-id", member)
         body.set("data-book-role", chapter.get("role", "chapter"))
         if chapter.get("role") == "intro":
             body.set("class", "intro")
         ET.SubElement(body, f"{{{X}}}h2").text = chapter["title"]
-        render_blocks(body, chapter["blocks"])
-        item = epub.EpubHtml(
+        render_blocks(body, chapter["blocks"], targets=anchors)
+        item = PreparedChapter(
             title=chapter["title"],
             file_name=f"chapter_{index:04d}.xhtml",
-            content=ET.tostring(root),
+            content=ET.tostring(root, encoding="utf-8", xml_declaration=True),
             lang=metadata["language"] or "zh-CN",
         )
         item.add_item(css)
@@ -170,6 +195,7 @@ def export_local(
             raise ValueError(f"Duplicate extra ID: {member}")
         book["chapters"][member] = {**story, "role": "extra"}
         extras.append({"member": member})
+    book["extras"] = []
     if extras:
         book["sections"].append({"title": "番外", "children": extras})
     suffix = {"image/png": "png", "image/gif": "gif", "image/webp": "webp"}.get(

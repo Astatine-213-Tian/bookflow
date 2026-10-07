@@ -11,6 +11,11 @@ Notion 输出完成于草稿写入和回读验证；发布操作不属于上传�
 即使仅输出本地 EPUB，也需要能访问其私有 GitHub 仓库的账号。
 依赖固定到版本标签，`uv.lock` 记录确切提交；无需相邻 checkout。
 
+**当前开发状态：** 新链接/脚注 codec 需要 `notion-books` 0.5.0；本项目仍锁定
+0.4.1，发布共享库和升级锁文件按本次约定留待后续。因此，当前新增 Notion 功能及
+完整测试须使用下面的本地 0.5.0 覆盖；锁定安装成功或 CLI 帮助可用不代表这些功能
+已可运行。发布后再按正式升级步骤验证锁定环境。
+
 首次安装在本项目根目录依次运行：
 
 ```bash
@@ -30,7 +35,7 @@ Git 报权限错误时，确认 `gh` 登录的账号拥有 `notion-books` 仓库
 测试共享库的本地修改时，使用临时覆盖，不修改依赖配置或锁文件：
 
 ```bash
-mise exec -- uv run --with /absolute/path/to/notion-books python -m unittest discover -s tests -p 'test_*.py'
+mise exec -- uv run --no-cache --with /absolute/path/to/notion-books python -m unittest discover -s tests -p 'test_*.py'
 ```
 
 正式升级时选择已发布的不可变标签，同步修改本项目的版本号和 Git 标签，运行
@@ -54,7 +59,9 @@ uv run book-ingest "作品URL" --mode epub --mode notion --mode txt
 翻译流程使用同一个内容 JSON 和 EPUB writer。
 
 正文、目录、作者关联和书籍属性通过独立 MCP 客户端读写。
-OAuth 凭据保存在用户私有状态目录，可刷新；无需保持 Notion 网页登录。
+OAuth 凭据保存在用户私有状态目录，可刷新。普通正文及外部链接只需 MCP；
+含脚注或章节内部链接时，还需已登录 Notion 的 Arc 及可用的
+`arc-cdp run browser-harness` 适配器，用于读取原生 block ID 并验证链接。
 `book-notion logout` 删除本地 token，重新授权使用 `book-notion login`。
 
 ### 封面
@@ -130,6 +137,10 @@ Notion schema、格式编解码和读写。`src/notion/cms.py` 与 `upload.py`
 右对齐用最右列。粗斜体、下划线、删除线、段内换行、空段、引用和分隔线保持语义。
 渲染只解释排版属性，不根据「全文完」或其他具体文字推断格式。
 
+平铺编号条目保存为带字面量 `1. `、`2. ` 前缀的 paragraph。MCP 回读会省略
+句点转义，共享 codec 按此约定保留编号、全文和段落边界；嵌套列表仍拒绝读取。
+卷名、章内小标题及空段清理遵循[内容规则](normalization.md)，不在 writer 重做清洗。
+
 本地替换先生成、验证候选 EPUB，再校验原文件哈希、备份和原子安装。
 检查点、书籍内容和生成的 EPUB 不提交 Git。
 
@@ -138,3 +149,23 @@ Notion schema、格式编解码和读写。`src/notion/cms.py` 与 `upload.py`
 The [crawler live test](../tests/LIVE_NOTION.md) runs a synthetic crawl result
 through real Notion upload, readback and checkpoint resume. The test ends after
 verifying the uploaded content and preserved page identities.
+
+## 链接与脚注的往返约定
+
+命名链接保留文字、样式和目标 URL。脚注采用明确配对格式：正文链接 `[1]`，
+章末普通段落 `[1] 内容 ↩1`，其中 `↩1` 是返回正文的链接。多次引用的回链
+使用 `↩1.1`、`↩1.2`。编号必须对应；共享 codec 不依赖导入 checkpoint 即可
+恢复脚注、锚点和本地链接。原生 quote block 则恢复为 EPUB blockquote。
+
+上传先写入并回读正文，再通过已登录 Arc 的 `arc-cdp run browser-harness`
+读取实际 block ID、绑定双向链接，并再次检查全文和目标 ID。实现集中于
+`src/notion/references.py`，无需 API token。浏览器只使用自己的任务页签。
+未完成的绑定留在 checkpoint，不能当作完整上传。
+
+同书章节及关联独立番外的首页链接写为 Notion 页面 URL，导出时根据本书内容目录
+恢复为本地链接；内容身份不包含 Notion 页面 ID。
+普通内部链接仅支持章节首页；任意段落锚点（包括同章）在写入前拒绝，不能降级为
+章节首页。配对脚注及回链使用各自的段落目标，不受这个普通链接限制。
+Notion 的富文本 codec 属于 `notion-books`；Bookshelf CMS 的 EPUB 渲染器消费
+同一结构。Bookshelf CMS 需另外升级对应共享库及渲染器后才能发布新版脚注 EPUB；
+本项目导入完成不代表 CMS 已升级或部署。更换存储格式须验证两个消费者。

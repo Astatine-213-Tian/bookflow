@@ -15,13 +15,13 @@ from pathlib import Path
 from notion_books import (
     FIELDS,
     NotionBooks,
-    from_markdown,
     notion_id,
     to_markdown,
 )
 from opencc import OpenCC
 
 from src.content.blocks import content_signature
+from src.notion.capabilities import read_content
 from src.runtime.files import digest, write_json
 
 SIMILARITY_THRESHOLD = 0.70
@@ -297,7 +297,7 @@ async def preflight_extras(
         async with semaphore:
             document = await reader.document(row["id"])
             props, markdown = document.properties, document.markdown
-        blocks = from_markdown(markdown)
+        blocks = read_content(markdown)
         title = props.get(FIELDS["extra_title"])
         if not isinstance(title, str):
             raise ValueError(

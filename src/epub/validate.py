@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
+from src.content.numerals import parse_number
+
 CHINESE_CHAPTER_RE = re.compile(
     r"^\s*第\s*([0-9]+|[零〇一二两三四五六七八九十百千]+)\s*([章回])"
 )
@@ -18,25 +20,6 @@ ENGLISH_CHAPTER_RE = re.compile(r"^\s*Chapter\s+([0-9]+)\b", re.IGNORECASE)
 
 
 SPACE_RE = re.compile(r"\s+")
-
-
-CHINESE_DIGITS = {
-    "零": 0,
-    "〇": 0,
-    "一": 1,
-    "二": 2,
-    "两": 2,
-    "三": 3,
-    "四": 4,
-    "五": 5,
-    "六": 6,
-    "七": 7,
-    "八": 8,
-    "九": 9,
-}
-
-
-CHINESE_UNITS = {"十": 10, "百": 100, "千": 1000}
 
 
 @dataclass(frozen=True)
@@ -57,27 +40,6 @@ def normalize_text(value: str) -> str:
 def normalize_href(base: str, href: str) -> str:
     path = href.split("#", 1)[0]
     return posixpath.normpath(posixpath.join(posixpath.dirname(base), path))
-
-
-def chinese_to_int(value: str) -> int:
-    total = 0
-    current = 0
-    for char in value:
-        if char in CHINESE_DIGITS:
-            current = CHINESE_DIGITS[char]
-        elif char in CHINESE_UNITS:
-            unit = CHINESE_UNITS[char]
-            total += (current or 1) * unit
-            current = 0
-        else:
-            raise ValueError(f"unsupported Chinese numeral: {value}")
-    return total + current
-
-
-def parse_number(value: str) -> int:
-    if value.isdigit():
-        return int(value)
-    return chinese_to_int(value)
 
 
 def chapter_from_title(

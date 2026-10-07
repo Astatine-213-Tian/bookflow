@@ -84,7 +84,8 @@ def write_raw_fixture(*, identifier, title, author, volumes, out_path):
 
 class EpubNormalizerTests(unittest.TestCase):
     def test_fullwidth_alphanumeric_text_precedes_mixed_width_spacing(self) -> None:
-        from src.content.normalization import NormalizationReport, normalize_member
+        from src.content.normalization import NormalizationReport
+        from src.epub.cleanup import normalize_member
 
         raw = (
             '<html xmlns="http://www.w3.org/1999/xhtml"><head>'
@@ -125,7 +126,8 @@ class EpubNormalizerTests(unittest.TestCase):
         self.assertEqual(second.total_changes, 0)
 
     def test_self_closing_empty_paragraph_interrupts_comma_merge(self):
-        from src.content.normalization import NormalizationReport, normalize_member
+        from src.content.normalization import NormalizationReport
+        from src.epub.cleanup import normalize_member
 
         raw = (
             '<html xmlns="http://www.w3.org/1999/xhtml"><body>'
@@ -141,7 +143,8 @@ class EpubNormalizerTests(unittest.TestCase):
         )
 
     def test_self_closing_empty_paragraph_before_end_marker(self):
-        from src.content.normalization import NormalizationReport, normalize_member
+        from src.content.normalization import NormalizationReport
+        from src.epub.cleanup import normalize_member
 
         raw = (
             '<html xmlns="http://www.w3.org/1999/xhtml"><body>'
@@ -191,7 +194,7 @@ class EpubNormalizerTests(unittest.TestCase):
             self.assertNotIn("quote_mismatch", issue_kinds)
             self.assertTrue(
                 all(
-                    "Browser Act" in issue.recommended_action
+                    "source lookup workflow" in issue.recommended_action
                     for issue in report.issues
                     if issue.kind == "suspicious_character"
                 )

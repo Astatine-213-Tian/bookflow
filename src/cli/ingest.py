@@ -175,6 +175,11 @@ def main(argv: list[str] | None = None) -> int:
         "--enrich-metadata", action="store_true", help="Look up missing metadata"
     )
     parser.add_argument("--review", type=Path, help="Reviewed EPUB block ranges")
+    parser.add_argument(
+        "--quote-review",
+        type=Path,
+        help="Reviewed quotation candidates; otherwise Codex reviews candidates automatically",
+    )
     parser.add_argument("--no-fetch-jjwxc", action="store_true")
     parser.add_argument("--no-codex-classify", action="store_true")
     parser.add_argument(
@@ -231,6 +236,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--author can only be used with --search")
     if not local and (
         args.title
+        or args.review
+        or args.quote_review
         or args.run_dir
         or args.chapter_aliases
         or args.chapter_layout
@@ -262,6 +269,9 @@ def main(argv: list[str] | None = None) -> int:
                 if args.review
                 else None,
                 cover_url=args.cover_url,
+                quote_decisions=json.loads(args.quote_review.read_text())
+                if args.quote_review
+                else None,
             )
         else:
             target, parser_name = select_search_target(args, progress)

@@ -24,6 +24,16 @@ from tests.fixtures import prepared_crawl as prepare_crawl
 
 
 class SourceTests(unittest.TestCase):
+    def test_numbered_readback_preserves_markers_and_rejects_nested_lists(self):
+        from src.notion.capabilities import read_content
+
+        blocks = read_content("1. 第一项。\n<empty-block/>\n2. 第二项。")
+        self.assertEqual(text_blocks(blocks), ["1. 第一项。", "", "2. 第二项。"])
+        self.assertTrue(all(b["kind"] == "paragraph" for b in blocks))
+        for unsupported in ("- 列表", "1. 第一项。\n\t1. 嵌套项。"):
+            with self.assertRaisesRegex(ValueError, "unsupported"):
+                read_content(unsupported)
+
     def test_source_whitespace_becomes_paragraph_layout_and_explicit_line_breaks(self):
         data = '<html xmlns="http://www.w3.org/1999/xhtml"><body><h2>标题</h2><p> A sentence.\u2028</p><p> </p></body></html>'.encode()
         blocks = normalize_chapter(
@@ -38,9 +48,13 @@ class SourceTests(unittest.TestCase):
 
     def test_notion_autolinks_preserve_bare_urls_without_dropping_named_links(self):
         url = "https://example.org/book?id=1"
-        self.assertEqual(from_markdown(f"[{url}]({url})"), from_markdown(url))
-        with self.assertRaisesRegex(ValueError, "(?i)unsupported"):
-            from_markdown(f"[different label]({url})")
+        for markup, label in [
+            (f"[{url}]({url})", url),
+            (f"[different label]({url})", "different label"),
+        ]:
+            run = from_markdown(markup)[0]["runs"][0]
+            self.assertEqual((run["text"], run["href"]), (label, url))
+        self.assertNotIn("href", from_markdown(url)[0]["runs"][0])
 
     def test_install_checks_observed_bytes_and_backs_up_absolute_paths(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -145,6 +159,45 @@ class SourceTests(unittest.TestCase):
 
 
 class BatchResumeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_numbered_paragraph_readback_when_notion_drops_period_escape(self):
+        book = prepare_crawl(
+            title="Fixture",
+            author="Author",
+            source_url="https://example.org/book",
+            volumes=[Volume("", [Chapter("Chapter", ["1，第一项。", "2，第二项。"])])],
+        )
+        member, item = next(iter(book["chapters"].items()))
+
+        class Tools:
+            async def call(self, name, arguments):
+                if name == "notion-create-pages":
+                    self.page = arguments["pages"][0]
+                    return {"pages": [{"id": "11111111-1111-4111-8111-111111111111"}]}
+                if name == "notion-fetch":
+                    return {
+                        "text": "<properties>\n"
+                        + json.dumps(self.page["properties"])
+                        + "\n</properties>\n<content>\n"
+                        + self.page["content"].replace("\\.", ".")
+                        + "\n</content>"
+                    }
+                raise AssertionError(name)
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "import.json"
+            await upload_row(
+                item,
+                book,
+                state,
+                data_source="22222222-2222-4222-8222-222222222222",
+                properties={"章节": "Chapter"},
+                title_property="章节",
+                tools=Tools(),
+            )
+            self.assertTrue(
+                json.loads(state.read_text())["chapters"][member]["verified"]
+            )
+
     async def test_prepared_crawl_readback_preserves_trailing_spaces(self):
         for html in ("<p>hello  </p>", "<p>hello <strong>world</strong> </p>"):
             for trim_readback in (False, True):

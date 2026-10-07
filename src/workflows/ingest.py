@@ -202,6 +202,7 @@ def ingest_local(
     chapter_layout: dict | None = None,
     use_jjwxc_outline: bool = False,
     cover_url: str | None = None,
+    quote_decisions: dict | None = None,
 ) -> IngestResult:
     from src.runtime.files import digest
 
@@ -213,6 +214,7 @@ def ingest_local(
         title=title,
         author=author,
         review=review,
+        quote_decisions=quote_decisions,
         chapter_aliases=chapter_aliases,
         chapter_layout=chapter_layout,
         use_jjwxc_outline=use_jjwxc_outline,

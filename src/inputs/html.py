@@ -8,6 +8,8 @@ import re
 
 import cssselect2
 import tinycss2
+
+from src.inputs.references import EPUB_TYPE, is_footnote, source_anchor, source_href
 from lxml import etree as ET
 
 
@@ -50,6 +52,8 @@ def read_html_blocks(
     files: dict[str, bytes],
     *,
     anchors: dict[str, int] | None = None,
+    evidence: dict[int, dict] | None = None,
+    base_url: str | None = None,
 ) -> list[dict]:
     root = parse_xml(data)
     styles = [n.text or "" for n in root.findall(".//{*}style")]
@@ -66,7 +70,15 @@ def read_html_blocks(
             for selector in cssselect2.compile_selector_list(rule.prelude):
                 matcher.add_selector(selector, declarations(rule.content))
     computed = {}
-    inherited = {"text-align", "font-weight", "font-style", "text-decoration"}
+    inherited = {
+        "text-align",
+        "font-weight",
+        "font-style",
+        "text-decoration",
+        "font-size",
+        "font-family",
+        "color",
+    }
     for wrapper in cssselect2.ElementWrapper.from_xml_root(root).iter_subtree():
         node = wrapper.etree_element
         parent_style = computed.get(node.getparent(), {})
@@ -77,11 +89,23 @@ def read_html_blocks(
         values.update(declarations(node.get("style", "")))
         computed[node] = values
     blocks = []
+    found_anchors = anchors if anchors is not None else {}
 
     def tag(node):
         return ET.QName(node).localname if isinstance(node.tag, str) else ""
 
-    def runs(node, active=()):
+    def runs(node, active=(), link=None):
+        if node.get("id"):
+            found_anchors[node.get("id")] = len(blocks)
+        if node.get("href"):
+            link = {"href": source_href(member, node.get("href"), base_url=base_url)}
+            if (
+                "noteref" in node.get(EPUB_TYPE, "").split()
+                or node.get("role") == "doc-noteref"
+            ):
+                link["link_role"] = "noteref"
+            elif node.get("role") == "doc-backlink":
+                link["link_role"] = "backlink"
         result = []
         styles = list(active)
         local = tag(node)
@@ -112,7 +136,7 @@ def read_html_blocks(
 
         def add(text):
             if text:
-                result.append({"text": text, "styles": styles.copy()})
+                result.append({"text": text, "styles": styles.copy(), **(link or {})})
 
         add(node.text)
         for child in node:
@@ -137,8 +161,10 @@ def read_html_blocks(
                 "del",
                 "code",
                 "cite",
+                "sup",
+                "sub",
             }:
-                result.extend(runs(child, styles))
+                result.extend(runs(child, styles, link))
             else:
                 raise ValueError(f"Unsupported inline element {local}: {member}")
             add(child.tail)
@@ -146,8 +172,8 @@ def read_html_blocks(
 
     def visit(node, *, quoted: bool = False):
         local = tag(node)
-        if anchors is not None and node.get("id"):
-            anchors[node.get("id")] = len(blocks)
+        if node.get("id"):
+            found_anchors[node.get("id")] = len(blocks)
         if not local:
             return
         images = [n for n in node.iter() if tag(n) in {"img", "image"}]
@@ -175,7 +201,7 @@ def read_html_blocks(
             return
         quoted = quoted or local == "blockquote"
         if local in {"body", "div", "ul", "ol", "table", "tbody", "tr", "section"} or (
-            local in {"td", "li", "blockquote"}
+            local in {"td", "li", "blockquote", "aside"}
             and any(tag(child) in {"p", "div", "ul", "ol", "table"} for child in node)
         ):
             if (node.text or "").strip():
@@ -204,6 +230,7 @@ def read_html_blocks(
             "h5",
             "h6",
             "blockquote",
+            "aside",
             "hr",
             "li",
             "td",
@@ -227,10 +254,36 @@ def read_html_blocks(
             block["language"] = node.get("{http://www.w3.org/XML/1998/namespace}lang")
         if node.get("data-variant"):
             block["variant"] = node.get("data-variant")
+        if node.get("data-book-anchor"):
+            block["anchor"] = node.get("data-book-anchor")
+        if node.get("data-book-footnote"):
+            block["footnote"] = node.get("data-book-footnote")
+        note = next((n for n in [node, *node.iterancestors()] if is_footnote(n)), None)
+        if note is not None:
+            note_id = note.get("id")
+            if not note_id:
+                raise ValueError(f"Footnote lacks an anchor: {member}")
+            block["footnote"] = note.get("data-book-footnote") or source_anchor(
+                member, note_id
+            )
+        if evidence is not None:
+            evidence[len(blocks)] = {
+                "member": member,
+                "block_index": len(blocks),
+                "tag": local,
+                "classes": node.get("class", "").split(),
+                "style": computed[node],
+            }
         blocks.append(block)
 
     body = root.find("{*}body")
     if body is None:
         raise ValueError(f"document lacks body: {member}")
     visit(body)
+    for name, index in found_anchors.items():
+        if index < len(blocks):
+            blocks[index].setdefault("anchor", source_anchor(member, name))
+    for index, block in enumerate(blocks):
+        if anchors is not None and block["kind"] != "image":
+            block.setdefault("anchor", source_anchor(member, f"__block_{index}"))
     return blocks

@@ -10,11 +10,12 @@ from pathlib import Path
 from notion_books import (
     FIELDS,
     NotionBooks,
-    from_markdown,
     relation_ids,
     to_markdown,
 )
 
+from src.notion.capabilities import read_content
+from src.notion.references import plain_references, finish_references, expected_content
 from src.notion.cms import (
     CONFIG,
     STORAGE,
@@ -51,6 +52,11 @@ async def upload_row(
     tools,
 ) -> None:
     reader = NotionBooks(tools)
+    internal = any(
+        r.get("href", "").startswith("#") for b in item["blocks"] for r in b["runs"]
+    )
+    if internal and (not item.get("page_id") or not book.get("reference_bindings")):
+        item["references_pending"] = True
     if not item.get("page_id"):
         if item.get("pending"):
             raise ValueError(
@@ -61,7 +67,7 @@ async def upload_row(
         item["page_id"] = await reader.create_page(
             data_source,
             properties,
-            content=to_markdown(item["blocks"]),
+            content=to_markdown(plain_references(item["blocks"])),
         )
         item.pop("pending")
         write_json(state, book)
@@ -71,9 +77,12 @@ async def upload_row(
     document = await reader.document(item["page_id"])
     props, body = document.properties, document.markdown
     expected = item.get("reuse_fingerprint") or fingerprint(
-        item["title"], item["blocks"]
+        item["title"],
+        read_content(to_markdown(plain_references(item["blocks"])))
+        if item.get("references_pending")
+        else expected_content(item["blocks"], book.get("reference_bindings", {})),
     )
-    if fingerprint(props.get(title_property), from_markdown(body)) != expected:
+    if fingerprint(props.get(title_property), read_content(body)) != expected:
         raise ValueError(
             "CMS draft readback differs from prepared content; reconcile without overwriting edits"
         )
@@ -162,7 +171,7 @@ async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
                 item["title"], item["blocks"]
             )
             if (
-                fingerprint(props.get(FIELDS["extra_title"]), from_markdown(body))
+                fingerprint(props.get(FIELDS["extra_title"]), read_content(body))
                 != expected
             ):
                 raise ValueError(
@@ -186,6 +195,7 @@ async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
             title_property=FIELDS["extra_title"],
             tools=tools,
         )
+    await finish_references(book, state, tools=tools)
     for view, expected in [
         (
             book["chapters_view_id"],

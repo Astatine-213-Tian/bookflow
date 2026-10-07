@@ -4,19 +4,176 @@ from __future__ import annotations
 
 import copy
 import re
-from difflib import SequenceMatcher
 from pathlib import Path
 
+from src.content.blocks import (
+    block_text,
+    has_reference_identity,
+    removable_empty_paragraph,
+    replace_run_text,
+)
 from src.content.normalization import (
     AUTHOR_NOTE_HEADING_RE,
     AUTHOR_NOTE_PARAGRAPH_RE,
     DECORATIVE_END_MARKER_RE,
     NormalizationReport,
     _normalize_plain_text,
+    normalize_alphanumeric_width,
     scan_content_issues,
 )
+from src.content.numerals import format_chinese_numeral
+from src.content.titles import normalize_outline, normalize_volume_colors
 
-RULES_SHA256 = "913dec50abe5803e3ca953969598fe3a9b2ae4976569e75361a68b7292c4c031"
+RULES_SHA256 = "a9b664596cc07ae46f6236ae3c71a18ce64939701bef056e15ad417ef6e0f049"
+
+SECTION_NUMBER = r"(?:[0-9０-９]{1,3}|[一二三四五六七八九十百零〇]+)"
+SECTION_LABEL_RE = re.compile(
+    rf"(?:[（(](?P<wrapped>{SECTION_NUMBER})[）)]|(?P<bare>{SECTION_NUMBER})[、.]?)"
+)
+NUMBERED_HEADING_RE = re.compile(
+    rf"(?:[（(]{SECTION_NUMBER}[）)]|{SECTION_NUMBER}(?:、|\.(?![0-9０-９])))"
+)
+LIST_MARKER_RE = re.compile(
+    r"^\s*([0-9０-９]{1,3})[,，、.．][ \t\u3000]*(?=[^\d\s.,，．])"
+)
+
+
+def normalize_list_markers(
+    blocks: list[dict],
+    *,
+    member: str = "chapter",
+    report: NormalizationReport | None = None,
+) -> list[dict]:
+    """Keep numbered prose as paragraphs, with consistent `1. ` prefixes."""
+    result = copy.deepcopy(blocks)
+    candidates = []
+    for block in result:
+        text = block_text(block)
+        if (
+            block["kind"] == "paragraph"
+            and not block.get("variant")
+            and block.get("alignment") != "right"
+            and (match := LIST_MARKER_RE.match(text))
+        ):
+            candidates.append((block, text, match))
+    if len(candidates) < 2 or any(
+        int(match[1]) != number for number, (_, _, match) in enumerate(candidates, 1)
+    ):
+        return result
+    for block, text, match in candidates:
+        normalized = f"{int(match[1])}. " + text[match.end() :]
+        block["runs"] = replace_run_text(block["runs"], normalized)
+        if text != normalized and report is not None:
+            report.record_change(
+                "numbered_list_marker_normalized", member, 1, text, normalized
+            )
+    return result
+
+
+def normalize_subheadings(
+    blocks: list[dict],
+    *,
+    member: str = "chapter",
+    report: NormalizationReport | None = None,
+) -> list[dict]:
+    """Prepare numbered section headings without changing any prose or separators."""
+    result = copy.deepcopy(blocks)
+    candidates = []
+    for index, block in enumerate(result):
+        text = block_text(block).strip()
+        if (
+            block["kind"] in {"paragraph", "heading"}
+            and not block.get("variant")
+            and block.get("alignment") != "right"
+            and (match := SECTION_LABEL_RE.fullmatch(text))
+        ):
+            candidates.append((index, match["wrapped"] or match["bare"]))
+    # A lone number, a list of adjacent numbers, or broken numbering is not
+    # sufficient evidence. Require a complete 1..N sequence with prose per part.
+    sequence = len(candidates) >= 2 and all(
+        normalize_alphanumeric_width(label)
+        in {str(number), format_chinese_numeral(number)}
+        for number, (_, label) in enumerate(candidates, 1)
+    )
+    stops = [i for i, _ in candidates[1:]] + [len(result)]
+    sequence = sequence and all(
+        any(
+            b["kind"] in {"paragraph", "quote"} and block_text(b).strip()
+            for b in result[start + 1 : stop]
+        )
+        for (start, _), stop in zip(candidates, stops)
+    )
+    promote = {i for i, _ in candidates} if sequence else set()
+    for index, block in enumerate(result):
+        text = block_text(block).strip()
+        if block.get("variant") == "original":
+            continue
+        if (
+            index in promote
+            or block["kind"] == "heading"
+            and (SECTION_LABEL_RE.fullmatch(text) or NUMBERED_HEADING_RE.match(text))
+        ):
+            normalized = re.sub(
+                r"^([（(]?)([0-9０-９]+)",
+                lambda match: match[1] + format_chinese_numeral(int(match[2])),
+                text,
+                count=1,
+            )
+            changed = (block["kind"], block.get("level"), block.get("alignment")) != (
+                "heading",
+                3,
+                "center",
+            ) or normalized != text
+            block.update(kind="heading", level=3, alignment="center")
+            block["runs"] = replace_run_text(block["runs"], normalized)
+            if changed and report is not None:
+                report.record_change(
+                    "numbered_subheading_normalized",
+                    member,
+                    1,
+                    text,
+                    f"centered H3: {normalized}",
+                )
+    trimmed = trim_subheading_gaps(result)
+    if report is not None:
+        report.record_change(
+            "subheading_empty_removed",
+            member,
+            len(result) - len(trimmed),
+            "empty paragraphs around numbered heading",
+            "",
+        )
+    return trimmed
+
+
+def trim_subheading_gaps(blocks: list[dict]) -> list[dict]:
+    """Numbered sections use heading spacing, never adjacent empty paragraphs."""
+
+    def numbered(block):
+        text = block_text(block).strip()
+        return (
+            block["kind"] == "heading"
+            and block.get("variant") != "original"
+            and (SECTION_LABEL_RE.fullmatch(text) or NUMBERED_HEADING_RE.match(text))
+        )
+
+    result = []
+    index = 0
+    while index < len(blocks):
+        if not removable_empty_paragraph(blocks[index]):
+            result.append(blocks[index])
+            index += 1
+            continue
+        end = index
+        while end < len(blocks) and removable_empty_paragraph(blocks[end]):
+            end += 1
+        if not (
+            (index > 0 and numbered(blocks[index - 1]))
+            or (end < len(blocks) and numbered(blocks[end]))
+        ):
+            result.extend(blocks[index:end])
+        index = end
+    return result
 
 
 def normalize_text(
@@ -38,24 +195,6 @@ def normalize_text(
     )
 
 
-def _replace_runs(runs: list[dict], text: str) -> list[dict]:
-    """Apply textual edits while retaining styles on surviving characters."""
-    before = "".join(run["text"] for run in runs)
-    styles = [run.get("styles", []) for run in runs for _ in run["text"]]
-    result: list[dict] = []
-    for kind, a, b, c, d in SequenceMatcher(
-        None, before, text, autojunk=False
-    ).get_opcodes():
-        for offset, char in enumerate(text[c:d]):
-            source = a + offset if kind == "equal" else min(a + offset, max(a, b - 1))
-            active = styles[min(source, len(styles) - 1)] if styles else []
-            if result and result[-1]["styles"] == active:
-                result[-1]["text"] += char
-            else:
-                result.append({"text": char, "styles": list(active)})
-    return result
-
-
 def normalize_chapter(
     chapter: dict, *, member: str = "chapter", report: NormalizationReport | None = None
 ) -> dict:
@@ -65,16 +204,17 @@ def normalize_chapter(
         result["title"], title=True, member=member, report=report
     )
     blocks = []
-    for block in result["blocks"]:
+    prepared = normalize_list_markers(result["blocks"], member=member, report=report)
+    for block in normalize_subheadings(prepared, member=member, report=report):
         if block.get("variant") == "original":
             blocks.append(block)
             continue
-        text = "".join(run["text"] for run in block["runs"])
+        text = block_text(block)
         normalized = normalize_text(
             text, title=block["kind"] == "heading", member=member, report=report
         )
         normalized = normalized.lstrip(" \t\u3000")
-        block["runs"] = _replace_runs(block["runs"], normalized)
+        block["runs"] = replace_run_text(block["runs"], normalized)
         if block["kind"] == "heading" or (
             block["kind"] == "paragraph"
             and block.get("alignment") == "center"
@@ -84,7 +224,7 @@ def normalize_chapter(
             block.update(kind="heading", level=3)
         if block["kind"] == "paragraph":
             if re.fullmatch(r"(?:\*\s*){3,}", normalized.strip()):
-                block["runs"] = _replace_runs(block["runs"], "***")
+                block["runs"] = replace_run_text(block["runs"], "***")
                 block["alignment"] = "center"
             elif DECORATIVE_END_MARKER_RE.fullmatch(normalized.strip()):
                 block["alignment"] = "center"
@@ -92,10 +232,12 @@ def normalize_chapter(
     # Structural rules operate on block content, regardless of the source format.
     expanded = []
     for block in blocks:
-        text = "".join(r["text"] for r in block["runs"])
+        text = block_text(block)
         match = (
             AUTHOR_NOTE_HEADING_RE.search(text)
-            if block["kind"] == "paragraph" and not block.get("variant")
+            if block["kind"] == "paragraph"
+            and not block.get("variant")
+            and not has_reference_identity(block)
             else None
         )
         if match and text[: match.start()].strip():
@@ -122,13 +264,15 @@ def normalize_chapter(
             expanded.append(block)
     blocks = []
     for block in expanded:
-        text = "".join(r["text"] for r in block["runs"])
+        text = block_text(block)
         previous = blocks[-1] if blocks else {}
-        before = "".join(r["text"] for r in previous.get("runs", []))
+        before = block_text(previous)
         if (
             previous.get("kind") == block["kind"] == "paragraph"
             and not previous.get("variant")
             and not block.get("variant")
+            and not has_reference_identity(previous)
+            and not has_reference_identity(block)
             and previous.get("language") == block.get("language")
             and previous.get("alignment", "left") == block.get("alignment", "left")
             and (
@@ -145,11 +289,7 @@ def normalize_chapter(
             )
         else:
             blocks.append(block)
-    while (
-        blocks
-        and blocks[0]["kind"] == "paragraph"
-        and not "".join(r["text"] for r in blocks[0]["runs"]).strip()
-    ):
+    while blocks and removable_empty_paragraph(blocks[0]):
         blocks.pop(0)
         report.record_change(
             "chapter_leading_empty_removed", member, 1, "empty paragraph", ""
@@ -158,7 +298,7 @@ def normalize_chapter(
         scan_content_issues(
             member,
             [
-                "".join(r["text"] for r in b["runs"])
+                block_text(b)
                 for b in blocks
                 if b["kind"] in {"paragraph", "quote"}
                 and b.get("variant") != "original"
@@ -187,11 +327,7 @@ def normalize_book(source: dict) -> tuple[dict, dict]:
                 book["metadata"][key], title=key == "title", report=report
             )
 
-    def headings(nodes: list[dict]) -> None:
-        for node in nodes:
-            if "children" in node:
-                node["title"] = normalize_text(node["title"], title=True, report=report)
-                headings(node["children"])
-
-    headings(book["sections"])
+    book["sections"] = normalize_outline(book["sections"], report=report)
+    if "volume_colors" in book:
+        book["volume_colors"] = normalize_volume_colors(book["volume_colors"])
     return book, report.to_dict()

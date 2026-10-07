@@ -11,6 +11,10 @@ Install `uv`, `mise` and `gh`, then follow the
 [dependency setup](docs/notion-books.md#安装共享依赖). The pinned private
 `notion-books` dependency requires GitHub access and Go at build time; subsequent
 syncs use `mise exec -- uv sync --locked`. Credentials stay in private local state.
+The new reference codec currently requires the local `notion-books` 0.5.0
+override; publishing it and upgrading the 0.4.1 lock are deferred. See the
+[dependency status and development command](docs/notion-books.md#安装共享依赖)
+before running Notion operations or the full test suite.
 
 Browser providers discover Chromium automatically. `BOOKLIB_BROWSER_PATH` can
 select an executable. Patreon manages its own saved login profile; inspect an
@@ -47,6 +51,10 @@ use the [image transcription procedure](.agents/skills/book-management/reference
 No traditional OCR is used. Normalization follows [one rule document](docs/normalization.md).
 Metadata enrichment is optional (`--enrich-metadata`) and preserves explicit
 values. Reports and cover assets stay beside prepared JSON under `generated/`.
+Local preparation scans possible quotations and uses authenticated `codex exec`
+only when candidates need judgment. Use `book-prepare --scan-quotes` to inspect
+them first, or `--quote-review` for saved session decisions; see
+[quotation review](docs/local-editions.md#review-possible-quotations).
 
 ## Update an existing book
 
@@ -76,6 +84,10 @@ cover path needs `NOTION_API_TOKEN`; without it, use the maintained
 [browser cover procedure](.agents/skills/book-management/references/notion-cover.md)
 and existing authenticated Arc session. Covers require byte readback. Details:
 [storage/recovery](docs/notion-books.md), [shared extras](docs/fanwai-notion.md).
+Paired footnotes and internal chapter links also use the logged-in Arc adapter
+to bind and verify native block destinations. Ordinary external links stay
+clickable. EPUB retains quotes, links and notes; TXT projects them to readable
+text. See the [reference contract](docs/content-json.md#hyperlinks-and-footnotes).
 
 ## Collect and translate
 

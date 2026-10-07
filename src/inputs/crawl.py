@@ -8,6 +8,7 @@ from src.content.contract import metadata_defaults
 from src.content.html import escape_text
 from src.content.models import Volume
 from src.inputs.html import read_html_blocks
+from src.inputs.references import resolve_book_references
 
 
 def extract_crawl(
@@ -37,9 +38,23 @@ def extract_crawl(
         "extras": [],
     }
 
-    def chapter(name: str, body: str, role: str = "chapter") -> dict:
+    inventory = {"anchors": {}, "pages": {}}
+    source_urls = {}
+
+    def chapter(
+        key: str, name: str, body: str, role: str = "chapter", url: str = ""
+    ) -> dict:
+        member = f"chapters/{key}.xhtml"
+        if member in inventory["pages"]:
+            raise ValueError(f"Duplicate source chapter ID: {key}")
         document = f'<html xmlns="http://www.w3.org/1999/xhtml"><head/><body>{body}</body></html>'.encode()
-        blocks = read_html_blocks(document, "content.xhtml", {})
+        anchors = {}
+        blocks = read_html_blocks(
+            document, member, {}, anchors=anchors, base_url=url or source_url
+        )
+        inventory["anchors"][member] = anchors
+        inventory["pages"][member] = blocks
+        source_urls[member] = url
         return {"title": name, "blocks": blocks, "role": role}
 
     intro = (
@@ -49,7 +64,7 @@ def extract_crawl(
     )
     if intro:
         key = "intro"
-        book["chapters"][key] = chapter("简介", intro, "intro")
+        book["chapters"][key] = chapter(key, "简介", intro, "intro", source_url)
         book["sections"].append({"member": key})
         book["metadata"]["description"] = "\n".join(
             "".join(r["text"] for r in b["runs"])
@@ -59,14 +74,12 @@ def extract_crawl(
         children = []
         for ci, item in enumerate(volume.chapters, 1):
             key = item.source_id or f"chapter-{vi}-{ci}"
-            if key in book["chapters"]:
-                raise ValueError(f"Duplicate source chapter ID: {key}")
             body = (
                 "\n".join(item.html_blocks)
                 if item.html_blocks is not None
                 else "".join(f"<p>{escape_text(p)}</p>" for p in item.paragraphs)
             )
-            value = chapter(item.title, body)
+            value = chapter(key, item.title, body, url=item.source_url)
             if item.source_id or item.source_url:
                 value["source"] = {
                     "id": item.source_id,
@@ -89,4 +102,5 @@ def extract_crawl(
                 )
             else:
                 book["sections"].extend(children)
+    resolve_book_references(book, inventory, source_urls=source_urls)
     return book

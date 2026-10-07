@@ -17,6 +17,8 @@ from src.content.normalization import (
     CHAPTER_NUMBER_PREFIX_RE,
     NormalizationIssue,
     NormalizationReport,
+)
+from src.epub.cleanup import (
     _center_paragraph_opening,
     _grouped_fanwai_title_labels,
     _local_name,
@@ -24,6 +26,7 @@ from src.content.normalization import (
     _tag_pattern,
     _visible_fragment_text,
     normalize_member,
+    volume_title_labels,
 )
 
 
@@ -528,6 +531,7 @@ def normalize_epub(
         original = {info.filename: source.read(info.filename) for info in infos}
     structured = _repair_epub2_missing_visible_toc(original, report)
     grouped_fanwai_titles = _grouped_fanwai_title_labels(structured)
+    volume_titles = volume_title_labels(structured)
     for info in infos:
         data = structured[info.filename]
         normalized = normalize_member(
@@ -535,6 +539,7 @@ def normalize_epub(
             data,
             report,
             grouped_fanwai_titles=grouped_fanwai_titles,
+            volume_titles=volume_titles,
         )
         rewritten[info.filename] = normalized
     for member, data in structured.items():
@@ -545,6 +550,7 @@ def normalize_epub(
             data,
             report,
             grouped_fanwai_titles=grouped_fanwai_titles,
+            volume_titles=volume_titles,
         )
 
     for member, data in rewritten.items():

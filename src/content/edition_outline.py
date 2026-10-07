@@ -95,25 +95,6 @@ def apply_edition_layout(book: dict, layout: dict) -> list[dict]:
     return report
 
 
-def prepare_extra_sections(book: dict) -> None:
-    """Recognize an extra explicitly divided into consecutive standalone numbers."""
-    for extra in book["extras"]:
-        parts = [
-            (index, "".join(r["text"] for r in block["runs"]).strip())
-            for index, block in enumerate(extra["blocks"])
-            if block["kind"] == "paragraph"
-            and "".join(r["text"] for r in block["runs"]).strip().isdigit()
-        ]
-        if (
-            len(parts) < 2
-            or parts[0][0] != 0
-            or [text for _, text in parts] != [str(n) for n in range(1, len(parts) + 1)]
-        ):
-            continue
-        for index, _ in parts:
-            extra["blocks"][index].update(kind="heading", level=3, alignment="center")
-
-
 def apply_jjwxc_outline(
     book: dict, contents: dict, *, aliases: dict[str, str] | None = None
 ) -> dict:

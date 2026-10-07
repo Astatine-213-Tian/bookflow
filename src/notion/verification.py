@@ -5,8 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 
-from notion_books import FIELDS, NotionBooks, from_markdown, relation_ids
+from notion_books import FIELDS, NotionBooks, relation_ids
 
+from src.notion.capabilities import read_content
+from src.notion.references import expected_content, verify_bound_content
 from src.notion.cms import AUTHOR_HOMEPAGE, chapter_entries
 from src.notion.duplicates import fingerprint
 from src.notion.presentation import public_cover, volume_options
@@ -74,15 +76,20 @@ async def verify_draft(book: dict, config: dict, *, tools) -> dict:
     ]:
         document = await reader.document(item["page_id"])
         expected = item.get("reuse_fingerprint") or fingerprint(
-            item["title"], item["blocks"]
+            item["title"],
+            expected_content(item["blocks"], book.get("reference_bindings", {})),
         )
         if (
             fingerprint(
-                document.properties.get(title_field), from_markdown(document.markdown)
+                document.properties.get(title_field), read_content(document.markdown)
             )
             != expected
         ):
             raise ValueError(f"Content readback differs: {item['title']}")
+        if not item.get("reused") and not verify_bound_content(
+            document.markdown, item["blocks"], book.get("reference_bindings", {})
+        ):
+            raise ValueError(f"Hyperlink destinations differ: {item['title']}")
         if (
             parent is not None
             and (document.properties.get(FIELDS["parent_title"]) or "") != parent

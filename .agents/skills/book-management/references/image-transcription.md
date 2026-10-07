@@ -52,7 +52,7 @@ or clarification. Keep the draft local until resolved; do not invent a completio
 ## 4. Apply Shared Formatting
 
 Keep the reviewed raw transcription unchanged as evidence. Create a separate
-output copy and apply [the shared source formatting rules](formatting.md#source-text-normalization)
+output copy and apply [the shared source formatting rules](formatting.md)
 before writing any destination. This is mandatory for image sources too, unless
 the user explicitly requests a verbatim output. Fix contextually clear quote
 direction errors such as `“哦。“` -> `“哦。”` and normalize Chinese/Latin/digit

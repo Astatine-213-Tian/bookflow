@@ -126,6 +126,16 @@
                     "code"
                   ]
                 }
+              },
+              "href": {
+                "type": "string",
+                "minLength": 1
+              },
+              "link_role": {
+                "enum": [
+                  "noteref",
+                  "backlink"
+                ]
               }
             },
             "required": [
@@ -156,6 +166,14 @@
             "original",
             "translation"
           ]
+        },
+        "anchor": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]*$"
+        },
+        "footnote": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]*$"
         }
       },
       "required": [
