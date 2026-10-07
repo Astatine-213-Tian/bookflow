@@ -9,7 +9,7 @@ description = "Acquire, prepare, translate and export books to EPUB, TXT and Not
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "notion-books==0.9.1",
+    "notion-books==0.10.0",
     "beautifulsoup4==4.14.3",
     "cssselect2>=0.10.1",
     "EbookLib==0.20",
@@ -42,7 +42,7 @@ book-notion = "src.cli.notion_book:main"
 include = ["src*"]
 
 [tool.uv.sources]
-notion-books = { git = "https://github.com/Astatine-213-Tian/notion-books", tag = "v0.9.1" }
+notion-books = { git = "https://github.com/Astatine-213-Tian/notion-books", tag = "v0.10.0" }
 
 [tool.setuptools.package-data]
 "src.content" = ["*.json"]

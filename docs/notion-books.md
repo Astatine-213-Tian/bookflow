@@ -127,6 +127,10 @@ uv run book-notion resume --state state/notion/<来源摘要>/import.json
 
 正文和番外使用同一套共享块与渲染规则；格式由显式属性决定，不根据正文猜测。
 Notion 用三列中的唯一非空列表示居中或右对齐；这不是任意多栏布局。
+脚注及其引用段落必须位于正文顶层。行内代码不接受换行、字面量 `<br>`、
+反引号或末尾反斜杠，因为 MCP 无法无歧义地保留这些内容。
+本项目的写入恢复及独立回读仍使用完整 REST 文档；共享库的发布读取接口
+使用 MCP 展开正文和精确版本，再用 REST 顶层块验证引用 ID。
 支持范围以 [notion-books 内容契约](https://github.com/Astatine-213-Tian/notion-books#content-contract)
 为准，链接与脚注字段见 [content-json.md](content-json.md#hyperlinks-and-footnotes)。
 
