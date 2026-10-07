@@ -8,7 +8,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from notion_books import NotionBooks, Page, from_markdown
+from notion_books import NotionBooks, Page, content_signature, text_blocks
+from tests.notion_api import paragraphs as prose
 
 from src.notion.cms import STORAGE
 from src.notion.duplicates import (
@@ -39,7 +40,7 @@ TEXT = (
 
 
 def profile(text):
-    return TextProfile.from_blocks(from_markdown(text))
+    return TextProfile.from_blocks(prose(text))
 
 
 def different_versions(*, proofread=False):
@@ -63,8 +64,8 @@ def source():
         "chapters_view_id": "main",
         "view_id": "extras",
         "sections": [{"member": "chapter"}],
-        "chapters": {"chapter": {"title": "第一章", "blocks": from_markdown("正文")}},
-        "extras": [{"title": "原来的番外标题", "blocks": from_markdown(TEXT)}],
+        "chapters": {"chapter": {"title": "第一章", "blocks": prose("正文")}},
+        "extras": [{"title": "原来的番外标题", "blocks": prose(TEXT)}],
     }
 
 
@@ -77,6 +78,8 @@ CONFIG = {
 
 
 class Library:
+    call_api = None
+
     def __init__(self):
         self.pages = {
             PAGE: {
@@ -117,15 +120,27 @@ class Library:
         page = self.pages[id]
         return Page(
             page_id=id,
-            data_source_id=EXTRAS,
+            data_source_id=page.get("data_source", EXTRAS),
             title="",
-            markdown=page["content"],
-            revision="",
+            revision="1",
+            fingerprint=content_signature(prose(page["content"])),
             properties=copy.deepcopy(page["properties"]),
-            blocks=None,
+            blocks=prose(page["content"]) if page["content"] else [],
             cover=None,
             cover_known=False,
         )
+
+    async def prepare_content(self, id, blocks, **kwargs):
+        return {
+            "page_id": id,
+            "blocks": blocks,
+            "targets": kwargs.get("targets", {}),
+            "done": False,
+        }
+
+    async def advance_content(self, plan):
+        self.pages[plan["page_id"]]["content"] = "\n".join(text_blocks(plan["blocks"]))
+        return {**plan, "done": True}
 
     async def call(self, name, args):
         if name == "notion-fetch":
@@ -139,7 +154,11 @@ class Library:
             return {}
         if name == "notion-create-pages":
             id = f"00000000-0000-0000-0000-{len(self.pages):012d}"
-            self.pages[id] = copy.deepcopy(args["pages"][0])
+            self.pages[id] = {
+                **copy.deepcopy(args["pages"][0]),
+                "content": "",
+                "data_source": args["parent"]["data_source_id"],
+            }
             ids = (
                 self.main
                 if args["parent"]["data_source_id"] == "main-db"
@@ -184,7 +203,7 @@ class SimilarityTests(unittest.TestCase):
     def test_split_joined_paragraph_boundaries_do_not_hide_overlap(self):
         left, right = different_versions()
         joined = profile(right.replace("\n", ""))
-        paragraphs = from_markdown(left)
+        paragraphs = prose(left)
         for block in paragraphs:
             for run in block["runs"]:
                 run["text"] = "\n".join(
@@ -286,7 +305,10 @@ class SimilarityTests(unittest.TestCase):
                 source_url="https://example.test",
                 volumes=[Volume("", [Chapter("Chapter 1", ["Synthetic text."])])],
             )
-            with patch("src.notion.upload.asyncio.run", side_effect=fail):
+            with (
+                patch("src.notion.api.api_token", return_value="test-token"),
+                patch("src.notion.upload.asyncio.run", side_effect=fail),
+            ):
                 with self.assertRaisesRegex(
                     ValueError, "^WARNING: review extra-review.md$"
                 ):
@@ -369,7 +391,7 @@ class DuplicateUploadTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_partial_overlap_stops_upload_and_reports_matching_excerpts(self):
         incoming, existing = different_versions(proofread=True)
-        self.book["extras"][0]["blocks"] = from_markdown(incoming)
+        self.book["extras"][0]["blocks"] = prose(incoming)
         self.library.pages[PAGE]["content"] = existing
         with self.assertRaisesRegex(ValueError, "WARNING"):
             await self.upload()
@@ -451,7 +473,7 @@ class DuplicateUploadTests(unittest.IsolatedAsyncioTestCase):
     async def test_source_change_requires_review_again(self):
         await self.warn()
         self.choose()
-        self.book["extras"][0]["blocks"] = from_markdown(TEXT + "\n新增的一行。")
+        self.book["extras"][0]["blocks"] = prose(TEXT + "\n新增的一行。")
         await self.warn()
         self.assertNotIn("decision", self.book["extras"][0]["duplicate_review"])
 
@@ -466,9 +488,7 @@ class DuplicateUploadTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_all_extras_reported_library_read_only_once(self):
-        self.book["extras"].append(
-            {"title": "另一个标题", "blocks": from_markdown(TEXT)}
-        )
+        self.book["extras"].append({"title": "另一个标题", "blocks": prose(TEXT)})
         with self.assertRaisesRegex(ValueError, "WARNING: 2"):
             await self.preflight()
         self.assertEqual(self.library.reads, [PAGE])

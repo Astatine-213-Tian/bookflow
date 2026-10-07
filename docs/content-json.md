@@ -118,8 +118,12 @@ order. A multi-paragraph note is one note block with explicit paragraph breaks.
 Footnotes belong to their referring chapter; unresolved cross-chapter notes are
 rejected for review. Original unlinked editorial notes remain ordinary text.
 
-The Notion codec recovers this explicit paired structure from the document
+The shared Notion REST block parser recovers this explicit paired structure from the document
 itself. Platform block URLs are bound only by the Notion writer; an EPUB renders
 local destinations, `epub:type="noteref"`, `epub:type="footnote"`, and return links.
 TXT retains `[n]` plus endnotes and writes ordinary links as `text（URL）`.
 URLs, anchor identities and note relationships are never text-normalized.
+
+Block schema and semantic link validation belong to `notion-books`. The book
+schema references its content schema ID; `content/contract.py` registers the
+installed schema locally, with no network lookup.

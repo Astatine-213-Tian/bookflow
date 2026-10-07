@@ -203,10 +203,27 @@ async def require_login(*_args) -> None:
 
 
 class MCPTools:
-    def __init__(self, session: ClientSession) -> None:
+    def __init__(self, session: ClientSession, api: httpx.AsyncClient) -> None:
         self.session = session
+        self.api = api
         self.last_call = 0.0
         self.pacing = asyncio.Lock()
+
+    async def call_api(self, request: dict) -> dict:
+        from src.notion.api import api_request, api_token
+        from notion_books import API_VERSION
+
+        async with self.pacing:
+            await asyncio.sleep(max(0, 0.4 - (time.monotonic() - self.last_call)))
+            self.last_call = time.monotonic()
+        return await api_request(
+            self.api,
+            request,
+            headers={
+                "Authorization": "Bearer " + api_token(),
+                "Notion-Version": API_VERSION,
+            },
+        )
 
     async def call(self, name: str, arguments: dict) -> dict:
         attempts = (
@@ -315,7 +332,10 @@ async def connect(store: TokenStore, *, login: bool = False) -> AsyncIterator[MC
                     read_timeout_seconds=timedelta(seconds=660 if login else 120),
                 ) as session:
                     await session.initialize()
-                    yield MCPTools(session)
+                    async with httpx.AsyncClient(
+                        timeout=60, follow_redirects=False
+                    ) as api:
+                        yield MCPTools(session, api)
     finally:
         if callback:
             callback.close()

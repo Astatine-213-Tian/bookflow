@@ -31,7 +31,7 @@ class ContentPipelineTests(unittest.TestCase):
         self.assertEqual(result, normalize_chapter(result))
 
     def test_numbered_prose_items_keep_arabic_markers_and_body_format(self):
-        from notion_books import from_markdown, to_markdown
+        from tests.notion_api import roundtrip
 
         from src.content.normalize import normalize_chapter
 
@@ -40,7 +40,7 @@ class ContentPipelineTests(unittest.TestCase):
             for text in ["１，第一项。", "继续说明。", "２，第二项。", "3、第三项。"]
         ]
         chapter = normalize_chapter({"title": "篇目", "blocks": blocks})
-        actual = from_markdown(to_markdown(chapter["blocks"]))
+        actual = roundtrip(chapter["blocks"])
         self.assertEqual(
             ["".join(r["text"] for r in b["runs"]) for b in actual],
             ["1. 第一项。", "继续说明。", "2. 第二项。", "3. 第三项。"],
@@ -65,7 +65,7 @@ class ContentPipelineTests(unittest.TestCase):
         self.assertEqual(normalize_list_markers(blocks), blocks)
 
     def test_numbered_subheadings_survive_source_normalization_and_notion(self):
-        from notion_books import from_markdown, to_markdown
+        from tests.notion_api import roundtrip
 
         from src.content.normalize import normalize_chapter
         from src.inputs.html import read_html_blocks
@@ -91,7 +91,7 @@ class ContentPipelineTests(unittest.TestCase):
                     {},
                 )
                 chapter = normalize_chapter({"title": "篇目", "blocks": blocks})
-                actual = from_markdown(to_markdown(chapter["blocks"]))
+                actual = roundtrip(chapter["blocks"])
                 headings = [b for b in actual if b["kind"] == "heading"]
                 self.assertEqual(
                     ["".join(r["text"] for r in b["runs"]) for b in headings], labels

@@ -7,7 +7,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 from lxml import etree as ET
-from notion_books import from_markdown, to_markdown
+from tests.notion_api import roundtrip
 
 from src.content.blocks import content_signature
 from src.content.contract import validate_book
@@ -77,14 +77,8 @@ class ReferenceTests(unittest.TestCase):
 
     def test_notion_round_trip_recovers_footnotes_without_checkpoint(self):
         blocks = note_blocks()
-        markdown = to_markdown(blocks)
-        self.assertEqual(
-            content_signature(from_markdown(markdown)), content_signature(blocks)
-        )
-        remote = markdown.replace(
-            "#note", "https://www.notion.so/" + "a" * 32 + "#" + "b" * 32
-        ).replace("#body", "https://www.notion.so/" + "a" * 32 + "#" + "c" * 32)
-        recovered = from_markdown(remote)
+        recovered = roundtrip(blocks)
+        self.assertEqual(content_signature(recovered), content_signature(blocks))
         self.assertEqual(recovered[0]["kind"], "quote")
         self.assertEqual(recovered[0]["runs"][1]["href"], "#" + recovered[1]["anchor"])
         self.assertEqual(recovered[1]["runs"][-1]["href"], "#" + recovered[0]["anchor"])
@@ -108,7 +102,7 @@ class ReferenceTests(unittest.TestCase):
             root = Path(d)
             book = write_source(root, ["fixture"])
             ch = next(iter(book["chapters"].values()))
-            ch["blocks"] = from_markdown(to_markdown(note_blocks()))
+            ch["blocks"] = roundtrip(note_blocks())
             out = root / "book.epub"
             export_local(book, out)
             parsed = read_epub_source(out).source
@@ -166,20 +160,16 @@ class ReferenceTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     validate_book(broken)
         with self.assertRaises(Exception):
-            from_markdown("[evil](javascript:alert)")
-
-    def test_native_target_verification_catches_swapped_footnote_urls(self):
-        from src.notion.references import verify_bound_content, bind_references
-
-        blocks = note_blocks()
-        bindings = {
-            "body": "https://www.notion.so/" + "a" * 32 + "#" + "b" * 32,
-            "note": "https://www.notion.so/" + "a" * 32 + "#" + "c" * 32,
-        }
-        markdown = to_markdown(bind_references(blocks, bindings))
-        self.assertTrue(verify_bound_content(markdown, blocks, bindings))
-        wrong = markdown.replace("#" + "c" * 32, "#" + "d" * 32)
-        self.assertFalse(verify_bound_content(wrong, blocks, bindings))
+            roundtrip(
+                [
+                    {
+                        "kind": "paragraph",
+                        "runs": [
+                            {"text": "evil", "styles": [], "href": "javascript:alert"}
+                        ],
+                    }
+                ]
+            )
 
     def test_epub2_notes_and_multi_paragraph_epub3_notes_keep_prose(self):
         from src.inputs.html import read_html_blocks
@@ -200,6 +190,6 @@ class ReferenceTests(unittest.TestCase):
         note = "".join(r["text"] for r in chapter["blocks"][1]["runs"])
         self.assertEqual(note, "[1] 2011 was a year.\n\nSecond paragraph. ↩1")
         self.assertEqual(
-            content_signature(from_markdown(to_markdown(chapter["blocks"]))),
+            content_signature(roundtrip(chapter["blocks"])),
             content_signature(chapter["blocks"]),
         )

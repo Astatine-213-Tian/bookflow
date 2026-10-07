@@ -42,7 +42,7 @@ JSON as imports.
 | Processing | `content/`, `translation/` | `normalize_book`, `apply_changes`, `translated_source` |
 | Metadata | `metadata/` | `enrich_source`, authoritative lookup/classification |
 | Destinations | `epub/`, `notion/`, `dataset/text.py` | EPUB/TXT renderers; Notion upload, current-content export, update/readback |
-| Contracts | `content/book.schema.json`, `content/contract.py` | Strict book and change validation; chapter/block definitions shared by both |
+| Contracts | `content/book.schema.json`, `content/contract.py` | Strict book and change validation; book/change schema composed with the shared notion-books block schema |
 
 `cli/` parses arguments. `runtime/` contains paths, hashing, atomic JSON files,
 progress and the read-only Codex CLI transport. Production never imports `research/`; targeted dataset bookkeeping is
@@ -81,8 +81,8 @@ Direct crawler ingestion uses provider-declared structure; save its JSON and
 run `book-prepare` when a separate semantic quotation review is needed.
 
 `inputs/references.py` resolves source destinations into portable anchors before
-preparation. `content/references.py` canonicalizes notes and validates their
-relationships. Visible-text normalization preserves these identities and URLs.
+preparation. `content/references.py` prepares canonical notes; `notion-books` validates their
+portable relationships. Visible-text normalization preserves these identities and URLs.
 `content/titles.py` owns volume label rules; `epub/cleanup.py` adapts shared rules
 to explicit archive maintenance without making XML processing part of content.
 
@@ -139,13 +139,17 @@ rich formatting and language annotations. Writers never run source cleanup.
 EPUB creation validates ZIP/XML/navigation before atomic installation. Native
 covers are thumbnails, with no separate reading page.
 
-EPUB writes local hyperlinks and semantic notes. Notion writes explicit paired
-note markers, then `notion/references.py` binds real block URLs via the logged-in
-Arc adapter and verifies native destinations as well as recovered content.
-Ordinary internal links are limited to chapter/independent-extra starts; unsupported paragraph
-targets fail before upload. The shared `notion-books` codec recovers identities
-without import checkpoints. Its pending release and consumer-upgrade status are
-tracked in [dependency setup](notion-books.md#安装共享依赖).
+`notion-books` owns typed validation, the REST block reader and resumable writer,
+and XHTML/CSS rendering shared with CMS. Local ZIP/navigation/metadata packaging
+remains in `epub/`; `notion/content.py` projects the app's book model and persists
+write plans. Official MCP retains discovery, linked views, metadata and manual
+chapter order. Body reads/writes require `NOTION_API_TOKEN`, with no Markdown or
+browser anchor discovery. Ordinary internal links target chapter/extra starts;
+unsupported paragraph targets fail before upload. Shared readback reconstructs
+notes without checkpoints and verifies real destinations before removing old blocks.
+
+[CMS ADR-0003](https://github.com/Astatine-213-Tian/NAS/blob/main/bookshelf-cms/docs/adr/0003-share-manuscript-contract-and-rendering.md)
+records this boundary. Shared releases and both consumer pins move together.
 
 Notion covers use the API when configured, otherwise the maintained
 [browser cover procedure](../.agents/skills/book-management/references/notion-cover.md).

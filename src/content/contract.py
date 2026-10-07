@@ -6,12 +6,19 @@ import json
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
+from notion_books import CONTENT_SCHEMA, validate_book_content
+from referencing import Registry, Resource
+from referencing.jsonschema import DRAFT202012
 
 from src.content.outline import ordered_members
 
 SCHEMA_PATH = Path(__file__).with_name("book.schema.json")
 SCHEMA = json.loads(SCHEMA_PATH.read_text())
-VALIDATOR = Draft202012Validator(SCHEMA)
+REGISTRY = Registry().with_resource(
+    CONTENT_SCHEMA["$id"],
+    Resource.from_contents(CONTENT_SCHEMA, default_specification=DRAFT202012),
+)
+VALIDATOR = Draft202012Validator(SCHEMA, registry=REGISTRY)
 
 
 def validate_book(book: dict) -> None:
@@ -38,16 +45,12 @@ def validate_book(book: dict) -> None:
     collect_ids(book["sections"])
     if len(identities) != len(set(identities)):
         raise ValueError("Content identities must be unique")
-    for chapter in [*book["chapters"].values(), *book["extras"]]:
-        for block in chapter["blocks"]:
-            if block["kind"] == "divider" and block["runs"]:
-                raise ValueError("Divider must not contain text")
-            if block["kind"] != "heading" and "level" in block:
-                raise ValueError("Only headings have a level")
-
-    from src.content.references import validate_references
-
-    validate_references(book)
+    validate_book_content(
+        [
+            {"title": chapter["title"], "blocks": chapter["blocks"]}
+            for chapter in [*book["chapters"].values(), *book["extras"]]
+        ]
+    )
 
 
 def metadata_defaults(metadata: dict) -> dict:
@@ -75,7 +78,7 @@ def override_metadata(current: dict, fields: dict) -> dict:
 
 def validate_change(change: dict) -> None:
     validator = Draft202012Validator(
-        {"$defs": SCHEMA["$defs"], "$ref": "#/$defs/change"}
+        {"$defs": SCHEMA["$defs"], "$ref": "#/$defs/change"}, registry=REGISTRY
     )
     error = next(iter(validator.iter_errors(change)), None)
     if error:

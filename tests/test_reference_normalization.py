@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from notion_books import from_markdown, to_markdown
+from tests.notion_api import roundtrip
 
 from src.content.blocks import block_text, content_signature
 from src.content.references import canonicalize_footnotes
@@ -48,7 +48,7 @@ class ReferenceNormalizationTests(unittest.TestCase):
         )
         self.assertEqual(canonicalize_footnotes(chapter), chapter)
         self.assertEqual(
-            content_signature(from_markdown(to_markdown(chapter["blocks"]))),
+            content_signature(roundtrip(chapter["blocks"])),
             content_signature(chapter["blocks"]),
         )
 

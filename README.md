@@ -11,10 +11,8 @@ Install `uv`, `mise` and `gh`, then follow the
 [dependency setup](docs/notion-books.md#安装共享依赖). The pinned private
 `notion-books` dependency requires GitHub access and Go at build time; subsequent
 syncs use `mise exec -- uv sync --locked`. Credentials stay in private local state.
-The new reference codec currently requires the local `notion-books` 0.5.0
-override; publishing it and upgrading the 0.4.1 lock are deferred. See the
-[dependency status and development command](docs/notion-books.md#安装共享依赖)
-before running Notion operations or the full test suite.
+Content validation, REST manuscript access and XHTML rendering use the shared
+`notion-books` contract. See [dependency setup](docs/notion-books.md#安装共享依赖).
 
 Browser providers discover Chromium automatically. `BOOKLIB_BROWSER_PATH` can
 select an executable. Patreon manages its own saved login profile; inspect an
@@ -79,15 +77,12 @@ uv run book-notion resume --state generated/notion_cms_sources/RUN/import.json
 uv run book-notion verify --state generated/notion_cms_sources/RUN/import.json
 ```
 
-Content uses the existing MCP OAuth connection. Only the optional official API
-cover path needs `NOTION_API_TOKEN`; without it, use the maintained
-[browser cover procedure](.agents/skills/book-management/references/notion-cover.md)
-and existing authenticated Arc session. Covers require byte readback. Details:
-[storage/recovery](docs/notion-books.md), [shared extras](docs/fanwai-notion.md).
-Paired footnotes and internal chapter links also use the logged-in Arc adapter
-to bind and verify native block destinations. Ordinary external links stay
-clickable. EPUB retains quotes, links and notes; TXT projects them to readable
-text. See the [reference contract](docs/content-json.md#hyperlinks-and-footnotes).
+Official MCP preserves catalog metadata, linked views and manual chapter order.
+Manuscript reads/writes use official REST and require `NOTION_API_TOKEN` with
+access to the destination. Footnote binding uses REST block IDs; browser anchor
+binding is removed. Covers require byte readback. Details: [storage/recovery](docs/notion-books.md),
+[shared extras](docs/fanwai-notion.md) and the [reference contract](docs/content-json.md#hyperlinks-and-footnotes).
+EPUB retains quotes, links and notes; TXT projects them to readable text.
 
 ## Collect and translate
 

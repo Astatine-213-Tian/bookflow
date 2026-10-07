@@ -156,9 +156,7 @@ class ImportControlsTests(unittest.IsolatedAsyncioTestCase):
             call=AsyncMock(side_effect=ConnectionError("lost response"))
         )
         reader = SimpleNamespace(
-            page=AsyncMock(
-                return_value=SimpleNamespace(data_source_id=DS, markdown="")
-            ),
+            page=AsyncMock(return_value=SimpleNamespace(data_source_id=DS, shell="")),
             catalog=AsyncMock(
                 return_value={
                     "works": {
@@ -204,7 +202,7 @@ class ImportControlsTests(unittest.IsolatedAsyncioTestCase):
         reader = SimpleNamespace(
             page=AsyncMock(
                 return_value=SimpleNamespace(
-                    data_source_id=DS, markdown="<database>正文</database>"
+                    data_source_id=DS, shell="<database>正文</database>"
                 )
             )
         )

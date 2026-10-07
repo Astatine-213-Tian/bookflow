@@ -16,12 +16,10 @@ from notion_books import (
     FIELDS,
     NotionBooks,
     notion_id,
-    to_markdown,
 )
 from opencc import OpenCC
 
 from src.content.blocks import content_signature
-from src.notion.capabilities import read_content
 from src.runtime.files import digest, write_json
 
 SIMILARITY_THRESHOLD = 0.70
@@ -193,8 +191,11 @@ def review_report(book: dict, state: Path, documents: dict) -> Path:
                     lines.extend(["> " + snippet, ""])
             changes = list(
                 difflib.unified_diff(
-                    documents[page_id]["markdown"].splitlines(),
-                    to_markdown(item["blocks"]).splitlines(),
+                    documents[page_id]["text"].splitlines(),
+                    [
+                        "".join(run["text"] for run in block["runs"])
+                        for block in item["blocks"]
+                    ],
                     fromfile="Notion 已有正文",
                     tofile="新爬取正文",
                     n=2,
@@ -221,7 +222,7 @@ def review_report(book: dict, state: Path, documents: dict) -> Path:
                     ]
                 )
             else:
-                lines.extend(["正文 Markdown 相同；请核对标题及作品关联。", ""])
+                lines.extend(["正文文字相同；请核对标题及作品关联。", ""])
         lines.extend(
             [
                 "确认是独立内容，需要新建：",
@@ -296,8 +297,7 @@ async def preflight_extras(
     async def read(row: dict) -> tuple[str, dict]:
         async with semaphore:
             document = await reader.document(row["id"])
-            props, markdown = document.properties, document.markdown
-        blocks = read_content(markdown)
+            props, blocks = document.properties, document.blocks
         title = props.get(FIELDS["extra_title"])
         if not isinstance(title, str):
             raise ValueError(
@@ -305,7 +305,9 @@ async def preflight_extras(
             )
         return row["id"], {
             "title": title,
-            "markdown": markdown,
+            "text": "\n".join(
+                "".join(run["text"] for run in block["runs"]) for block in blocks
+            ),
             "fingerprint": fingerprint(title, blocks),
             "profile": TextProfile.from_blocks(blocks),
         }

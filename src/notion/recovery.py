@@ -24,7 +24,7 @@ async def recover_template(book: dict, state: Path, config: dict, *, tools) -> N
     page = await reader.page(book["work_id"])
     if page.data_source_id != works["data_source_id"]:
         raise ValueError("Checkpoint work belongs to another catalog")
-    if book.get("template_recovery_requested") or page.markdown.strip():
+    if book.get("template_recovery_requested") or page.shell.strip():
         # An accepted or uncertain append must never be repeated.
         await ensure_views(book, state, config, tools=tools)
         return

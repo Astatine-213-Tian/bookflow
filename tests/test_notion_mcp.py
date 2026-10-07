@@ -163,19 +163,19 @@ class ToolTests(unittest.IsolatedAsyncioTestCase):
         result = CallToolResult(content=[], structuredContent={"text": "body"})
         session.call_tool.side_effect = [TimeoutError(), result]
         self.assertEqual(
-            await MCPTools(session).call("notion-fetch", {"id": "page"}),
+            await MCPTools(session, object()).call("notion-fetch", {"id": "page"}),
             {"text": "body"},
         )
         self.assertEqual(session.call_tool.await_count, 2)
         session.reset_mock()
         session.call_tool.side_effect = TimeoutError()
         with self.assertRaises(TimeoutError):
-            await MCPTools(session).call("notion-create-pages", {"pages": []})
+            await MCPTools(session, object()).call("notion-create-pages", {"pages": []})
         self.assertEqual(session.call_tool.await_count, 1)
 
     async def test_reads_structured_or_json_result_without_leaking_server_error(self):
         session = AsyncMock()
-        tools = MCPTools(session)
+        tools = MCPTools(session, object())
         for result in [
             CallToolResult(content=[], structuredContent={"results": []}),
             CallToolResult(

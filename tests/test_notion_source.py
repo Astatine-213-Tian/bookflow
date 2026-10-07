@@ -8,7 +8,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from lxml import etree as ET
-from notion_books import NotionBooks, from_markdown, text_blocks, to_markdown
+from notion_books import NotionBooks, text_blocks
+from tests.notion_api import BlockAPI, PAGE, SOURCE, paragraphs, roundtrip
 
 from src.content.blocks import content_signature
 from src.content.models import Chapter, Volume
@@ -24,15 +25,10 @@ from tests.fixtures import prepared_crawl as prepare_crawl
 
 
 class SourceTests(unittest.TestCase):
-    def test_numbered_readback_preserves_markers_and_rejects_nested_lists(self):
-        from src.notion.capabilities import read_content
-
-        blocks = read_content("1. 第一项。\n<empty-block/>\n2. 第二项。")
+    def test_numbered_prose_survives_native_paragraph_readback(self):
+        blocks = roundtrip(paragraphs("1. 第一项。\n\n2. 第二项。"))
         self.assertEqual(text_blocks(blocks), ["1. 第一项。", "", "2. 第二项。"])
         self.assertTrue(all(b["kind"] == "paragraph" for b in blocks))
-        for unsupported in ("- 列表", "1. 第一项。\n\t1. 嵌套项。"):
-            with self.assertRaisesRegex(ValueError, "unsupported"):
-                read_content(unsupported)
 
     def test_source_whitespace_becomes_paragraph_layout_and_explicit_line_breaks(self):
         data = '<html xmlns="http://www.w3.org/1999/xhtml"><body><h2>标题</h2><p> A sentence.\u2028</p><p> </p></body></html>'.encode()
@@ -40,21 +36,23 @@ class SourceTests(unittest.TestCase):
             {"title": "标题", "blocks": read_html_blocks(data, "chapter.xhtml", {})[1:]}
         )["blocks"]
         self.assertEqual(text_blocks(blocks), ["A sentence.\n", ""])
-        self.assertIn("<br>", to_markdown(blocks))
         self.assertEqual(
-            content_signature(from_markdown(to_markdown(blocks))),
+            content_signature(roundtrip(blocks)),
             content_signature(blocks),
         )
 
-    def test_notion_autolinks_preserve_bare_urls_without_dropping_named_links(self):
+    def test_links_preserve_labels_and_unlinked_url_text(self):
         url = "https://example.org/book?id=1"
-        for markup, label in [
-            (f"[{url}]({url})", url),
-            (f"[different label]({url})", "different label"),
-        ]:
-            run = from_markdown(markup)[0]["runs"][0]
-            self.assertEqual((run["text"], run["href"]), (label, url))
-        self.assertNotIn("href", from_markdown(url)[0]["runs"][0])
+        blocks = paragraphs(url)
+        blocks.append(
+            {
+                "kind": "paragraph",
+                "runs": [{"text": "Different label", "styles": [], "href": url}],
+            }
+        )
+        actual = roundtrip(blocks)
+        self.assertEqual(content_signature(actual), content_signature(blocks))
+        self.assertNotIn("href", actual[0]["runs"][0])
 
     def test_install_checks_observed_bytes_and_backs_up_absolute_paths(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -120,7 +118,7 @@ class SourceTests(unittest.TestCase):
                 ],
             }
         ]
-        actual = from_markdown(to_markdown(blocks))
+        actual = roundtrip(blocks)
         self.assertEqual(content_signature(actual), content_signature(blocks))
         self.assertEqual(text_blocks(actual), [" A thought. More\u2028words"])
 
@@ -152,14 +150,13 @@ class SourceTests(unittest.TestCase):
                 "runs": [{"text": "署名", "styles": []}],
             }
         ]
-        markdown = to_markdown(blocks)
-        self.assertEqual(from_markdown(markdown), blocks)
-        with self.assertRaises(ValueError):
-            from_markdown(markdown.replace("<empty-block/>", "额外正文", 1))
+        self.assertEqual(
+            content_signature(roundtrip(blocks)), content_signature(blocks)
+        )
 
 
 class BatchResumeTests(unittest.IsolatedAsyncioTestCase):
-    async def test_numbered_paragraph_readback_when_notion_drops_period_escape(self):
+    async def test_upload_preserves_numbered_prose_and_checkpoint_identity(self):
         book = prepare_crawl(
             title="Fixture",
             author="Author",
@@ -167,108 +164,36 @@ class BatchResumeTests(unittest.IsolatedAsyncioTestCase):
             volumes=[Volume("", [Chapter("Chapter", ["1，第一项。", "2，第二项。"])])],
         )
         member, item = next(iter(book["chapters"].items()))
-
-        class Tools:
-            async def call(self, name, arguments):
-                if name == "notion-create-pages":
-                    self.page = arguments["pages"][0]
-                    return {"pages": [{"id": "11111111-1111-4111-8111-111111111111"}]}
-                if name == "notion-fetch":
-                    return {
-                        "text": "<properties>\n"
-                        + json.dumps(self.page["properties"])
-                        + "\n</properties>\n<content>\n"
-                        + self.page["content"].replace("\\.", ".")
-                        + "\n</content>"
-                    }
-                raise AssertionError(name)
-
+        api = BlockAPI()
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory) / "import.json"
             await upload_row(
                 item,
                 book,
                 state,
-                data_source="22222222-2222-4222-8222-222222222222",
+                data_source=SOURCE,
                 properties={"章节": "Chapter"},
                 title_property="章节",
-                tools=Tools(),
+                tools=api,
             )
-            self.assertTrue(
-                json.loads(state.read_text())["chapters"][member]["verified"]
+            saved = json.loads(state.read_text())["chapters"][member]
+            self.assertTrue(saved["verified"])
+            mutations = api.mutations
+            await upload_row(
+                item,
+                book,
+                state,
+                data_source=SOURCE,
+                properties={"章节": "Chapter"},
+                title_property="章节",
+                tools=api,
             )
-
-    async def test_prepared_crawl_readback_preserves_trailing_spaces(self):
-        for html in ("<p>hello  </p>", "<p>hello <strong>world</strong> </p>"):
-            for trim_readback in (False, True):
-                with self.subTest(html=html, trim_readback=trim_readback):
-                    book = prepare_crawl(
-                        title="Fixture",
-                        author="Author",
-                        source_url="https://example.org/book",
-                        volumes=[Volume("", [Chapter("Chapter", html_blocks=[html])])],
-                    )
-                    member, item = next(iter(book["chapters"].items()))
-                    self.assertTrue(text_blocks(item["blocks"])[0].endswith(" "))
-                    page_id = "11111111-1111-4111-8111-111111111111"
-                    calls = []
-
-                    class Tools:
-                        async def call(self, name, arguments):
-                            calls.append(name)
-                            if name == "notion-create-pages":
-                                self.page = arguments["pages"][0]
-                                return {"pages": [{"id": page_id}]}
-                            if name == "notion-fetch" and arguments["id"] == page_id:
-                                body = self.page["content"]
-                                if trim_readback:
-                                    body = body.rstrip(" ")
-                                return {
-                                    "text": "<properties>\n"
-                                    + json.dumps(self.page["properties"])
-                                    + "\n</properties>\n<content>\n"
-                                    + body
-                                    + "\n</content>"
-                                }
-                            raise AssertionError((name, arguments))
-
-                    with tempfile.TemporaryDirectory() as directory:
-                        state = Path(directory) / "import.json"
-                        upload = upload_row(
-                            item,
-                            book,
-                            state,
-                            data_source="22222222-2222-4222-8222-222222222222",
-                            properties={"章节": "Chapter"},
-                            title_property="章节",
-                            tools=Tools(),
-                        )
-                        if trim_readback:
-                            with self.assertRaisesRegex(ValueError, "readback differs"):
-                                await upload
-                        else:
-                            await upload
-                        saved = json.loads(state.read_text())["chapters"][member]
-                        self.assertEqual(
-                            saved.get("verified", False), not trim_readback
-                        )
-                        self.assertEqual(saved["page_id"], page_id)
-                        self.assertNotIn("pending", saved)
-                    self.assertEqual(calls, ["notion-create-pages", "notion-fetch"])
+            self.assertEqual(api.mutations, mutations)
+            doc = await NotionBooks(api=api).document(saved["page_id"])
+            self.assertEqual(text_blocks(doc.blocks), ["1. 第一项。", "2. 第二项。"])
 
     async def test_title_only_source_page_is_readable(self):
-        class Tools:
-            async def call(self, *_):
-                return {
-                    "text": '<properties>\n{"title":"Section"}\n</properties>\n<blank-page>This page is blank and has no content.</blank-page>'
-                }
-
-        document = await NotionBooks(Tools()).document("page")
-
-        props, body = document.properties, document.markdown
-        self.assertEqual(props["title"], "Section")
-        self.assertEqual(from_markdown(body), [])
-
-
-if __name__ == "__main__":
-    unittest.main()
+        api = BlockAPI()
+        document = await NotionBooks(api=api).document(PAGE)
+        self.assertEqual(document.properties["章节"], "Example")
+        self.assertEqual(document.blocks, [])

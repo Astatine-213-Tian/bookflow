@@ -51,7 +51,7 @@
         "blocks": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/block"
+            "$ref": "https://notion-books.local/schema/content-block"
           }
         },
         "role": {
@@ -92,93 +92,6 @@
       "required": [
         "title",
         "blocks"
-      ],
-      "additionalProperties": false
-    },
-    "block": {
-      "type": "object",
-      "properties": {
-        "kind": {
-          "enum": [
-            "paragraph",
-            "heading",
-            "quote",
-            "divider"
-          ]
-        },
-        "runs": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "text": {
-                "type": "string"
-              },
-              "styles": {
-                "type": "array",
-                "uniqueItems": true,
-                "items": {
-                  "enum": [
-                    "bold",
-                    "italic",
-                    "underline",
-                    "strikethrough",
-                    "code"
-                  ]
-                }
-              },
-              "href": {
-                "type": "string",
-                "minLength": 1
-              },
-              "link_role": {
-                "enum": [
-                  "noteref",
-                  "backlink"
-                ]
-              }
-            },
-            "required": [
-              "text",
-              "styles"
-            ],
-            "additionalProperties": false
-          }
-        },
-        "level": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 6
-        },
-        "alignment": {
-          "enum": [
-            "left",
-            "center",
-            "right",
-            "justify"
-          ]
-        },
-        "language": {
-          "type": "string"
-        },
-        "variant": {
-          "enum": [
-            "original",
-            "translation"
-          ]
-        },
-        "anchor": {
-          "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]*$"
-        },
-        "footnote": {
-          "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]*$"
-        }
-      },
-      "required": [
-        "kind",
-        "runs"
       ],
       "additionalProperties": false
     },

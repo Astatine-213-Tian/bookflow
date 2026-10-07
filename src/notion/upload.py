@@ -11,11 +11,10 @@ from notion_books import (
     FIELDS,
     NotionBooks,
     relation_ids,
-    to_markdown,
+    content_matches,
 )
 
-from src.notion.capabilities import read_content
-from src.notion.references import plain_references, finish_references, expected_content
+from src.notion.content import targets, write_content
 from src.notion.cms import (
     CONFIG,
     STORAGE,
@@ -41,6 +40,22 @@ def source_digest(book: dict) -> str:
     return digest(json.dumps(source, ensure_ascii=False, sort_keys=True).encode())
 
 
+async def create_row(
+    item: dict, book: dict, state: Path, *, data_source: str, properties: dict, tools
+) -> None:
+    if item.get("page_id"):
+        return
+    if item.get("pending"):
+        raise ValueError(
+            "A page create response was lost; reconcile the checkpoint before retrying"
+        )
+    item["pending"] = True
+    write_json(state, book)
+    item["page_id"] = await NotionBooks(tools).create_page(data_source, properties)
+    item.pop("pending")
+    write_json(state, book)
+
+
 async def upload_row(
     item: dict,
     book: dict,
@@ -51,38 +66,38 @@ async def upload_row(
     title_property: str,
     tools,
 ) -> None:
-    reader = NotionBooks(tools)
-    internal = any(
-        r.get("href", "").startswith("#") for b in item["blocks"] for r in b["runs"]
+    await create_row(
+        item, book, state, data_source=data_source, properties=properties, tools=tools
     )
-    if internal and (not item.get("page_id") or not book.get("reference_bindings")):
-        item["references_pending"] = True
-    if not item.get("page_id"):
-        if item.get("pending"):
-            raise ValueError(
-                "A page create response was lost; reconcile the checkpoint before retrying"
-            )
-        item["pending"] = True
-        write_json(state, book)
-        item["page_id"] = await reader.create_page(
-            data_source,
-            properties,
-            content=to_markdown(plain_references(item["blocks"])),
-        )
-        item.pop("pending")
-        write_json(state, book)
     if item.get("verified"):
-        # A completed row now belongs to the editor; never overwrite later edits.
         return
+    reader = NotionBooks(tools, api=tools.call_api)
+    destinations = targets(book)
+    if not item.get("reused"):
+        if not item.get("content_write"):
+            document = await reader.document(item["page_id"])
+            if document.blocks and not content_matches(
+                document.blocks, item["blocks"], destinations
+            ):
+                raise ValueError(
+                    "New page contains editor content; reconcile without overwriting edits"
+                )
+            expected = document.fingerprint
+        else:
+            expected = ""
+        await write_content(reader, item, state, book, destinations, expected=expected)
     document = await reader.document(item["page_id"])
-    props, body = document.properties, document.markdown
-    expected = item.get("reuse_fingerprint") or fingerprint(
-        item["title"],
-        read_content(to_markdown(plain_references(item["blocks"])))
-        if item.get("references_pending")
-        else expected_content(item["blocks"], book.get("reference_bindings", {})),
-    )
-    if fingerprint(props.get(title_property), read_content(body)) != expected:
+    props = document.properties
+    if item.get("reuse_fingerprint"):
+        matches = (
+            fingerprint(props.get(title_property), document.blocks)
+            == item["reuse_fingerprint"]
+        )
+    else:
+        matches = props.get(title_property) == item["title"] and content_matches(
+            document.blocks, item["blocks"], destinations
+        )
+    if not matches:
         raise ValueError(
             "CMS draft readback differs from prepared content; reconcile without overwriting edits"
         )
@@ -95,11 +110,8 @@ async def upload_row(
     ):
         raise ValueError("CMS extra readback has the wrong work relation")
     item["verified"] = True
+    item.pop("content_write", None)
     write_json(state, book)
-    all_items = [*book["chapters"].values(), *book["extras"]]
-    verified = sum(bool(row.get("verified")) for row in all_items)
-    if verified % 20 == 0 or verified == len(all_items):
-        print(f"Uploaded and read back: {verified}/{len(all_items)}", flush=True)
 
 
 async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
@@ -111,7 +123,7 @@ async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
             "Not a checkpoint for this CMS catalog; old library checkpoints cannot be reused"
         )
     entries = chapter_entries(book)
-    reader = NotionBooks(tools)
+    reader = NotionBooks(tools, api=tools.call_api)
     if not book.get("uploaded"):
         # Resolve possible shared duplicates before creating a work or uploading rows.
         await preflight_extras(book, state, config, reader)
@@ -151,6 +163,31 @@ async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
     # the actual editorial order instead of assuming query insertion order.
     for member, parent in reversed(entries):
         item = book["chapters"][member]
+        await create_row(
+            item,
+            book,
+            state,
+            data_source=book["chapters_data_source_id"],
+            properties={
+                FIELDS["chapter_title"]: item["title"],
+                FIELDS["parent_title"]: parent or None,
+            },
+            tools=tools,
+        )
+    for item in reversed(book["extras"]):
+        await create_row(
+            item,
+            book,
+            state,
+            data_source=config["databases"]["extras"]["data_source_id"],
+            properties={
+                FIELDS["extra_title"]: item["title"],
+                FIELDS["related_works"]: [book["work_id"]],
+            },
+            tools=tools,
+        )
+    for member, parent in reversed(entries):
+        item = book["chapters"][member]
         await upload_row(
             item,
             book,
@@ -166,14 +203,11 @@ async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
     for item in reversed(book["extras"]):
         if item.get("reused") and not item.get("verified"):
             document = await reader.document(item["page_id"])
-            props, body = document.properties, document.markdown
+            props, blocks = document.properties, document.blocks
             expected = item.get("reuse_fingerprint") or fingerprint(
                 item["title"], item["blocks"]
             )
-            if (
-                fingerprint(props.get(FIELDS["extra_title"]), read_content(body))
-                != expected
-            ):
+            if fingerprint(props.get(FIELDS["extra_title"]), blocks) != expected:
                 raise ValueError(
                     "Shared extra changed after duplicate review; reconcile before linking"
                 )
@@ -195,7 +229,6 @@ async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
             title_property=FIELDS["extra_title"],
             tools=tools,
         )
-    await finish_references(book, state, tools=tools)
     for view, expected in [
         (
             book["chapters_view_id"],
@@ -224,6 +257,9 @@ def upload_source(
     from src.notion.capabilities import validate_notion_content
 
     validate_notion_content(source)
+    from src.notion.api import api_token
+
+    api_token()
     if cover_bytes and cover_url:
         raise ValueError("Choose a local cover asset or a public cover URL")
     if cover_url:

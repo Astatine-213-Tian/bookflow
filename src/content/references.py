@@ -5,7 +5,6 @@ from __future__ import annotations
 import copy
 import re
 from itertools import groupby
-from urllib.parse import urlsplit
 
 MARKER = re.compile(r"^(?:注?[①-⑳]|\[\d+\]|\d+[.、．])[ \t]*")
 REFERENCE_MARKER = r"(?:\[\d+\]|[（(]\d+[）)]|注?[①-⑳])"
@@ -129,39 +128,3 @@ def canonicalize_footnotes(chapter: dict) -> dict:
         output.append({**group[0], "runs": runs, "anchor": key, "footnote": key})
     result["blocks"] = output
     return result
-
-
-def validate_references(book: dict) -> None:
-    chapters = [*book["chapters"].values(), *book.get("extras", [])]
-    anchors = {}
-    for ch in chapters:
-        for b in ch["blocks"]:
-            if b.get("anchor"):
-                if b["anchor"] in anchors:
-                    raise ValueError("Duplicate content anchor")
-                anchors[b["anchor"]] = b
-    for ch in chapters:
-        for b in ch["blocks"]:
-            if b.get("footnote") and b["footnote"] not in anchors:
-                raise ValueError("Footnote lacks a destination anchor")
-            for r in b["runs"]:
-                href = r.get("href")
-                if not href:
-                    if r.get("link_role"):
-                        raise ValueError("Reference lacks a hyperlink target")
-                    continue
-                u = urlsplit(href)
-                if any(c in href for c in "\r\n\x00") or u.scheme not in {
-                    "",
-                    "https",
-                    "http",
-                    "mailto",
-                }:
-                    raise ValueError("Unsupported hyperlink scheme")
-                if not u.scheme and not u.netloc:
-                    if u.path or u.query or not u.fragment or u.fragment not in anchors:
-                        raise ValueError(f"Unresolved internal hyperlink: {href}")
-                if r.get("link_role") == "noteref" and not anchors.get(
-                    u.fragment, {}
-                ).get("footnote"):
-                    raise ValueError("Note reference does not target a footnote")

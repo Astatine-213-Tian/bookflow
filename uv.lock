@@ -391,6 +391,7 @@ dependencies = [
     { name = "notion-books" },
     { name = "opencc-python-reimplemented" },
     { name = "pillow" },
+    { name = "referencing" },
     { name = "requests" },
     { name = "tinycss2" },
     { name = "tqdm" },
@@ -406,9 +407,10 @@ requires-dist = [
     { name = "jsonschema", specifier = ">=4.23,<5" },
     { name = "lxml", specifier = "==6.1.0" },
     { name = "mcp", specifier = "==1.26.0" },
-    { name = "notion-books", git = "https://github.com/Astatine-213-Tian/notion-books?tag=v0.4.1" },
+    { name = "notion-books", git = "https://github.com/Astatine-213-Tian/notion-books?tag=v0.6.0" },
     { name = "opencc-python-reimplemented", specifier = "==0.1.7" },
     { name = "pillow", specifier = ">=11.3,<13" },
+    { name = "referencing", specifier = ">=0.36,<1" },
     { name = "requests", specifier = "==2.33.1" },
     { name = "tinycss2", specifier = ">=1.5.1" },
     { name = "tqdm", specifier = "==4.67.1" },
@@ -641,8 +643,8 @@ wheels = [
 
 [[package]]
 name = "notion-books"
-version = "0.4.1"
-source = { git = "https://github.com/Astatine-213-Tian/notion-books?tag=v0.4.1#1c2e3bde66a68c6d42f5c6e314c572f2b9ce7662" }
+version = "0.6.0"
+source = { git = "https://github.com/Astatine-213-Tian/notion-books?tag=v0.6.0#0aca5a7feef476a113ff3aa658b0829f39a06130" }
 
 [[package]]
 name = "opencc-python-reimplemented"

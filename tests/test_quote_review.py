@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 import unittest
 
-from notion_books import from_markdown, to_markdown
+from tests.notion_api import roundtrip
 
 from src.content.quote_review import apply_quote_review, find_quote_candidates
 from src.inputs.html import read_html_blocks
@@ -60,7 +60,7 @@ class QuoteReviewTests(unittest.TestCase):
             self.assertEqual(old["runs"], new["runs"])
         block = copy.deepcopy(result["chapters"]["one"]["blocks"][2])
         block.pop("alignment", None)
-        self.assertEqual(from_markdown(to_markdown([block]))[0]["kind"], "quote")
+        self.assertEqual(roundtrip([block])[0]["kind"], "quote")
 
     def test_keep_uncertain_and_ordinary_dialogue_do_not_change_content(self):
         book, evidence = source(

@@ -5,6 +5,8 @@ from __future__ import annotations
 import copy
 from difflib import SequenceMatcher
 
+from notion_books import content_signature
+
 
 def block_text(block: dict) -> str:
     return "".join(run["text"] for run in block.get("runs", []))
@@ -25,36 +27,6 @@ def removable_empty_paragraph(block: dict) -> bool:
         and not block.get("variant")
         and not has_reference_identity(block)
     )
-
-
-def content_signature(blocks: list[dict]) -> list[tuple]:
-    """Compare editable presentation, excluding local archive bookkeeping."""
-    # Markdown moves whitespace outside emphasis. Its styling has no visible
-    # effect, while every character and non-whitespace style must be preserved.
-    anchors = {b["anchor"]: i for i, b in enumerate(blocks) if b.get("anchor")}
-    return [
-        (
-            b["kind"],
-            b.get("level", 3) if b["kind"] == "heading" else None,
-            b.get("alignment", "left"),
-            b.get("language"),
-            b.get("variant"),
-            bool(b.get("footnote")),
-            tuple(
-                (
-                    char,
-                    tuple(sorted(r["styles"])) if not char.isspace() else (),
-                    ("#block", anchors[r["href"][1:]])
-                    if r.get("href", "").startswith("#") and r["href"][1:] in anchors
-                    else r.get("href"),
-                    r.get("link_role"),
-                )
-                for r in b["runs"]
-                for char in r["text"]
-            ),
-        )
-        for b in blocks
-    ]
 
 
 def replace_run_text(runs: list[dict], text: str) -> list[dict]:

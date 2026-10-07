@@ -8,7 +8,9 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
-from notion_books import FIELDS, Page, to_markdown
+from notion_books import NotionBooks, content_signature
+from tests.notion_api import BlockAPI, SOURCE, write
+import uuid
 
 from src.content.changes import apply_changes, content_hash
 from src.content.contract import validate_book
@@ -198,139 +200,87 @@ class ChangesTests(unittest.TestCase):
 
 
 class NotionChangesTests(unittest.IsolatedAsyncioTestCase):
-    async def test_resume_after_body_write_does_not_duplicate_or_overwrite_later_edits(
-        self,
-    ):
+    async def fixture(self):
         source = book()
+        api = BlockAPI()
+        for chapter in source["chapters"].values():
+            id = str(uuid.uuid4())
+            api.add_page(id, chapter["title"])
+            await write(NotionBooks(api=api), chapter["blocks"], id)
+            chapter.update(page_id=id, verified=True)
+        source.update(
+            storage=STORAGE, catalog_id=SOURCE, work_id=str(uuid.uuid4()), uploaded=True
+        )
+        return source, api
+
+    async def test_resume_after_body_write_preserves_identity_and_later_edits(self):
+        source, api = await self.fixture()
         key = "chapter-1-1"
-        target = copy.deepcopy(source["chapters"][key])
-        target.update(title="第1章 修订", blocks=[paragraph("修订。")])
+        id = source["chapters"][key]["page_id"]
+        other = source["chapters"]["chapter-1-2"]["page_id"]
+        before = await read_current(source, tools=api)
+        target = {"title": "第1章 修订", "blocks": [paragraph("修订。")]}
         task = change(
             source,
             {
                 "kind": "replace_chapter",
                 "chapter_id": key,
-                "expected_sha256": content_hash(source["chapters"][key]),
+                "expected_sha256": content_hash(before["chapters"][key]),
                 "chapter": target,
             },
         )
-        pages = {}
-        for i, ch in enumerate(source["chapters"].values()):
-            ch.update(page_id=str(i), verified=True)
-            pages[str(i)] = Page(
-                page_id=str(i),
-                data_source_id="ds",
-                title=ch["title"],
-                markdown=to_markdown(ch["blocks"]),
-                revision="1",
-                properties={FIELDS["chapter_title"]: ch["title"]},
-                blocks=None,
-                cover=None,
-                cover_known=True,
-            )
-        source.update(
-            storage=STORAGE, catalog_id="catalog", work_id="work", uploaded=True
-        )
-        writes = []
-        fail_title = True
+        original_call = api.call
+        fail = True
 
-        class Reader:
-            def __init__(self, *args):
-                pass
+        async def call(name, args):
+            nonlocal fail
+            if name == "notion-update-page" and fail:
+                fail = False
+                raise TimeoutError("lost title response")
+            return await original_call(name, args)
 
-            async def document(self, id):
-                return copy.deepcopy(pages[id])
-
-            async def replace_content(self, id, page):
-                writes.append(("body", id))
-                pages[id] = page
-
-            async def write_properties(self, id, fields):
-                nonlocal fail_title
-                if fail_title:
-                    fail_title = False
-                    raise TimeoutError("title write did not complete")
-                writes.append(("title", id))
-                pages[id].properties.update(fields)
-
-        with (
-            tempfile.TemporaryDirectory() as temporary,
-            patch("src.notion.update.NotionBooks", Reader),
-        ):
+        api.call = call
+        config = {"databases": {"works": {"data_source_id": SOURCE}}}
+        with tempfile.TemporaryDirectory() as temporary:
             state = Path(temporary) / "import.json"
             write_json(state, source)
-            # Hash the actual editor snapshot, not the checkpoint's transport fields.
-            current = await read_current(source, tools=None)
-            task["operations"][0]["expected_sha256"] = content_hash(
-                current["chapters"][key]
+            other_before = await NotionBooks(api=api).document(other)
+            with self.assertRaises(ValueError):
+                await apply_update(state, task, config, tools=api)
+            mutations = api.mutations
+            result = await apply_update(state, task, config, tools=api)
+            self.assertEqual(api.mutations, mutations)
+            self.assertEqual(result["chapters"][key]["title"], target["title"])
+            self.assertEqual(
+                content_signature((await NotionBooks(api=api).document(other)).blocks),
+                content_signature(other_before.blocks),
             )
-            with self.assertRaises(TimeoutError):
-                await apply_update(
-                    state,
-                    task,
-                    {"databases": {"works": {"data_source_id": "catalog"}}},
-                    tools=None,
-                )
-            unrelated = pages["1"].markdown
-            result = await apply_update(
-                state,
-                task,
-                {"databases": {"works": {"data_source_id": "catalog"}}},
-                tools=None,
+            await write(NotionBooks(api=api), [paragraph("后来手改。")], id)
+            mutations = api.mutations
+            result = await apply_update(state, task, config, tools=api)
+            self.assertEqual(api.mutations, mutations)
+            self.assertEqual(
+                result["chapters"][key]["blocks"][0]["runs"][0]["text"], "后来手改。"
             )
-            self.assertEqual(writes, [("body", "0"), ("title", "0")])
-            self.assertEqual(result["chapters"][key]["title"], "第1章 修订")
-            self.assertEqual(pages["1"].markdown, unrelated)
-            pages["0"] = replace(pages["0"], markdown="后来手改。")
-            await apply_update(
-                state,
-                task,
-                {"databases": {"works": {"data_source_id": "catalog"}}},
-                tools=None,
-            )
-            self.assertEqual(pages["0"].markdown, "后来手改。")
-            self.assertEqual(len(writes), 2)
 
-    async def test_resume_pending_append_uses_existing_checkpoint(self):
-        source = book()
-        for i, ch in enumerate(source["chapters"].values()):
-            ch.update(page_id=str(i), verified=True)
-        source.update(
-            storage=STORAGE, catalog_id="catalog", work_id="work", uploaded=True
-        )
-
-        class Reader:
-            def __init__(self, *args):
-                pass
-
-            async def document(self, id):
-                ch = list(source["chapters"].values())[int(id)]
-                return Page(
-                    page_id=id,
-                    data_source_id="ds",
-                    title=ch["title"],
-                    markdown=to_markdown(ch["blocks"]),
-                    revision="1",
-                    properties={FIELDS["chapter_title"]: ch["title"]},
-                    blocks=None,
-                    cover=None,
-                    cover_known=True,
-                )
-
+    async def test_resume_interrupted_append_uses_existing_checkpoint(self):
+        source, api = await self.fixture()
         calls = []
+        new_id = str(uuid.uuid4())
 
         async def upload(checkpoint, state, config, *, tools):
-            row = checkpoint["chapters"]["new"]
-            calls.append(row.get("page_id"))
+            item = checkpoint["chapters"]["new"]
+            calls.append(item.get("page_id"))
             if len(calls) == 1:
                 raise RuntimeError("interrupted before create")
-            row.update(page_id="created", verified=True)
+            api.add_page(new_id, item["title"])
+            await write(NotionBooks(api=api), item["blocks"], new_id)
+            item.update(page_id=new_id, verified=True)
             checkpoint["uploaded"] = True
             write_json(state, checkpoint)
 
         with (
             tempfile.TemporaryDirectory() as temporary,
-            patch("src.notion.update.NotionBooks", Reader),
             patch("src.notion.update.upload_draft", upload),
         ):
             state = Path(temporary) / "import.json"
@@ -344,20 +294,11 @@ class NotionChangesTests(unittest.IsolatedAsyncioTestCase):
                     "chapter": {"title": "第3章", "blocks": [paragraph("新章。")]},
                 },
             )
+            config = {"databases": {"works": {"data_source_id": SOURCE}}}
             with self.assertRaises(RuntimeError):
-                await apply_update(
-                    state,
-                    task,
-                    {"databases": {"works": {"data_source_id": "catalog"}}},
-                    tools=None,
-                )
-            await apply_update(
-                state,
-                task,
-                {"databases": {"works": {"data_source_id": "catalog"}}},
-                tools=None,
-            )
+                await apply_update(state, task, config, tools=api)
+            await apply_update(state, task, config, tools=api)
             self.assertEqual(calls, [None, None])
             self.assertEqual(
-                json.loads(state.read_text())["chapters"]["new"]["page_id"], "created"
+                json.loads(state.read_text())["chapters"]["new"]["page_id"], new_id
             )

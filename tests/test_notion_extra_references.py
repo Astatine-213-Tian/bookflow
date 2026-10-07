@@ -11,11 +11,11 @@ from unittest.mock import patch
 from zipfile import ZipFile
 
 from lxml import etree as ET
-from notion_books import FIELDS, to_markdown
+from notion_books import FIELDS
 
 from src.content.contract import validate_book
 from src.epub.writer import export_local
-from src.notion.references import checkpoint_page_ids, localize_chapter_links
+from src.notion.content import checkpoint_page_ids, localize_chapter_links
 from src.notion.update import read_current
 
 
@@ -77,18 +77,20 @@ class ExtraReferenceTests(unittest.IsolatedAsyncioTestCase):
             ]
             pages[chapter["page_id"]] = SimpleNamespace(
                 properties={title_field: chapter["title"]},
-                markdown=to_markdown(chapter["blocks"]),
+                blocks=copy.deepcopy(chapter["blocks"]),
             )
 
         class Reader:
-            def __init__(self, *args):
+            def __init__(self, *args, **kwargs):
                 pass
 
             async def document(self, page_id):
                 return copy.deepcopy(pages[page_id])
 
         with patch("src.notion.update.NotionBooks", Reader):
-            return await read_current(saved, tools=None), saved
+            return await read_current(
+                saved, tools=SimpleNamespace(call_api=None)
+            ), saved
 
     async def test_readback_localizes_links_among_chapters_and_extras(self):
         book, saved = await self.read_fixture()
@@ -148,7 +150,7 @@ class ExtraReferenceTests(unittest.IsolatedAsyncioTestCase):
     def test_empty_linked_extra_is_rejected_and_unrelated_link_stays_external(self):
         saved = checkpoint()
         saved["extras"][0]["blocks"] = []
-        with self.assertRaisesRegex(ValueError, "no readable content"):
+        with self.assertRaisesRegex(ValueError, "no content"):
             localize_chapter_links(saved, checkpoint_page_ids(saved))
         saved = checkpoint()
         unknown = "https://www.notion.so/" + "d" * 32

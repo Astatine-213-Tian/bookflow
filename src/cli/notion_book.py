@@ -1,4 +1,4 @@
-"""Upload prepared books, verify drafts and recover Notion imports through MCP."""
+"""Upload prepared books, verify drafts and recover Notion imports through official MCP and REST."""
 
 from __future__ import annotations
 
@@ -23,6 +23,9 @@ from src.runtime.files import write_json
 
 
 async def resume(state: Path, config_path: Path) -> None:
+    from src.notion.api import api_token
+
+    api_token()
     config = json.loads(config_path.read_text())
     with exclusive_lock(state.parent / "import.lock"):
         book = json.loads(state.read_text())
@@ -106,6 +109,10 @@ def run(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--change", type=Path, help="Explicit chapter change JSON")
     args = parser.parse_args(argv)
+    if args.command in {"export", "update", "verify"}:
+        from src.notion.api import api_token
+
+        api_token()
     if args.command in {"export", "update"}:
         if not args.state:
             parser.error("export/update requires --state")

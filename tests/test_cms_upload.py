@@ -24,6 +24,7 @@ from src.notion.upload import upload_draft, upload_row
 from src.runtime.files import digest
 from src.workflows.ingest import OutputOptions, write_outputs
 from tests.fixtures import prepared_crawl as prepare_crawl
+from tests.notion_api import BlockAPI, paragraphs
 
 WORK = "11111111-1111-1111-1111-111111111111"
 DS = "22222222-2222-2222-2222-222222222222"
@@ -285,7 +286,7 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
             storage=STORAGE,
             catalog_id=DS,
             work_id=WORK,
-            chapters_data_source_id="chapters",
+            chapters_data_source_id=DS,
             chapters_view_id="main",
             view_id="extras",
         )
@@ -299,7 +300,11 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
         created = {}
         calls = []
 
+        api = BlockAPI()
+
         class Tools:
+            call_api = api.__call__
+
             async def call(self, name, args):
                 calls.append((name, args))
                 if name != "notion-create-pages":
@@ -307,26 +312,23 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
                 page = args["pages"][0]
                 id = f"00000000-0000-0000-0000-{len(created) + 1:012d}"
                 created[id] = page
-                view = (
-                    "main"
-                    if args["parent"]["data_source_id"] == "chapters"
-                    else "extras"
+                props = {}
+                for name, value in page["properties"].items():
+                    if isinstance(value, list):
+                        props[name] = {
+                            "type": "relation",
+                            "relation": [{"id": x} for x in value],
+                            "has_more": False,
+                        }
+                    elif name not in ("章节", "番外"):
+                        props[name] = {"type": "select", "select": {"name": value}}
+                title_field = "章节" if "章节" in page["properties"] else "番外"
+                api.add_page(
+                    id, page["properties"][title_field], DS, title_field, props
                 )
+                view = "main" if "章节" in page["properties"] else "extras"
                 rows[view].insert(0, {"id": id})
                 return {"pages": [{"id": id}]}
-
-        async def document(_reader, id):
-            return Page(
-                page_id=id,
-                data_source_id=DS,
-                title="",
-                markdown=created[id]["content"],
-                revision="",
-                properties=created[id]["properties"],
-                blocks=None,
-                cover=None,
-                cover_known=False,
-            )
 
         async def read_rows(_reader, view):
             return rows[view]
@@ -337,7 +339,6 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
             patch("src.notion.upload.ensure_views", new=AsyncMock()),
             patch("src.notion.presentation.ensure_volume_colors", new=AsyncMock()),
             patch("notion_books.NotionBooks.ensure_options", new=AsyncMock()),
-            patch("notion_books.NotionBooks.document", document),
             patch("notion_books.NotionBooks.rows", read_rows),
             patch(
                 "notion_books.NotionBooks.inventory",
@@ -355,7 +356,11 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
                 created[rows["main"][1]["id"]]["properties"]["所属标题"], "卷1"
             )
             count = len(calls)
-            created[rows["main"][1]["id"]]["content"] = "User edit after upload"
+            edited = rows["main"][1]["id"]
+            node = api.nodes[api.children[edited][0]]
+            node["paragraph"]["rich_text"][0]["text"]["content"] = (
+                "User edit after upload"
+            )
             await upload_draft(book, state, config, tools=Tools())
             self.assertEqual(len(calls), count)
             # Appending to a nonempty manual view creates at the top. Stop for
@@ -387,7 +392,12 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(calls), count + 1)
             self.assertTrue(json.loads(state.read_text())["uploaded"])
             self.assertIn(
-                "User edit after upload", [page["content"] for page in created.values()]
+                "User edit after upload",
+                [
+                    n[n["type"]]["rich_text"][0]["text"]["content"]
+                    for n in api.nodes.values()
+                    if n[n["type"]].get("rich_text")
+                ],
             )
 
     async def test_lost_create_response_stops_retry_without_duplicate(self):

@@ -30,7 +30,9 @@ class LiveUploadRecoveryTests(unittest.TestCase):
         mocked.start()
         self.addCleanup(mocked.stop)
 
-    def test_failed_import_retains_partial_checkpoint_and_cleanup_checks_known_ids(self):
+    def test_failed_import_retains_partial_checkpoint_and_cleanup_checks_known_ids(
+        self,
+    ):
         def fail(*args):
             live.save(self.checkpoint, {"work_id": "created-work", "extras": [{}]})
             raise ValueError("readback failed")
@@ -48,13 +50,21 @@ class LiveUploadRecoveryTests(unittest.TestCase):
         self.assertTrue(live.load(self.manifest)["notion_cleanup_verified"])
 
     def test_cleanup_finds_author_when_create_response_was_lost(self):
-        with patch.object(live, "write_outputs", side_effect=ValueError("lost response")):
+        with patch.object(
+            live, "write_outputs", side_effect=ValueError("lost response")
+        ):
             with self.assertRaisesRegex(ValueError, "lost response"):
                 live.import_book(self.root)
         run = live.load(self.manifest)
-        self.reader.rows.side_effect = [[], [{
-            "id": "unknown-author", live.FIELDS["authors"]: live.source(run).author,
-        }]]
+        self.reader.rows.side_effect = [
+            [],
+            [
+                {
+                    "id": "unknown-author",
+                    live.FIELDS["authors"]: live.source(run).author,
+                }
+            ],
+        ]
         with self.assertRaisesRegex(AssertionError, "Test authors still active"):
             live.verify_cleanup(self.root)
         self.reader.rows.side_effect = None
@@ -63,9 +73,13 @@ class LiveUploadRecoveryTests(unittest.TestCase):
 
     def test_failed_readback_keeps_author_ids_for_cleanup(self):
         def upload(book, options):
-            live.save(self.checkpoint, {
-                "work_id": "created-work", "metadata": {"title": book.title},
-            })
+            live.save(
+                self.checkpoint,
+                {
+                    "work_id": "created-work",
+                    "metadata": {"title": book.title},
+                },
+            )
             return SimpleNamespace(notion_state=self.checkpoint)
 
         async def document(page_id):
@@ -75,11 +89,12 @@ class LiveUploadRecoveryTests(unittest.TestCase):
                     page_id=page_id,
                     data_source_id="",
                     title="",
-                    markdown="",
                     revision="",
                     properties={
                         live.FIELDS["title"]: live.source(run).title,
-                        live.FIELDS["authors"]: ["00000000-0000-4000-8000-000000000001"],
+                        live.FIELDS["authors"]: [
+                            "00000000-0000-4000-8000-000000000001"
+                        ],
                     },
                     blocks=None,
                     cover=None,
@@ -87,10 +102,13 @@ class LiveUploadRecoveryTests(unittest.TestCase):
                 )
             raise ValueError("author readback failed")
 
-        self.reader.document = document
+        self.reader.page = document
         with patch.object(live, "write_outputs", side_effect=upload):
             with self.assertRaisesRegex(ValueError, "author readback failed"):
                 live.import_book(self.root)
-        self.assertEqual(live.load(self.manifest)["author_ids"], [
-            "00000000-0000-4000-8000-000000000001",
-        ])
+        self.assertEqual(
+            live.load(self.manifest)["author_ids"],
+            [
+                "00000000-0000-4000-8000-000000000001",
+            ],
+        )

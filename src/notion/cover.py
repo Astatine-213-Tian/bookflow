@@ -1,8 +1,7 @@
-"""Upload native CMS covers through the public API; content still uses MCP."""
+"""Upload and independently verify native CMS covers."""
 
 from __future__ import annotations
 
-import base64
 import io
 import os
 import warnings
@@ -13,6 +12,7 @@ from notion_books import API_VERSION, NotionBooks
 from PIL import Image
 
 from src.runtime.files import digest, write_json
+from src.notion.api import api_request, api_token
 
 MAX_BYTES = 10 * 1024 * 1024
 MAX_PIXELS = 25_000_000
@@ -38,45 +38,6 @@ def validate_cover(data: bytes) -> str:
         Image.DecompressionBombError,
     ) as error:
         raise ValueError("Invalid CMS cover image") from error
-
-
-def api_token() -> str:
-    token = os.environ.get("NOTION_API_TOKEN", "").strip()
-    if not token:
-        raise ValueError(
-            "Automatic cover upload requires NOTION_API_TOKEN in the process environment; .env is not read"
-        )
-    return token
-
-
-async def api_request(client: httpx.AsyncClient, request: dict) -> dict:
-    kwargs = {}
-    if "json" in request:
-        kwargs["json"] = request["json"]
-    if "file" in request:
-        file = request["file"]
-        kwargs["files"] = {
-            "file": (
-                file["filename"],
-                base64.b64decode(file["data"]),
-                file["content_type"],
-            )
-        }
-    response = await client.request(
-        request["method"], "https://api.notion.com/v1/" + request["path"], **kwargs
-    )
-    try:
-        body = response.json()
-    except ValueError:
-        if response.is_success:
-            raise
-        body = {}
-    return {
-        "status": response.status_code,
-        "body": body,
-        "request_id": response.headers.get("x-request-id", ""),
-        "retry_after": response.headers.get("retry-after", ""),
-    }
 
 
 async def upload_cover(book: dict, state: Path, *, tools) -> None:

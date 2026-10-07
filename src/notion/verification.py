@@ -5,10 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 
-from notion_books import FIELDS, NotionBooks, relation_ids
+from notion_books import FIELDS, NotionBooks, relation_ids, content_matches
 
-from src.notion.capabilities import read_content
-from src.notion.references import expected_content, verify_bound_content
+from src.notion.content import targets
 from src.notion.cms import AUTHOR_HOMEPAGE, chapter_entries
 from src.notion.duplicates import fingerprint
 from src.notion.presentation import public_cover, volume_options
@@ -25,7 +24,7 @@ def _value(value):
 
 
 async def verify_draft(book: dict, config: dict, *, tools) -> dict:
-    reader = NotionBooks(tools)
+    reader = NotionBooks(tools, api=tools.call_api)
     page = await reader.page(book["work_id"])
     if page.data_source_id != config["databases"]["works"]["data_source_id"]:
         raise ValueError("Book belongs to another catalog")
@@ -75,21 +74,17 @@ async def verify_draft(book: dict, config: dict, *, tools) -> dict:
         *[(extra, None, FIELDS["extra_title"]) for extra in book["extras"]],
     ]:
         document = await reader.document(item["page_id"])
-        expected = item.get("reuse_fingerprint") or fingerprint(
-            item["title"],
-            expected_content(item["blocks"], book.get("reference_bindings", {})),
-        )
-        if (
-            fingerprint(
-                document.properties.get(title_field), read_content(document.markdown)
+        if item.get("reuse_fingerprint"):
+            matches = (
+                fingerprint(document.properties.get(title_field), document.blocks)
+                == item["reuse_fingerprint"]
             )
-            != expected
-        ):
+        else:
+            matches = document.properties.get(title_field) == item[
+                "title"
+            ] and content_matches(document.blocks, item["blocks"], targets(book))
+        if not matches:
             raise ValueError(f"Content readback differs: {item['title']}")
-        if not item.get("reused") and not verify_bound_content(
-            document.markdown, item["blocks"], book.get("reference_bindings", {})
-        ):
-            raise ValueError(f"Hyperlink destinations differ: {item['title']}")
         if (
             parent is not None
             and (document.properties.get(FIELDS["parent_title"]) or "") != parent
