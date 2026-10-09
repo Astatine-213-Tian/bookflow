@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Iterable
 from xml.etree import ElementTree as ET
 
+from src.content.blocks import replace_run_text
+from src.content.english_terms import normalize_english_terms
 from src.content.normalization import (
     AUTHOR_NOTE_HEADING_RE,
     AUTHOR_NOTE_PARAGRAPH_RE,
@@ -20,13 +22,11 @@ from src.content.normalization import (
     _normalize_fullwidth_alphanumeric,
     _normalize_plain_text,
     is_separator_marker,
-    normalized_end_marker,
     normalize_chapter_ordinal,
+    normalized_end_marker,
     scan_content_issues,
 )
-from src.content.blocks import replace_run_text
 from src.content.titles import normalize_volume_title
-
 
 EPUB_OPS_NAMESPACE_DECL_RE = re.compile(
     r"xmlns:(?P<prefix>[A-Za-z_][\w.-]*)="
@@ -164,14 +164,27 @@ def _normalize_fragment(
             force_fanwai_title=force_fanwai_title,
             member=member,
             report=report,
+            # Resolve name casing on the complete visible fragment below, so
+            # inline markup cannot turn part of a larger word into a match.
+            term_protected_ranges=[(0, len(token))],
         )
 
     records: list[tuple[int, int, int, str] | None] = []
+    code_depth = 0
+    code_ranges = []
     for token_index, token in enumerate(tokens):
         if not token:
             continue
         if token.startswith("<"):
-            tag = token[1:].lstrip("/").split(None, 1)[0].rstrip(">/").lower()
+            tag = (
+                token[1:].lstrip("/").split(None, 1)[0].rstrip(">/")
+                .lower().rsplit(":", 1)[-1]
+            )
+            if tag in {"code", "pre", "kbd", "samp"}:
+                if token.startswith("</"):
+                    code_depth = max(0, code_depth - 1)
+                elif not token.endswith("/>"):
+                    code_depth += 1
             if tag in {"br", "img", "hr"} and not token.startswith("</"):
                 records.append(None)
             continue
@@ -181,11 +194,29 @@ def _normalize_fragment(
                 records.append((token_index, 0, len(token), decoded))
             else:
                 records.append(None)
+            if code_depth:
+                code_ranges.append((len(records) - 1, len(records)))
             continue
+        start = len(records)
         records.extend(
             (token_index, offset, offset + 1, char) for offset, char in enumerate(token)
         )
+        if code_depth:
+            code_ranges.append((start, len(records)))
     visible = "".join(record[3] if record else "\n" for record in records)
+    term_text, term_count = normalize_english_terms(
+        visible, protected_ranges=code_ranges
+    )
+    replacements = defaultdict(list)
+    for record, before, after in zip(records, visible, term_text, strict=True):
+        if record is not None and before != after:
+            replacements[record[0]].append((record[1], record[2], after))
+    for index, changes in replacements.items():
+        for start, stop, value in reversed(changes):
+            tokens[index] = tokens[index][:start] + value + tokens[index][stop:]
+    report.record_change(
+        "common_english_term_case_normalized", member, term_count, visible, term_text
+    )
     positions = _mixed_boundary_positions(visible, preserve_ordinals)
     insertions: dict[int, set[int]] = defaultdict(set)
     for position in positions:

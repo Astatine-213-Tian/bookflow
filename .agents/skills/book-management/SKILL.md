@@ -34,6 +34,10 @@ For working files and task completion, follow [storage and cleanup](../../../doc
 - **Correct existing content, formatting, TOC or metadata:** read
   [formatting.md](references/formatting.md). Edit uploaded content in Notion;
   repair a local archive when requested.
+- **Proofread an existing edition against Jinjiang:** follow
+  [Jinjiang proofreading](../../../docs/jinjiang-proofread.md) for `book-proofread`,
+  including missing blank lines, suspect-text evidence and plain-text author notes.
+  Preserve the selected edition and use the existing destination named by the user.
 - **Export an existing book for training:** use the targeted dataset command below.
   Training output uses the same collection pipeline when a fresh source is needed.
 

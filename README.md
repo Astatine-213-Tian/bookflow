@@ -69,6 +69,11 @@ specific chapters and the content they were based on. Partial images become a
 reviewed complete replacement chapter. Other content remains untouched. Notion
 updates resume from journals and stop on conflicting editor changes.
 
+For reference-based whitespace checks, suspect-text verification and missing author
+notes, use [`book-proofread`](docs/jinjiang-proofread.md) against readable Jinjiang
+chapters. It supports existing Notion works or local EPUB/source JSON and preserves
+edition differences.
+
 ## Notion
 
 ```bash

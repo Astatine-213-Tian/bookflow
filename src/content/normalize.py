@@ -12,20 +12,21 @@ from src.content.blocks import (
     removable_empty_paragraph,
     replace_run_text,
 )
+from src.content.english_terms import code_term_ranges
 from src.content.normalization import (
     AUTHOR_NOTE_HEADING_RE,
     AUTHOR_NOTE_PARAGRAPH_RE,
     NormalizationReport,
     _normalize_plain_text,
     is_separator_marker,
-    normalized_end_marker,
     normalize_alphanumeric_width,
+    normalized_end_marker,
     scan_content_issues,
 )
 from src.content.numerals import format_chinese_numeral
 from src.content.titles import normalize_outline, normalize_volume_colors
 
-RULES_SHA256 = "e05dc9ba12084e4fb63d913e656cdcb33075469027d45fe446a00b5f8ff3da4f"
+RULES_SHA256 = "0dd16923c4f82adda7084343585af7d3b21ab413a7167413ba9ee0f456d60602"
 
 SECTION_NUMBER = r"(?:[0-9０-９]{1,3}|[一二三四五六七八九十百零〇]+)"
 SECTION_LABEL_RE = re.compile(
@@ -184,6 +185,7 @@ def normalize_text(
     title: bool = False,
     member: str = "text",
     report: NormalizationReport | None = None,
+    term_protected_ranges: list[tuple[int, int]] | None = None,
 ) -> str:
     return _normalize_plain_text(
         text.replace("\u2028", "\n").replace("\u2029", "\n"),
@@ -194,6 +196,7 @@ def normalize_text(
         force_fanwai_title=False,
         member=member,
         report=report or NormalizationReport(path=Path("content"), applied=True),
+        term_protected_ranges=term_protected_ranges,
     )
 
 
@@ -253,6 +256,7 @@ def normalize_chapter(
             title=block["kind"] == "heading" and normalized_end_marker(text) is None,
             member=member,
             report=report,
+            term_protected_ranges=code_term_ranges(block["runs"]),
         )
         normalized = normalized.lstrip(" \t\u3000")
         block["runs"] = replace_run_text(block["runs"], normalized)

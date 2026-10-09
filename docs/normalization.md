@@ -24,6 +24,12 @@
   标题的编号标记内部不拆开，卷名的空格另按卷名规则处理。
 - 拉丁词或数字之间的全角空格改为一个普通空格：`NICE　DOGS` → `NICE DOGS`。
   清除段首排版缩进；保留段内换行，不把词间空格删成连写。
+- 常见英文名称按下表统一大小写，词表维护在 `src/content/english_terms.py`。
+  只匹配完整英文词（允许紧邻汉字），`iphone` / `IPHONE` / `iPhOnE` → `iPhone`；
+  不猜拼写、不模糊匹配，`IPONE` 保留原样。`iPhone15` 等明确产品的纯数字后缀保留。
+  网址、邮箱、文件名/路径、账号、反引号代码及结构化行内代码不参加这项大小写替换；
+  链接的显示文字可规范化，目标 URL 不变。`MAC 地址` 不按 Mac 电脑名处理。
+  `apple`、`python`、`word`、`app`、`it`、`id`、`us` 等存在普通词义的词不自动改大小写。
 - 中文标点紧贴相邻文字，去除其旁边多余的排版空格。中文语境的 ASCII 逗号、
   句号、问号、叹号、冒号、分号及含中文的括号转换为对应中文形式。
   保留小数、千位分隔、网址、文件扩展名、时间、表情和英文句子的合法标点。
@@ -34,6 +40,12 @@
 - 汉字之间的空格、反斜杠只清除确定的断词/转义残留；短标签、元数据、刻意分隔、
   多处歧义保留并列入审查。`○` 只在中文数字串中变成 `〇`，独立装饰圆圈不变。
 
+| 类型 | 规范写法 |
+| --- | --- |
+| 设备及系统 | iPhone、iPad、iPod、iOS、macOS、iMac、Mac、MacBook、MacBook Air、MacBook Pro、AirPods、Apple Watch、Apple TV、Android、Windows、Microsoft、Google、Bluetooth、Wi-Fi |
+| 网站、软件及平台 | GitHub、GitLab、YouTube、Facebook、Instagram、WhatsApp、WeChat、TikTok、LinkedIn、WordPress、PowerPoint、JavaScript、TypeScript、ChatGPT、OpenAI、PlayStation、Xbox |
+| 常见缩写 | QQ、MSN、DVD、CD、USB、HDMI、CPU、GPU、PDF、KTV、VIP、MV、MP3、MP4、CEO、CFO、CTO、COO、GPS、SIM、DIY |
+
 ## 引号与可疑文本
 
 - 中文引文使用方向正确的弯引号。只修复上下文明确的直引号、反向引号和重复引号，
@@ -42,7 +54,8 @@
 - 只自动去除明确匹配的资源群广告残留。网址、账号或“加群”等文本本身不足以删除正文。
 - 乱码、私用字、异常控制符、疑似广告和不明确的断词进入审查报告，不猜测替换。
   保留 emoji、必要的连接符及 `/(ㄒoㄒ)/~~` 等颜文字。
-- 保留篇末作者的话；其自由文本不参加正文异常筛查，但仍检查独立结构标记。
+- 保留篇末作者的话；文字同样执行上述字符、空格、标点和英文名称规范化，例如 `10月` → `10 月`。
+  其自由文本不参加正文异常筛查，但仍检查独立结构标记。
   简介保留为独立内容，不把它与第 1 章合并。
 
 ## 卷名与章节标题
@@ -133,7 +146,10 @@
   {"input":"A sentence, with words.","expected":"A sentence, with words."},
   {"input":"“ＮＩＣＥ　ＤＯＧＳ！”","expected":"“NICE DOGS！”"},
   {"input":"BOYS　DONT　CRY","expected":"BOYS DONT CRY"},
-  {"input":"①与Ⅳ不是全角英数字。","expected":"①与Ⅳ不是全角英数字。"}
+  {"input":"①与Ⅳ不是全角英数字。","expected":"①与Ⅳ不是全角英数字。"},
+  {"input":"作话：10月用IPHONE和github发文。","expected":"作话：10 月用 iPhone 和 GitHub 发文。"},
+  {"input":"IPHONE iPhOnE IPONE IPHONE15","expected":"iPhone iPhone IPONE iPhone15"},
+  {"input":"MAC地址与MAC电脑，apple和python保留。","expected":"MAC 地址与 Mac 电脑，apple 和 python 保留。"}
 ]
 ```
 

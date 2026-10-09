@@ -9,8 +9,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from src.metadata.catalog import MetadataEnrichmentReport
+from src.content.english_terms import normalize_english_terms
 from src.content.numerals import format_chinese_numeral, parse_number
+from src.metadata.catalog import MetadataEnrichmentReport
 
 HAN_CLASS = (
     "\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\U00020000-\U0002ebef\U0002f800-\U0002fa1f"
@@ -1508,8 +1509,16 @@ def _normalize_plain_text(
     force_fanwai_title: bool,
     member: str,
     report: NormalizationReport,
+    term_protected_ranges: list[tuple[int, int]] | None = None,
 ) -> str:
     text = _normalize_fullwidth_alphanumeric(text, member=member, report=report)
+    before_terms = text
+    text, term_count = normalize_english_terms(
+        text, protected_ranges=term_protected_ranges
+    )
+    report.record_change(
+        "common_english_term_case_normalized", member, term_count, before_terms, text
+    )
     text = _apply_regex(
         text,
         FULLWIDTH_WORD_GAP_RE,
