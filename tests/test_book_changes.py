@@ -255,7 +255,7 @@ class NotionChangesTests(unittest.IsolatedAsyncioTestCase):
             mutations = api.mutations
             result = await apply_update(state, task, config, tools=api)
             self.assertEqual(api.mutations, mutations)
-            self.assertEqual(result["chapters"][key]["title"], target["title"])
+            self.assertEqual(result["chapters"][key]["title"], "第一章 修订")
             self.assertEqual(
                 content_signature((await NotionBooks(api=api).document(other)).blocks),
                 content_signature(other_before.blocks),

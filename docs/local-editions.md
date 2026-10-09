@@ -51,7 +51,7 @@ SHA-256. Create a review JSON with that hash and an entry for every listed page:
     "Text/body.xhtml": [
       {"start": 0, "stop": 3, "role": "omit", "reason": "Reviewed copyright and 制作 pages"},
       {"start": 3, "stop": 7, "role": "intro", "title": "简介"},
-      {"start": 7, "stop": 20, "role": "chapter", "title": "第1章", "parent": "正文·上（2008）"}
+      {"start": 7, "stop": 20, "role": "chapter", "title": "第一章", "parent": "正文·上（2008）"}
     ]
   }
 }

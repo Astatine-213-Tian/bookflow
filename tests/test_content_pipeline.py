@@ -180,7 +180,7 @@ class ContentPipelineTests(unittest.TestCase):
                 ],
             }
         )
-        self.assertEqual(chapter["title"], "第1章")
+        self.assertEqual(chapter["title"], "第一章")
         self.assertEqual(chapter["blocks"][0], original)
         self.assertEqual(
             chapter["blocks"][1]["runs"],
@@ -213,8 +213,8 @@ class ContentPipelineTests(unittest.TestCase):
             path = Path(temporary) / "book.txt"
             write_prepared_txt(source, path)
             text = path.read_text()
-        self.assertLess(text.index("上卷"), text.index("第1章"))
-        self.assertLess(text.index("下卷"), text.index("第2章"))
+        self.assertLess(text.index("上卷"), text.index("第一章"))
+        self.assertLess(text.index("下卷"), text.index("第二章"))
         self.assertIn("***", text)
 
     def test_normalization_works_on_content_and_preserves_rich_text(self):
@@ -246,7 +246,7 @@ class ContentPipelineTests(unittest.TestCase):
         result, report = normalize_book(source)
         self.assertEqual(source, original)
         chapter = result["chapters"]["chapter-1"]
-        self.assertEqual(chapter["title"], "第1章")
+        self.assertEqual(chapter["title"], "第一章")
         self.assertEqual(len(chapter["blocks"]), 1)
         runs = chapter["blocks"][0]["runs"]
         self.assertEqual("".join(r["text"] for r in runs), "他说 MSN，QQ 都是 100 分。")

@@ -9,7 +9,8 @@ from uuid import NAMESPACE_URL, uuid5
 from src.runtime.files import digest
 
 HEADING = re.compile(
-    r"^(?:第\d+章(?:\s.*)?|番外(?:[一二三四五六七八九十百零\d]+(?:[·：:\s].*)?)?)$"
+    r"^(?:第[\d零〇一二两三四五六七八九十百千万]+[章回节](?:\s.*)?"
+    r"|番外(?:[一二三四五六七八九十百零\d]+(?:[·：:\s].*)?)?)$"
 )
 
 

@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 
 from src.content.outline import ordered_members
+from src.content.normalization import normalize_chapter_ordinal
+from src.content.numerals import parse_number
 
 
 class EditionOutlineError(ValueError):
@@ -106,7 +108,7 @@ def apply_jjwxc_outline(
         )
     ):
         raise ValueError("Chapter aliases must be a JSON map of title strings")
-    aliases = aliases or {}
+    aliases = {normalize_chapter_ordinal(k): v for k, v in (aliases or {}).items()}
     official = {}
     for volume in contents["volumes"]:
         for chapter in volume["chapters"]:
@@ -123,17 +125,23 @@ def apply_jjwxc_outline(
         if chapter.get("role") in {"intro", "afterword"}:
             sections.append({"member": member})
             continue
-        match = re.fullmatch(r"第(\d+)章\s*(.*)", chapter["title"])
-        if not match or int(match[1]) not in official:
+        match = re.fullmatch(
+            r"第([\d零〇一二两三四五六七八九十百千万]+)章\s*(.*)", chapter["title"]
+        )
+        if not match or parse_number(match[1]) not in official:
             raise ValueError(
                 f"Chapter is absent from the official directory: {chapter['title']}"
             )
-        number = int(match[1])
+        number = parse_number(match[1])
         numbers.append(number)
         parent, title = official[number]
-        if chapter["title"] != title and match[2] != title:
+        if (
+            normalize_chapter_ordinal(chapter["title"])
+            != normalize_chapter_ordinal(title)
+            and match[2] != title
+        ):
             differences.append({"number": number, "local": match[2], "official": title})
-            if aliases.get(chapter["title"]) != title:
+            if aliases.get(normalize_chapter_ordinal(chapter["title"])) != title:
                 unreviewed.append(differences[-1] | {"local_title": chapter["title"]})
         if not parent:
             sections.append({"member": member})

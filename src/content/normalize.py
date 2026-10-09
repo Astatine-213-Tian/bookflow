@@ -15,16 +15,17 @@ from src.content.blocks import (
 from src.content.normalization import (
     AUTHOR_NOTE_HEADING_RE,
     AUTHOR_NOTE_PARAGRAPH_RE,
-    DECORATIVE_END_MARKER_RE,
     NormalizationReport,
     _normalize_plain_text,
+    is_separator_marker,
+    normalized_end_marker,
     normalize_alphanumeric_width,
     scan_content_issues,
 )
 from src.content.numerals import format_chinese_numeral
 from src.content.titles import normalize_outline, normalize_volume_colors
 
-RULES_SHA256 = "cbe71c1915ed98bd86dae2885cc55dd5e0c9d41a0768f34fa1c3a512660d4a55"
+RULES_SHA256 = "e05dc9ba12084e4fb63d913e656cdcb33075469027d45fe446a00b5f8ff3da4f"
 
 SECTION_NUMBER = r"(?:[0-9０-９]{1,3}|[一二三四五六七八九十百零〇]+)"
 SECTION_LABEL_RE = re.compile(
@@ -196,6 +197,38 @@ def normalize_text(
     )
 
 
+def normalize_marker_block(
+    block: dict,
+    *,
+    member: str = "chapter",
+    report: NormalizationReport | None = None,
+) -> dict:
+    """Normalize explicit ending/separator blocks without touching other prose."""
+    result = copy.deepcopy(block)
+    if result.get("variant") == "original" or result["kind"] not in {
+        "paragraph", "heading"
+    }:
+        return result
+    text = block_text(result)
+    if (
+        result["kind"] == "paragraph"
+        and is_separator_marker(text)
+        and not result.get("footnote")
+        and not any(r.get("href") or r.get("link_role") for r in result["runs"])
+    ):
+        result.update(kind="divider", runs=[])
+        result.pop("alignment", None)
+        if report is not None:
+            report.record_change("separator_marker_normalized", member, 1, text, "divider")
+    elif (ending := normalized_end_marker(text)) is not None:
+        changed = ending != text or result.get("alignment") != "center"
+        result["runs"] = replace_run_text(result["runs"], ending)
+        result["alignment"] = "center"
+        if changed and report is not None:
+            report.record_change("ending_marker_normalized", member, 1, text, ending)
+    return result
+
+
 def normalize_chapter(
     chapter: dict, *, member: str = "chapter", report: NormalizationReport | None = None
 ) -> dict:
@@ -210,15 +243,23 @@ def normalize_chapter(
         if block.get("variant") == "original":
             blocks.append(block)
             continue
+        block = normalize_marker_block(block, member=member, report=report)
+        if block["kind"] == "divider":
+            blocks.append(block)
+            continue
         text = block_text(block)
         normalized = normalize_text(
-            text, title=block["kind"] == "heading", member=member, report=report
+            text,
+            title=block["kind"] == "heading" and normalized_end_marker(text) is None,
+            member=member,
+            report=report,
         )
         normalized = normalized.lstrip(" \t\u3000")
         block["runs"] = replace_run_text(block["runs"], normalized)
         if block["kind"] == "heading" or (
             block["kind"] == "paragraph"
             and block.get("alignment") == "center"
+            and normalized_end_marker(normalized) is None
             and block["runs"]
             and all("bold" in r["styles"] for r in block["runs"])
         ):
@@ -226,8 +267,6 @@ def normalize_chapter(
         if block["kind"] == "paragraph":
             if re.fullmatch(r"(?:\*\s*){3,}", normalized.strip()):
                 block["runs"] = replace_run_text(block["runs"], "***")
-                block["alignment"] = "center"
-            elif DECORATIVE_END_MARKER_RE.fullmatch(normalized.strip()):
                 block["alignment"] = "center"
         blocks.append(block)
     # Structural rules operate on block content, regardless of the source format.
@@ -281,6 +320,7 @@ def normalize_chapter(
                 or before.rstrip().endswith(("，", ","))
                 and text.strip()
                 and not AUTHOR_NOTE_PARAGRAPH_RE.match(text)
+                and normalized_end_marker(text) is None
                 and not re.fullmatch(r"(?:\*\s*){3,}", text.strip())
             )
         ):

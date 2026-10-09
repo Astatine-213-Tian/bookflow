@@ -10,7 +10,9 @@ from xml.etree import ElementTree as ET
 from src.content.blocks import block_text
 from src.content.changes import apply_changes, content_hash
 from src.content.normalization import NormalizationReport
-from src.content.normalize import normalize_book, normalize_chapter
+from src.content.normalize import (
+    normalize_book, normalize_chapter, normalize_marker_block, normalize_text,
+)
 from src.content.titles import normalize_volume_title
 from src.epub.cleanup import normalize_member
 from src.epub.normalize import normalize_epub
@@ -20,6 +22,145 @@ from tests.fixtures import paragraph, write_source
 
 
 class NormalizationRulesTests(unittest.TestCase):
+    def test_chapter_ordinals_use_chinese_without_renumbering(self):
+        cases = {
+            "第 ００１ 章 标题2012": "第一章 标题 2012",
+            "第0回": "第零回",
+            "第85章": "第八十五章",
+            "第94-95章": "第九十四-九十五章",
+            "第102节 Part 2": "第一百零二节 Part 2",
+            "第10001章": "第一万零一章",
+            "第１回 路西斐尔书（一）": "第一回 路西斐尔书（一）",
+            "第一〇二章": "第一百零二章",
+            "Part 1": "Part 1",
+            "我读过第1章": "我读过第1章",
+            "第1章 番外1 旅途": "番外一·旅途",
+        }
+        for before, after in cases.items():
+            with self.subTest(before=before):
+                self.assertEqual(normalize_text(before, title=True), after)
+                report = NormalizationReport(Path("content"), True)
+                self.assertEqual(normalize_text(after, title=True, report=report), after)
+                self.assertEqual(report.total_changes, 0)
+
+    def test_chapter_ordinal_spanning_epub_inline_markup_preserves_identity(self):
+        source = (
+            '<html><body><h2 id="chapter">第<b>１２</b>章 标题 2012</h2>'
+            '<p data-variant="original">第12章</p></body></html>'
+        ).encode()
+        report = NormalizationReport(Path("book.epub"), True)
+        result = normalize_member(
+            "chapter.xhtml", source, report=report, grouped_fanwai_titles=set()
+        )
+        root = ET.fromstring(result)
+        heading = root.find("body/h2")
+        self.assertEqual("".join(heading.itertext()), "第十二章 标题 2012")
+        self.assertEqual(heading.attrib["id"], "chapter")
+        self.assertIsNotNone(heading.find("b"))
+        self.assertEqual(root.findtext("body/p"), "第12章")
+        self.assertEqual(
+            normalize_member(
+                "chapter.xhtml", result, report=report, grouped_fanwai_titles=set()
+            ), result
+        )
+
+    def test_standalone_endings_center_once_and_keep_words_and_styles(self):
+        cases = {
+            "全文完": "——全文完——",
+            "本卷完": "——本卷完——",
+            "第三部完": "——第三部·完——",
+            "--书名终--": "——书名·终——",
+            "END": "——END——",
+            "The End": "——The End——",
+            "The End of Book of Lucifel": "——The End of Book of Lucifel——",
+            "The End of Book Belial": "——The End of Book Belial——",
+            "The end of Part1.": "——The end of Part1.——",
+            "————The end of book of Lucifer————": "——The end of book of Lucifer——",
+        }
+        for before, expected in cases.items():
+            for kind in ("paragraph", "heading"):
+                with self.subTest(before=before, kind=kind):
+                    block = paragraph(before)
+                    block.update(kind=kind, anchor="ending", alignment="right")
+                    if kind == "heading":
+                        block["level"] = 3
+                    block["runs"][0]["styles"] = ["italic"]
+                    block["runs"][0]["href"] = "https://example.org/book"
+                    result = normalize_chapter({"title": "END", "blocks": [block]})
+                    actual = result["blocks"][0]
+                    self.assertEqual(result["title"], "END")
+                    self.assertEqual(block_text(actual), expected)
+                    self.assertEqual(actual["kind"], kind)
+                    self.assertEqual(actual["alignment"], "center")
+                    self.assertEqual(actual["anchor"], "ending")
+                    self.assertTrue(all(r["styles"] == ["italic"] for r in actual["runs"]))
+                    self.assertTrue(all(r["href"] == "https://example.org/book" for r in actual["runs"]))
+                    report = NormalizationReport(Path("content"), True)
+                    self.assertEqual(normalize_chapter(result, report=report), result)
+                    self.assertEqual(report.total_changes, 0)
+        bold = paragraph("The End")
+        bold["runs"][0]["styles"] = ["bold"]
+        self.assertEqual(
+            normalize_chapter({"title": "篇目", "blocks": [bold]})["blocks"][0]["kind"],
+            "paragraph",
+        )
+
+    def test_marker_scope_does_not_swallow_prose_or_reference_text(self):
+        for text in ("他终于说完", "第三部还没写完", "永无终结。", "The end of the world is near.",
+                     "The end of the book was sad.", "The end of Part 1 was surprising.",
+                     "We reached the end.", "甲——乙", "--普通分隔标题--", "--", "***"):
+            block = paragraph(text)
+            self.assertEqual(normalize_marker_block(block), block)
+        for text in ("----", "The End"):
+            block = {**paragraph(text), "variant": "original"}
+            self.assertEqual(normalize_marker_block(block), block)
+        for protected in ({"footnote": "note"}, {"runs": [{"text": "----", "styles": [], "href": "#note"}]}):
+            block = {**paragraph("----"), **protected}
+            self.assertEqual(normalize_marker_block(block), block)
+
+    def test_dash_lines_become_dividers_and_keep_anchors(self):
+        from notion_books import content_matches
+        from tests.notion_api import roundtrip
+
+        blocks = [
+            {**paragraph(line), "anchor": f"rule-{i}", "alignment": "center"}
+            for i, line in enumerate(("---", "------------", "————", "－ － －", "– – –"))
+        ]
+        result = normalize_chapter({"title": "篇目", "blocks": blocks})
+        self.assertEqual(result["blocks"], [
+            {"kind": "divider", "runs": [], "anchor": f"rule-{i}"} for i in range(5)
+        ])
+        self.assertEqual(normalize_chapter(result), result)
+        self.assertTrue(content_matches(roundtrip(result["blocks"]), result["blocks"], {}))
+
+    def test_archive_marker_cleanup_preserves_inline_and_rule_identity(self):
+        raw = (
+            '<html xmlns="http://www.w3.org/1999/xhtml"><body>'
+            '<p id="rule"><em>------</em></p>'
+            '<p id="end" style="text-align: right; text-indent: 2em;">'
+            'The End of <em>Book of Lucifel</em></p>'
+            '<h3>全文完</h3><p>甲——乙</p>'
+            '<p data-variant="original">The End</p>'
+            '<p><a href="#end">----</a></p>'
+            '</body></html>'
+        ).encode()
+        report = NormalizationReport(Path("fixture.epub"), True)
+        result = normalize_member("chapter.xhtml", raw, report, grouped_fanwai_titles=set())
+        body = ET.fromstring(result).find("{*}body")
+        self.assertEqual(body[0].tag.rsplit("}", 1)[-1], "hr")
+        self.assertEqual(body[0].get("id"), "rule")
+        self.assertEqual("".join(body[1].itertext()), "——The End of Book of Lucifel——")
+        self.assertIsNotNone(body[1].find("{*}em"))
+        self.assertIn("text-align: center", body[1].get("style"))
+        self.assertIn("text-indent: 0", body[1].get("style"))
+        self.assertEqual(body[2].text, "——全文完——")
+        self.assertEqual(body[3].text, "甲——乙")
+        self.assertEqual(body[4].text, "The End")
+        self.assertIsNotNone(body[5].find("{*}a"))
+        second = NormalizationReport(Path("fixture.epub"), True)
+        self.assertEqual(normalize_member("chapter.xhtml", result, second, grouped_fanwai_titles=set()), result)
+        self.assertEqual(second.total_changes, 0)
+
     def test_volume_number_scope_and_idempotence(self):
         cases = {
             "卷１　初识": "卷一·初识",
@@ -69,7 +210,7 @@ class NormalizationRulesTests(unittest.TestCase):
     def test_shared_volume_labels_preserve_identity_body_and_color(self):
         with tempfile.TemporaryDirectory() as d:
             source = write_source(
-                Path(d), ["我读过第一卷。"], chapter_title="第1章 初识"
+                Path(d), ["我读过第一卷。"], chapter_title="第一章 初识"
             )
             source["sections"] = [
                 {

@@ -379,7 +379,7 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(book["uploaded"])
             self.assertEqual(
                 [created[r["id"]]["properties"]["章节"] for r in rows["main"]],
-                ["简介", "第1章", "第2章"],
+                ["简介", "第一章", "第二章"],
             )
             self.assertEqual(
                 created[rows["main"][1]["id"]]["properties"]["所属标题"], "卷一"

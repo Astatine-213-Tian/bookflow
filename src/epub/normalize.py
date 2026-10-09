@@ -18,6 +18,7 @@ from src.content.normalization import (
     NormalizationIssue,
     NormalizationReport,
 )
+from src.content.numerals import format_chinese_numeral
 from src.epub.cleanup import (
     _center_paragraph_opening,
     _grouped_fanwai_title_labels,
@@ -301,7 +302,10 @@ def _repair_epub2_missing_visible_toc(
             or (heading_element.text or "").strip() != label
         ):
             return members
-        new_label = f"第{index}章 {label}" if add_numbers and index > 0 else label
+        new_label = (
+            f"第{format_chinese_numeral(index)}章 {label}"
+            if add_numbers and index > 0 else label
+        )
         chapter_surfaces.append((entry, _local_name(heading_element.tag), new_label))
 
     rewritten = dict(members)

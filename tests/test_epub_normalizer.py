@@ -101,7 +101,7 @@ class EpubNormalizerTests(unittest.TestCase):
             "chapter.xhtml", raw, report, grouped_fanwai_titles=set()
         )
         root = ET.fromstring(result)
-        self.assertEqual(root.findtext("{*}head/{*}title"), "第30章 MSN")
+        self.assertEqual(root.findtext("{*}head/{*}title"), "第三十章 MSN")
         self.assertEqual(
             ["".join(p.itertext()) for p in root.findall("{*}body/{*}p")],
             [
@@ -211,7 +211,7 @@ class EpubNormalizerTests(unittest.TestCase):
                 for member in (chapter, nav, ncx, opf):
                     ET.fromstring(member)
 
-            self.assertIn("第1章 小 P 孩", chapter)
+            self.assertIn("第一章 小 P 孩", chapter)
             self.assertIn("激情，下一站。", chapter)
             self.assertIn("主星 VCU07，“你好”", chapter)
             self.assertIn("X337, Y160, Z19 γ-B11；2,000,000 元。", chapter)
@@ -219,8 +219,8 @@ class EpubNormalizerTests(unittest.TestCase):
             self.assertIn("<p>“重复。”</p>", chapter)
             self.assertIn("<p>上一句还没结束，下一句。</p>", chapter)
             self.assertIn("<p>“最后一句。”</p>", chapter)
-            self.assertIn("第1章 小 P 孩", nav)
-            self.assertIn("第1章 小 P 孩", ncx)
+            self.assertIn("第一章 小 P 孩", nav)
+            self.assertIn("第一章 小 P 孩", ncx)
             self.assertIn("测试 A 书", opf)
 
             second = normalize_epub(epub_path)
@@ -936,7 +936,7 @@ class EpubNormalizerTests(unittest.TestCase):
     def test_grouped_fanwai_titles_drop_number_but_keep_bare_entries(self) -> None:
         cases = (
             ("第114章 沧浪之龙", "沧浪之龙", 4),
-            ("第60章", "第60章", 0),
+            ("第60章", "第六十章", 0),
         )
         for source_title, expected_title, prefix_changes in cases:
             with self.subTest(source_title=source_title):
@@ -1365,7 +1365,7 @@ class EpubNormalizerTests(unittest.TestCase):
                 nav_output = archive.read("EPUB/nav.xhtml").decode()
                 ncx_output = archive.read("EPUB/toc.ncx").decode()
             for output in (chapter_output, nav_output, ncx_output):
-                self.assertIn("第1章 《上·下》", output)
+                self.assertIn("第一章 《上·下》", output)
             self.assertIn("<p>等等，快走。</p>", chapter_output)
             self.assertIn("——卷四·羽觞醉月·终——", chapter_output)
             self.assertIn("——卷二·如梦·完——", chapter_output)
@@ -1415,7 +1415,7 @@ class EpubNormalizerTests(unittest.TestCase):
                     for name in archive.namelist()
                     if name.endswith("chap_01_001.xhtml")
                 )
-            self.assertIn("第1章 小 P 孩", chapter)
+            self.assertIn("第一章 小 P 孩", chapter)
             self.assertIn("激情，下一站。", chapter)
             self.assertIn("NORMALIZE", output.getvalue())
             self.assertIn("METADATA", output.getvalue())
@@ -1557,9 +1557,9 @@ class EpubNormalizerTests(unittest.TestCase):
                 chapter_output = archive.read("text/chapter1.html").decode()
             self.assertIn("<title>目录</title>", nav_output)
             self.assertIn(">序章</a>", nav_output)
-            self.assertIn(">第1章 鱼事</a>", nav_output)
-            self.assertIn(">第2章 射天</a>", nav_output)
-            self.assertIn("<text>第1章 鱼事</text>", ncx_output)
+            self.assertIn(">第一章 鱼事</a>", nav_output)
+            self.assertIn(">第二章 射天</a>", nav_output)
+            self.assertIn("<text>第一章 鱼事</text>", ncx_output)
             self.assertIn('id="reader_toc" href="nav.xhtml"', opf_output)
             self.assertLess(
                 opf_output.index('idref="reader_toc"'),
@@ -1569,8 +1569,8 @@ class EpubNormalizerTests(unittest.TestCase):
                 '<reference type="toc" href="nav.xhtml" title="目录"/>',
                 opf_output,
             )
-            self.assertIn("<title>第1章 鱼事</title>", chapter_output)
-            self.assertIn(">第1章 鱼事</h1>", chapter_output)
+            self.assertIn("<title>第一章 鱼事</title>", chapter_output)
+            self.assertIn(">第一章 鱼事</h1>", chapter_output)
             self.assertIn("text-align: center", chapter_output)
 
             issues, count = validate_epub(epub_path)

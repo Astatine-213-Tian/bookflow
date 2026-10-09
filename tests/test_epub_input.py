@@ -98,7 +98,7 @@ class EpubInputTests(unittest.TestCase):
                 original = path.read_bytes()
                 book, _, _ = prepare_file(path, root / str(epub2))
                 chapters = list(book["chapters"].values())
-                self.assertEqual([c["title"] for c in chapters], ["简介", "第1章"])
+                self.assertEqual([c["title"] for c in chapters], ["简介", "第一章"])
                 self.assertEqual(chapters[0]["role"], "intro")
                 self.assertEqual(chapters[1]["blocks"][0]["runs"][0]["text"], "重复。")
                 self.assertEqual(chapters[1]["blocks"][1]["runs"][0]["text"], "MSN，QQ")

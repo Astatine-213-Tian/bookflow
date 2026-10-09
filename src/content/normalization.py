@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Callable
 
 from src.metadata.catalog import MetadataEnrichmentReport
-from src.content.numerals import format_chinese_numeral
+from src.content.numerals import format_chinese_numeral, parse_number
 
 HAN_CLASS = (
     "\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\U00020000-\U0002ebef\U0002f800-\U0002fa1f"
@@ -62,6 +62,29 @@ CJK_SPACE_BEFORE_OPEN_RE = re.compile(
 ORDINAL_RE = re.compile(
     r"第\s*(?:\d+|[零〇一二三四五六七八九十百千万两]+)\s*[章回节卷部]"
 )
+
+CHAPTER_ORDINAL_NUMBER = r"(?:[0-9]+|[零〇一二两三四五六七八九十百千万]+)"
+CHAPTER_ORDINAL_RE = re.compile(
+    rf"^第\s*(?P<number>{CHAPTER_ORDINAL_NUMBER})"
+    rf"(?P<range>\s*[-—–至]\s*{CHAPTER_ORDINAL_NUMBER})?"
+    r"\s*(?P<unit>[章回节])"
+)
+
+
+def normalize_chapter_ordinal(text: str) -> str:
+    """Convert an explicit chapter prefix, preserving its number and subtitle."""
+    text = normalize_alphanumeric_width(text)
+    match = CHAPTER_ORDINAL_RE.match(text)
+    if not match:
+        return text
+    number = format_chinese_numeral(parse_number(match["number"]))
+    if match["range"]:
+        separator, end = re.fullmatch(
+            r"\s*([-—–至])\s*(.+)", match["range"]
+        ).groups()
+        number += separator + format_chinese_numeral(parse_number(end))
+    suffix = text[match.end():].strip()
+    return f"第{number}{match['unit']}" + (" " + suffix if suffix else "")
 
 
 THOUSANDS_RE = re.compile(r"(?<!\d)\d{1,3}(?:,\d{3})+(?!\d)")
@@ -201,9 +224,7 @@ MIDDLE_AUTUMN_FANWAI_TITLE_SEPARATOR_RE = re.compile(
 
 
 DECORATIVE_END_MARKER_RE = re.compile(
-    r"^\s*(?:-{2,}|—{2,})\s*"
-    r"(?P<label>[^—\-\n]{1,50}?)"
-    r"\s*(?:-{2,}|—{2,})\s*$"
+    r"^\s*[-—–－]{2,}\s*(?P<label>[^\n]{1,100}?)\s*[-—–－]{2,}\s*$"
 )
 
 
@@ -211,13 +232,72 @@ ENDING_TERMS = (
     "正文部分完",
     "正文完",
     "全文完",
+    "全书完",
+    "全書完",
+    "全本完",
+    "全文结束",
+    "正文结束",
     "全剧终",
+    "全劇終",
     "上册完",
+    "下册完",
+    "本册完",
     "本卷完",
+    "本章完",
     "番外完",
+    "完结",
+    "完結",
     "终",
+    "終",
     "完",
 )
+
+ENGLISH_END_MARKER_RE = re.compile(
+    r"(?:the\s+)?end(?:\s+of\s+(?:the\s+)?(?:"
+    r"(?:part|volume|chapter|act)\s*(?:[0-9]+|[IVXLCDM]+)"
+    r"|book(?:\s+of\s+[\w’'-]+(?:\s+[\w’'-]+){0,5}|\s+[\w’'-]+)?"
+    r"|story|novel))?[.。!！]?",
+    re.IGNORECASE,
+)
+CHINESE_END_LABEL_RE = re.compile(
+    r"(?:(?:第?[0-9零〇一二三四五六七八九十百千万两]+[部卷章回篇册冊]"
+    r"|[部卷][0-9零〇一二三四五六七八九十百千万两]+)"
+    r"(?:[·：: \t][^\n。！？!?，,：:]{0,40})?"
+    r"|《[^《》\n]+》|[^\n。！？!?，,：:]{1,50}[·])"
+)
+SEPARATOR_MARKER_RE = re.compile(r"(?:[-—–－][ \t]*){3,}")
+
+
+def is_separator_marker(text: str) -> bool:
+    """Only a standalone run of at least three dash characters is a rule."""
+    return bool(SEPARATOR_MARKER_RE.fullmatch(text.strip()))
+
+
+def normalized_end_marker(text: str) -> str | None:
+    """Recognize standalone ending labels, never occurrences inside prose."""
+    stripped = text.strip()
+    wrapper = DECORATIVE_END_MARKER_RE.fullmatch(stripped)
+    label = wrapper["label"].strip() if wrapper else stripped
+    if ENGLISH_END_MARKER_RE.fullmatch(label):
+        return f"——{label}——"
+    term = next((value for value in ENDING_TERMS if label.endswith(value)), None)
+    if not term:
+        return None
+    prefix = label[: -len(term)].rstrip("· ")
+    if prefix and not wrapper and not CHINESE_END_LABEL_RE.fullmatch(
+        label[: -len(term)].strip()
+    ):
+        return None
+    if prefix:
+        prefix = re.sub(
+            r"^((?:第?[零〇一二三四五六七八九十百千万两]+卷|"
+            r"卷[零〇一二三四五六七八九十百千万两]+))(?=[^·：:\s])",
+            r"\1·",
+            prefix,
+        )
+        separator = "" if prefix.endswith(("·", "：", ":", "？", "！")) else "·"
+        label = f"{prefix}{separator}{term}"
+    return f"——{label}——"
 
 
 STRUCTURAL_MARKER_RE = re.compile(
@@ -1163,26 +1243,9 @@ def _normalize_decorative_end_marker(
     member: str,
     report: NormalizationReport,
 ) -> str:
-    match = DECORATIVE_END_MARKER_RE.fullmatch(text)
-    if not match:
+    normalized = normalized_end_marker(text)
+    if normalized is None:
         return text
-    label = match.group("label").strip()
-    term = next((value for value in ENDING_TERMS if label.endswith(value)), None)
-    if not term:
-        return text
-    prefix = label[: -len(term)].rstrip("· ")
-    if prefix:
-        prefix = re.sub(
-            r"^((?:第?[零〇一二三四五六七八九十百千万两]+卷|"
-            r"卷[零〇一二三四五六七八九十百千万两]+))(?=[^·：:\s])",
-            r"\1·",
-            prefix,
-        )
-        separator = "" if prefix.endswith(("·", "：", ":", "？", "！")) else "·"
-        label = f"{prefix}{separator}{term}"
-    else:
-        label = term
-    normalized = f"——{label}——"
     report.record_change(
         "decorative_end_marker_normalized",
         member,
@@ -1472,6 +1535,11 @@ def _normalize_plain_text(
             member=member,
             report=report,
         )
+        numbered = normalize_chapter_ordinal(text)
+        report.record_change(
+            "chapter_number_normalized", member, int(numbered != text), text, numbered
+        )
+        text = numbered
     if end_marker:
         text = _normalize_decorative_end_marker(
             text,

@@ -328,7 +328,7 @@ class LocalImportTests(unittest.TestCase):
                     chapter_aliases={"第1章 起点": "新起点"},
                 )
             self.assertEqual(result["sections"][0]["title"], "始末")
-            self.assertEqual(result["chapters"]["chapter-1-1"]["title"], "第1章 起点")
+            self.assertEqual(result["chapters"]["chapter-1-1"]["title"], "第一章 起点")
 
     def test_notion_upload_cli_calls_existing_uploader(self):
         with tempfile.TemporaryDirectory() as temporary:

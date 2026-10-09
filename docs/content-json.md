@@ -16,7 +16,7 @@ version 3; change JSON is version 1 and reuses the schema's chapter definitions.
   ],
   "chapters": {
     "intro": {"title": "简介", "role": "intro", "blocks": [{"kind": "paragraph", "runs": [{"text": "简介内容。", "styles": []}]}]},
-    "chapter-1": {"title": "第1章", "role": "chapter", "blocks": [{"kind": "paragraph", "runs": [{"text": "正文。", "styles": []}]}]}
+    "chapter-1": {"title": "第一章", "role": "chapter", "blocks": [{"kind": "paragraph", "runs": [{"text": "正文。", "styles": []}]}]}
   },
   "extras": []
 }
@@ -81,7 +81,7 @@ not universal regex rules that delete paragraphs from every book.
       "kind": "replace_chapter",
       "chapter_id": "chapter-1",
       "expected_sha256": "SHA256_OF_CURRENT_CHAPTER",
-      "chapter": {"title": "第1章", "role": "chapter", "blocks": [{"kind": "paragraph", "runs": [{"text": "完整修订章节。", "styles": []}]}]}
+      "chapter": {"title": "第一章", "role": "chapter", "blocks": [{"kind": "paragraph", "runs": [{"text": "完整修订章节。", "styles": []}]}]}
     }
   ]
 }

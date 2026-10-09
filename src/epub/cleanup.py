@@ -14,13 +14,14 @@ from src.content.normalization import (
     AUTHOR_NOTE_PARAGRAPH_RE,
     CHAPTER_LIKE_TITLE_RE,
     CHAPTER_NUMBER_PREFIX_RE,
-    DECORATIVE_END_MARKER_RE,
-    ENDING_TERMS,
     FULLWIDTH_ALPHANUMERIC,
     NormalizationReport,
     _mixed_boundary_positions,
     _normalize_fullwidth_alphanumeric,
     _normalize_plain_text,
+    is_separator_marker,
+    normalized_end_marker,
+    normalize_chapter_ordinal,
     scan_content_issues,
 )
 from src.content.blocks import replace_run_text
@@ -254,15 +255,19 @@ def _center_paragraph_opening(opening: str) -> str:
     style_match = re.search(r"""(\sstyle\s*=\s*)(["'])(.*?)\2""", opening)
     additions = []
     existing = style_match.group(3) if style_match else ""
+    existing = re.sub(r"text-align\s*:[^;]+", "text-align: center", existing)
+    existing = re.sub(r"text-indent\s*:[^;]+", "text-indent: 0", existing)
     if "text-align" not in existing:
         additions.append("text-align: center")
     if "text-indent" not in existing:
         additions.append("text-indent: 0")
-    if not additions:
+    if not additions and (not style_match or existing == style_match.group(3)):
         return opening
     if style_match:
-        separator = "" if not existing or existing.rstrip().endswith(";") else ";"
-        style = existing + separator + " " + "; ".join(additions) + ";"
+        style = existing
+        if additions:
+            separator = "" if not existing or existing.rstrip().endswith(";") else ";"
+            style += separator + " " + "; ".join(additions) + ";"
         return opening[: style_match.start(3)] + style + opening[style_match.end(3) :]
     style = "; ".join(additions) + ";"
     return opening[:-1] + f' style="{style}">'
@@ -352,6 +357,8 @@ def _normalize_structural_paragraphs(
                 first_text.endswith(("，", ","))
                 and second_text
                 and AUTHOR_NOTE_PARAGRAPH_RE.match(second_text) is None
+                and normalized_end_marker(second_text) is None
+                and not is_separator_marker(second_text)
             ):
                 before = text[first.start() : second.end()]
                 after = (
@@ -481,15 +488,20 @@ def volume_title_labels(members: dict[str, bytes]) -> set[str]:
 def _normalize_volume_fragment(
     fragment: str, *, member: str, report: NormalizationReport
 ) -> str:
+    normalized = normalize_volume_title(
+        _visible_fragment_text(fragment), member=member, report=report
+    )
+    return _replace_fragment_text(fragment, normalized)
+
+
+def _replace_fragment_text(fragment: str, normalized: str) -> str:
+    """Replace visible text while retaining its inline tags and identities."""
     tokens = TOKEN_RE.split(fragment)
     runs = [
         {"text": html.unescape(token), "styles": [], "token": i}
         for i, token in enumerate(tokens)
         if token and not token.startswith("<")
     ]
-    normalized = normalize_volume_title(
-        "".join(r["text"] for r in runs), member=member, report=report
-    )
     replacements = defaultdict(str)
     for run in replace_run_text(runs, normalized):
         replacements[run["token"]] += html.escape(run["text"], quote=False)
@@ -554,17 +566,30 @@ def normalize_member(
                 or CHAPTER_LIKE_TITLE_RE.match(visible)
             )
         )
-        marker_match = (
-            DECORATIVE_END_MARKER_RE.fullmatch(visible) if tag == "p" else None
+        if title_punctuation:
+            numbered = normalize_chapter_ordinal(visible)
+            if numbered != visible:
+                report.record_change(
+                    "chapter_number_normalized", member, 1, visible, numbered
+                )
+                fragment = _replace_fragment_text(fragment, numbered)
+        if (
+            tag == "p"
+            and is_separator_marker(visible)
+            and not STRUCTURAL_IDENTITY_RE.search(fragment)
+            and not PROTECTED_STRUCTURE_RE.search(match[0])
+        ):
+            rule = re.sub(r"(<(?:[\w.-]+:)?)p\b", r"\1hr", opening, count=1)
+            rule = rule[:-1] + " />"
+            report.record_change("separator_marker_normalized", member, 1, match[0], rule)
+            return rule
+        ending = (
+            normalized_end_marker(visible)
+            if tag in {"p", "h1", "h2", "h3", "h4", "h5", "h6"}
+            and Path(member).name != "nav.xhtml"
+            else None
         )
-        end_marker = bool(
-            marker_match
-            and any(
-                marker_match.group("label").strip().endswith(term)
-                for term in ENDING_TERMS
-            )
-        )
-        if end_marker:
+        if ending is not None:
             centered_opening = _center_paragraph_opening(opening)
             report.record_change(
                 "decorative_end_marker_centered",
@@ -574,6 +599,10 @@ def normalize_member(
                 centered_opening,
             )
             opening = centered_opening
+            report.record_change(
+                "ending_marker_normalized", member, int(visible != ending), visible, ending
+            )
+            fragment = _replace_fragment_text(fragment, ending)
         remove_han_spaces = tag == "p" and Path(member).name != "intro.xhtml"
         return (
             opening
@@ -582,7 +611,7 @@ def normalize_member(
                 preserve_ordinals=preserve_ordinals,
                 remove_han_spaces=remove_han_spaces,
                 title_punctuation=title_punctuation,
-                end_marker=end_marker,
+                end_marker=False,
                 force_fanwai_title=force_fanwai_title,
                 member=member,
                 report=report,
