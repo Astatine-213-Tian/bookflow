@@ -66,6 +66,7 @@ async def verify_draft(book: dict, config: dict, *, tools) -> dict:
     if [r["id"] for r in extras] != [e["page_id"] for e in book["extras"]]:
         raise ValueError("Extra manual order differs")
     checked = 0
+    destinations = targets(book)
     for item, parent, title_field in [
         *[
             (book["chapters"][member], parent, FIELDS["chapter_title"])
@@ -82,7 +83,7 @@ async def verify_draft(book: dict, config: dict, *, tools) -> dict:
         else:
             matches = document.properties.get(title_field) == item[
                 "title"
-            ] and content_matches(document.blocks, item["blocks"], targets(book))
+            ] and content_matches(document.blocks, item["blocks"], destinations)
         if not matches:
             raise ValueError(f"Content readback differs: {item['title']}")
         if (

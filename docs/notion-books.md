@@ -41,6 +41,7 @@ mise exec -- uv run --no-cache --with /absolute/path/to/notion-books python -m u
 ```bash
 uv run book-notion login
 uv run book-notion upload --source generated/ingest/reviewed/source.json
+# Optional later audit; upload already checks each body by live readback.
 uv run book-notion verify --state state/notion/HASH/import.json
 uv run book-ingest "作品URL" --mode notion
 uv run book-ingest "作品URL" --mode epub -o books/作者/书名.epub
@@ -53,11 +54,22 @@ uv run book-ingest "作品URL" --mode epub --mode notion --mode txt
 组合输出逐项执行，失败时核对已有文件及检查点，再恢复未完成的输出。
 翻译流程使用同一个内容 JSON 和 EPUB writer。
 
-目录、创建页面和模板、关联视图及手动顺序通过官方 Notion MCP 操作；页面属性、
+目录、显式模板、关联视图及手动顺序通过官方 Notion MCP 操作；普通页面创建、页面属性、
 作者信息、封面元数据及正文通过官方 REST API 读写。OAuth 凭据保存在私有状态目录，
 可刷新。REST 操作需要进程环境中的 `NOTION_API_TOKEN`；集成须能访问目标库并有读取、插入及更新内容权限。
 凭据由进程环境提供，不写入检查点。脚注的实际 block ID 由 REST 获取，无需浏览器绑定。
 `book-notion logout` 删除本地 MCP token；重新授权使用 `book-notion login`。
+
+上传先按倒序串行创建页面以保留手动顺序，再并行写入最多 8 页正文；所有请求共享同一
+客户端的限速器。新正文每批最多 100 个顶层块，并受 450 KB / 1000 个嵌套块限制。
+追加响应校验新块，下一步修改前及结束时仍核对完整正文。旧检查点保留原来的 30 块边界，
+丢失响应后先核对实际状态，不重放写入。首次正文读取也用于检查编辑冲突，避免重复读取。
+上传逐页回读内容和属性，最后核对目录顺序；成功后无需立即再跑一次全书 `verify`。
+`verify` 用于独立审计、恢复调查或之后的检查，不代替上传中的校验。
+
+多本书可分配独立代理并行做本地解码、清理、结构检查和版本提示审查。Notion 写入由一个
+协调进程持有凭据锁及限速器；不要启动多个独立上传进程竞争锁或绕过服务限速。
+共享番外的首次完整检查结果可跨书复用，后续仍读取完整清单，只重读新增或变更正文。
 
 ### 封面
 
@@ -111,6 +123,10 @@ uv run book-notion resume --state state/notion/<来源摘要>/import.json
 
 本地 EPUB/TXT 的内容准备、卷标签颜色、公开 URL 封面和
 模板恢复可用 `book-notion recover-template --state ...`，然后 resume 原检查点。
+新建作品时已提交默认模板请求；Notion 返回成功后，模板内容仍可能延迟出现。
+上传器等待原请求的数据库和视图可读，最长约十分钟（另加读取耗时），才开始上传正文。
+空白页面不代表请求失败；`recover-template` 只继续发现原请求的结果，不重复应用模板。
+超时后继续 resume 同一检查点，不手动重新套模板或复制数据库，否则迟到的请求会产生重复库。
 `book-notion upload` 接收已审查的共享 source.json；无需每次编写上传脚本。
 新建作者时，通过晋江作者检索查找唯一匹配的主页；找到后在同一次创建中
 填写「晋江主页」URL，并回读验证。检索失败会中止创建，明确无匹配才留空。

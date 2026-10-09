@@ -24,14 +24,15 @@ from src.content.normalization import (
 from src.content.numerals import format_chinese_numeral
 from src.content.titles import normalize_outline, normalize_volume_colors
 
-RULES_SHA256 = "a9b664596cc07ae46f6236ae3c71a18ce64939701bef056e15ad417ef6e0f049"
+RULES_SHA256 = "cbe71c1915ed98bd86dae2885cc55dd5e0c9d41a0768f34fa1c3a512660d4a55"
 
 SECTION_NUMBER = r"(?:[0-9０-９]{1,3}|[一二三四五六七八九十百零〇]+)"
 SECTION_LABEL_RE = re.compile(
     rf"(?:[（(](?P<wrapped>{SECTION_NUMBER})[）)]|(?P<bare>{SECTION_NUMBER})[、.]?)"
 )
 NUMBERED_HEADING_RE = re.compile(
-    rf"(?:[（(]{SECTION_NUMBER}[）)]|{SECTION_NUMBER}(?:、|\.(?![0-9０-９])))"
+    rf"(?:[（(]{SECTION_NUMBER}[）)]|{SECTION_NUMBER}(?:、|\.(?![0-9０-９]))"
+    rf"|第{SECTION_NUMBER}[章回节])"
 )
 LIST_MARKER_RE = re.compile(
     r"^\s*([0-9０-９]{1,3})[,，、.．][ \t\u3000]*(?=[^\d\s.,，．])"
@@ -114,7 +115,7 @@ def normalize_subheadings(
             and (SECTION_LABEL_RE.fullmatch(text) or NUMBERED_HEADING_RE.match(text))
         ):
             normalized = re.sub(
-                r"^([（(]?)([0-9０-９]+)",
+                r"^([（(第]?)([0-9０-９]+)",
                 lambda match: match[1] + format_chinese_numeral(int(match[2])),
                 text,
                 count=1,

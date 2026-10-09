@@ -151,23 +151,15 @@ class ImportControlsTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(value["cover_uploaded"])
         self.assertNotIn("cover_pending", value)
 
-    async def test_template_recovery_uses_mcp_once_and_preserves_pending_write(self):
+    async def test_blank_template_recovery_never_reapplies_the_original_request(self):
+        # Legacy imports already requested a template during create_page, even
+        # though their checkpoints did not record that request separately.
         value = book()
-        tools = SimpleNamespace(
-            call=AsyncMock(side_effect=ConnectionError("lost response")),
-            call_api=AsyncMock(),
-        )
+        tools = SimpleNamespace(call=AsyncMock(return_value={}), call_api=AsyncMock())
         reader = SimpleNamespace(
             page=AsyncMock(return_value=SimpleNamespace(data_source_id=DS)),
             layout=AsyncMock(return_value=SimpleNamespace(shell="")),
-            catalog=AsyncMock(
-                return_value={
-                    "works": {
-                        "default_template": "https://app.notion.com/p/"
-                        + TEMPLATE.replace("-", "")
-                    }
-                }
-            ),
+            catalog=AsyncMock(return_value={"works": {"default_template": TEMPLATE}}),
         )
         with (
             tempfile.TemporaryDirectory() as temporary,
@@ -175,29 +167,73 @@ class ImportControlsTests(unittest.IsolatedAsyncioTestCase):
             patch("src.notion.recovery.ensure_views", new=AsyncMock()) as discover,
         ):
             state = Path(temporary) / "state.json"
-            with self.assertRaises(ConnectionError):
+            for _ in range(2):
                 await recover_template(
                     value,
                     state,
                     {"databases": {"works": {"data_source_id": DS}}},
                     tools=tools,
                 )
-            await recover_template(
-                value,
-                state,
-                {"databases": {"works": {"data_source_id": DS}}},
-                tools=tools,
-            )
-        tools.call.assert_awaited_once_with(
-            "notion-update-page",
-            {
-                "page_id": WORK,
-                "command": "apply_template",
-                "template_id": TEMPLATE,
-                "allow_async": False,
-            },
+        tools.call.assert_not_awaited()
+        self.assertEqual(discover.await_count, 2)
+
+    async def test_template_can_finish_after_the_old_polling_window(self):
+        value = book()
+        value["template_request"] = {"template_id": TEMPLATE, "status": "requested"}
+        ready = {
+            "chapters_view": "main",
+            "chapters_data_source": DS,
+            "extras_view": "extra",
+        }
+        blank = {key: "" for key in ready}
+        reader = SimpleNamespace(
+            discover=AsyncMock(side_effect=[blank] * 31 + [ready])
         )
-        discover.assert_awaited_once()
+        config = {
+            "databases": {
+                "works": {"data_source_id": DS},
+                "extras": {"data_source_id": DS},
+            }
+        }
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            patch("src.notion.cms.NotionBooks", return_value=reader),
+            patch("src.notion.cms.asyncio.sleep", new=AsyncMock()),
+        ):
+            await ensure_views(
+                value, Path(temporary) / "state.json", config, tools=None
+            )
+        self.assertEqual(reader.discover.await_count, 32)
+        self.assertEqual(value["view_id"], "extra")
+        self.assertEqual(value["template_request"]["status"], "ready")
+
+    async def test_template_timeout_preserves_the_pending_request(self):
+        value = book()
+        value["template_request"] = {"template_id": TEMPLATE, "status": "requested"}
+        reader = SimpleNamespace(
+            discover=AsyncMock(return_value={
+                "chapters_view": "",
+                "chapters_data_source": "",
+                "extras_view": "",
+            })
+        )
+        config = {
+            "databases": {
+                "works": {"data_source_id": DS},
+                "extras": {"data_source_id": DS},
+            }
+        }
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            patch("src.notion.cms.NotionBooks", return_value=reader),
+            patch("src.notion.cms.TEMPLATE_POLL_ATTEMPTS", 2),
+            patch("src.notion.cms.asyncio.sleep", new=AsyncMock()),
+        ):
+            with self.assertRaisesRegex(ValueError, "Resume the same checkpoint"):
+                await ensure_views(
+                    value, Path(temporary) / "state.json", config, tools=None
+                )
+        self.assertEqual(value["template_request"]["status"], "requested")
 
     async def test_existing_template_content_only_runs_discovery(self):
         value = book()

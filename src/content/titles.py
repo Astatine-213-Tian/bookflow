@@ -13,7 +13,7 @@ from src.content.normalization import (
     _normalize_title_periods,
     normalize_alphanumeric_width,
 )
-from src.content.numerals import parse_number
+from src.content.numerals import format_chinese_numeral, parse_number
 
 HAN_NUMBER = r"[零〇一二两三四五六七八九十百千万]+"
 NUMBER = rf"(?:[0-9]+(?![0-9]|\.[0-9])|{HAN_NUMBER})"
@@ -33,7 +33,9 @@ def normalize_volume_title(
     if match:
         number = parse_number(match["ordinal"] or match["number"])
         subtitle = re.sub(rf"^{SEPARATOR}+", "", text[match.end() :])
-        text = f"卷{number}" + ("·" + subtitle if subtitle else "")
+        text = f"卷{format_chinese_numeral(number)}"
+        if subtitle:
+            text += "·" + subtitle
     elif report is not None and re.match(rf"^卷\s*{HAN_NUMBER}", text):
         report.issues.append(
             NormalizationIssue(

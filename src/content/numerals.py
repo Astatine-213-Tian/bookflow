@@ -45,8 +45,19 @@ def parse_number(value: str) -> int:
 
 
 def format_chinese_numeral(value: int) -> str:
-    if value < 0 or value > 9999:
+    if value < 0:
         return str(value)
+    if value >= 100_000_000:
+        # Positional digits remain unambiguous to parse_number at any magnitude.
+        return "".join("零一二三四五六七八九"[int(c)] for c in str(value))
+    if value >= 10000:
+        high, low = divmod(value, 10000)
+        tail = format_chinese_numeral(low) if low else ""
+        if 10 <= low < 20:
+            tail = "一" + tail
+        if 0 < low < 1000:
+            tail = "零" + tail
+        return format_chinese_numeral(high) + "万" + tail
     if value == 0:
         return "零"
 

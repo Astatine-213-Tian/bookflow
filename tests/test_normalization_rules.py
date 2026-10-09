@@ -22,21 +22,23 @@ from tests.fixtures import paragraph, write_source
 class NormalizationRulesTests(unittest.TestCase):
     def test_volume_number_scope_and_idempotence(self):
         cases = {
-            "卷１　初识": "卷1·初识",
-            "第 12 卷：重逢": "卷12·重逢",
-            "卷一—初识": "卷1·初识",
-            "卷一\u2003初识": "卷1·初识",
-            "卷1-初识": "卷1·初识",
-            "卷一百零二 重逢": "卷102·重逢",
+            "卷１　初识": "卷一·初识",
+            "第 12 卷：重逢": "卷十二·重逢",
+            "卷一—初识": "卷一·初识",
+            "卷一\u2003初识": "卷一·初识",
+            "卷1-初识": "卷一·初识",
+            "卷一百零二 重逢": "卷一百零二·重逢",
             "卷一百零二重逢": "卷一百零二重逢",
             "卷一万物复苏": "卷一万物复苏",
-            "第一卷 万物复苏": "卷1·万物复苏",
-            "卷一〇二 重逢": "卷102·重逢",
-            "第一万卷 未来": "卷10000·未来",
-            "卷001": "卷1",
+            "第一卷 万物复苏": "卷一·万物复苏",
+            "卷一〇二 重逢": "卷一百零二·重逢",
+            "第一万卷 未来": "卷一万·未来",
+            "第10010卷 未来": "卷一万零一十·未来",
+            "第10011卷 未来": "卷一万零一十一·未来",
+            "卷001": "卷一",
             "卷1.5": "卷1.5",
-            "卷1··  重逢": "卷1·重逢",
-            "卷1·": "卷1",
+            "卷1··  重逢": "卷一·重逢",
+            "卷1·": "卷一",
             "中卷": "中卷",
             "续卷 新的 开始": "续卷·新的·开始",
             "终卷 末页": "终卷·末页",
@@ -82,8 +84,8 @@ class NormalizationRulesTests(unittest.TestCase):
             self.assertEqual(source, before)
             self.assertEqual(prepared["chapters"], before["chapters"])
             self.assertEqual(prepared["sections"][0]["id"], "volume-one")
-            self.assertEqual(prepared["volume_colors"], {"卷1·初识": "blue"})
-            self.assertEqual(chapter_entries(prepared), [("01", "卷1·初识")])
+            self.assertEqual(prepared["volume_colors"], {"卷一·初识": "blue"})
+            self.assertEqual(chapter_entries(prepared), [("01", "卷一·初识")])
             self.assertEqual(normalize_book(prepared)[0], prepared)
             prepared["volume_colors"]["第一卷 初识"] = "red"
             with self.assertRaisesRegex(ValueError, "colors conflict"):
@@ -112,8 +114,8 @@ class NormalizationRulesTests(unittest.TestCase):
                 ],
             }
             result, _ = apply_changes(source, request)
-            self.assertEqual(result["sections"][0]["title"], "卷1·初识")
-            self.assertEqual(result["volume_colors"], {"卷1·初识": "blue"})
+            self.assertEqual(result["sections"][0]["title"], "卷一·初识")
+            self.assertEqual(result["volume_colors"], {"卷一·初识": "blue"})
             self.assertEqual(result["chapters"], source["chapters"])
 
     def test_archive_volume_repair_uses_parent_structure_and_preserves_inline(self):
@@ -140,11 +142,11 @@ class NormalizationRulesTests(unittest.TestCase):
                 nav = ET.fromstring(archive.read("EPUB/nav.xhtml"))
                 ncx = ET.fromstring(archive.read("EPUB/toc.ncx"))
                 self.assertEqual(
-                    "".join(nav.find(".//{*}a").itertext()), "卷1·新的·世界"
+                    "".join(nav.find(".//{*}a").itertext()), "卷一·新的·世界"
                 )
                 self.assertIsNotNone(nav.find(".//{*}strong"))
                 self.assertEqual(
-                    ncx.findtext(".//{*}navLabel/{*}text"), "卷1·新的·世界"
+                    ncx.findtext(".//{*}navLabel/{*}text"), "卷一·新的·世界"
                 )
                 body = ET.fromstring(archive.read("EPUB/chapter_0001.xhtml"))
                 self.assertEqual(body.findtext(".//{*}p"), "我读过第一卷。")

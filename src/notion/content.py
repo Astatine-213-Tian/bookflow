@@ -57,13 +57,18 @@ def localize_chapter_links(book: dict, page_ids: dict[tuple[str, str], str]) -> 
 
 
 async def write_content(
-    reader, item: dict, state, checkpoint: dict, targets: dict, *, expected: str = ""
+    reader, item: dict, state, checkpoint: dict, targets: dict, *,
+    expected: str = "", require_empty: bool = False,
 ) -> None:
     plan = item.get("content_write")
     if plan is None:
         plan = await reader.prepare_content(
             item["page_id"], item["blocks"], targets=targets, expected=expected
         )
+        if require_empty and plan["before"] and not plan["done"]:
+            raise ValueError(
+                "New page contains editor content; reconcile without overwriting edits"
+            )
         item["content_write"] = plan
         write_json(state, checkpoint)
     elif (

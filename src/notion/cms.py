@@ -10,6 +10,7 @@ from notion_books import (
     FIELDS,
     NotionBooks,
     NotionError,
+    notion_id,
     work_properties,
 )
 
@@ -19,6 +20,8 @@ from src.runtime.files import write_json
 CONFIG = Path("book_specs/notion/config.json")
 STORAGE = "cms-chapter-database-v1"
 AUTHOR_HOMEPAGE = "晋江主页"
+TEMPLATE_POLL_ATTEMPTS = 120
+TEMPLATE_POLL_SECONDS = 5
 
 
 async def verify_author_homepage(
@@ -181,6 +184,10 @@ async def ensure_work(book: dict, path: Path, config: dict, *, tools) -> None:
         },
     )
     book["pending_work"] = True
+    book["template_request"] = {
+        "template_id": notion_id(template),
+        "status": "requested",
+    }
     write_json(path, book)
     book["work_id"] = await reader.create_page(
         works_ds,
@@ -192,7 +199,7 @@ async def ensure_work(book: dict, path: Path, config: dict, *, tools) -> None:
 
 
 async def ensure_views(book: dict, path: Path, config: dict, *, tools) -> None:
-    for _ in range(30):
+    for attempt in range(TEMPLATE_POLL_ATTEMPTS):
         try:
             source = await NotionBooks(tools).discover(
                 book["work_id"],
@@ -204,7 +211,7 @@ async def ensure_views(book: dict, path: Path, config: dict, *, tools) -> None:
             # Template duplication can temporarily return an incomplete read.
             if str(error) != "Notion response is truncated":
                 raise
-            await asyncio.sleep(2)
+            await asyncio.sleep(TEMPLATE_POLL_SECONDS)
             continue
         found = {
             "chapters_view_id": source["chapters_view"],
@@ -218,11 +225,19 @@ async def ensure_views(book: dict, path: Path, config: dict, *, tools) -> None:
                         "Book databases changed; reconcile the import checkpoint"
                     )
             book.update(found)
+            if "template_request" in book:
+                book["template_request"]["status"] = "ready"
             write_json(path, book)
             return
-        await asyncio.sleep(2)
+        if attempt % 12 == 0:
+            print(
+                "Waiting for Notion's original template request to populate "
+                f"https://www.notion.so/{book['work_id']}…",
+                flush=True,
+            )
+        await asyncio.sleep(TEMPLATE_POLL_SECONDS)
     raise ValueError(
-        "Book template is not ready; resume this checkpoint later. "
-        "For a confirmed empty book, recover through MCP with: "
-        f"uv run book-notion recover-template --state {path}"
+        "Book template is still pending; a blank page does not prove it failed. "
+        "Do not reapply or copy the template: the original request can finish later. "
+        f"Resume the same checkpoint: uv run book-notion resume --state {path}"
     )

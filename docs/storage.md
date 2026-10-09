@@ -8,6 +8,7 @@ Paths below are relative to the checkout. Run maintained commands from its root.
 | `assets/author_styles/` | Frozen style bundles referenced by configuration | Keep while referenced; local, outside Git. |
 | Original input location, or `assets/sources/<book>/` | Original images, unique source files and reviewed transcriptions | Keep the authoritative copy; avoid duplicating originals per task. |
 | `state/notion/<source-id>/` | Import identities, write journals, recovery state and covers | Keep for future updates and recovery, including after successful upload. |
+| `state/notion/shared-extras/<data-source-id>/comparison.json` | Shared-extra comparison snapshots with observed revisions | Retain across books and resumes; a fresh complete inventory validates reuse. Safe to remove to force a full scan. |
 | `generated/ingest/`, `generated/updates/` | Working content JSON and preparation/review results | Keep unfinished work and the only reviewed copy; retire intermediates after destination verification. |
 | `generated/crawls/`, `generated/translation_runs/` | Collected sources, translations and QA evidence | Keep the current verified baseline with its matching source and one rollback pair. |
 | `books/<author>/` | Final reader outputs | Keep until explicitly replaced or removed. |

@@ -6,9 +6,11 @@ import asyncio
 import difflib
 import json
 import shlex
+import tempfile
 import unicodedata
 from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from functools import cached_property
 from pathlib import Path
 
@@ -28,6 +30,8 @@ MIN_FUZZY_LENGTH = 80
 OVERLAP_WINDOW = 20
 MIN_LOCAL_OVERLAP = 60
 SIMPLIFIED = OpenCC("t2s")
+SHARED_EXTRA_CACHE = Path("state/notion/shared-extras")
+COMPARISON_CACHE_VERSION = 1
 
 
 def fingerprint(title: str, blocks: list[dict]) -> str:
@@ -271,6 +275,128 @@ def resolve_extra(state: Path, index: int, *, use_existing: str | None = None) -
     )
 
 
+def revision_time(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return timestamp.astimezone(timezone.utc) if timestamp.tzinfo else None
+
+
+def reusable_comparison(snapshot: object, revision: object) -> bool:
+    """A minute-resolution timestamp is usable only after its minute has closed."""
+    if not isinstance(snapshot, dict) or any(
+        not isinstance(snapshot.get(key), str)
+        for key in ("title", "text", "fingerprint", "revision", "observed_at")
+    ):
+        return False
+    current = revision_time(revision)
+    observed = revision_time(snapshot["observed_at"])
+    return bool(
+        current
+        and observed
+        and current == revision_time(snapshot["revision"])
+        and current < observed.replace(second=0, microsecond=0)
+    )
+
+
+async def comparison_documents(
+    rows: list[dict], data_source: str, reader: NotionBooks
+) -> dict:
+    """Reuse complete old observations only after a fresh full-library inventory."""
+    path = SHARED_EXTRA_CACHE / notion_id(data_source) / "comparison.json"
+    if not rows and not path.exists():
+        return {}
+    try:
+        cache = json.loads(path.read_text())
+    except (OSError, ValueError):
+        cache = {}
+    cached = (
+        cache.get("documents", {})
+        if isinstance(cache, dict)
+        and cache.get("version") == COMPARISON_CACHE_VERSION
+        and cache.get("data_source_id") == data_source
+        else {}
+    )
+    if not isinstance(cached, dict):
+        cached = {}
+    snapshots = {
+        row["id"]: cached[row["id"]]
+        for row in rows
+        if reusable_comparison(cached.get(row["id"]), row.get(FIELDS["revision"]))
+    }
+    missing = [row for row in rows if row["id"] not in snapshots]
+    print(
+        f"Shared extras: {len(snapshots)} unchanged bodies reused; "
+        f"{len(missing)} full bodies to read",
+        flush=True,
+    )
+    semaphore = asyncio.Semaphore(4)
+    completed = 0
+
+    async def read(row: dict) -> None:
+        nonlocal completed
+        async with semaphore:
+            started = datetime.now(timezone.utc)
+            document = await reader.document(row["id"])
+        props, blocks = document.properties, document.blocks
+        title = props.get(FIELDS["extra_title"])
+        if not isinstance(title, str):
+            raise ValueError(
+                "Shared extra is missing its title; duplicate check incomplete"
+            )
+        snapshots[row["id"]] = {
+            "title": title,
+            "text": "\n".join(
+                "".join(run["text"] for run in block["runs"]) for block in blocks
+            ),
+            "fingerprint": fingerprint(title, blocks),
+            "revision": document.revision,
+            "observed_at": started.isoformat(),
+        }
+        completed += 1
+        if completed % 25 == 0:
+            print(f"Shared extra bodies read: {completed}/{len(missing)}", flush=True)
+
+    # Finish every bounded read before returning an error. Completed observations
+    # remain useful on resume, but a failed page never counts as absent content.
+    results = await asyncio.gather(*(read(row) for row in missing), return_exceptions=True)
+    retained = {
+        page: snapshot
+        for page, snapshot in snapshots.items()
+        if reusable_comparison(snapshot, snapshot.get("revision"))
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Independent books may complete concurrently. Unique temporary files make
+    # replacement atomic; a lost cache update costs reads, never correctness.
+    with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, delete=False) as output:
+        temporary = Path(output.name)
+        try:
+            json.dump(
+                {
+                    "version": COMPARISON_CACHE_VERSION,
+                    "data_source_id": data_source,
+                    "documents": retained,
+                },
+                output,
+                ensure_ascii=False,
+            )
+            output.flush()
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
+    for result in results:
+        if isinstance(result, BaseException):
+            raise result
+    return {
+        page: snapshot
+        | {"profile": TextProfile.from_blocks([{"runs": [{"text": snapshot["text"]}]}])}
+        for page, snapshot in snapshots.items()
+    }
+
+
 async def preflight_extras(
     book: dict, state: Path, config: dict, reader: NotionBooks
 ) -> None:
@@ -292,28 +418,8 @@ async def preflight_extras(
         f"Checking {len(pending)} incoming extras against {len(rows)} shared Notion pages…",
         flush=True,
     )
-    semaphore = asyncio.Semaphore(4)
-
-    async def read(row: dict) -> tuple[str, dict]:
-        async with semaphore:
-            document = await reader.document(row["id"])
-            props, blocks = document.properties, document.blocks
-        title = props.get(FIELDS["extra_title"])
-        if not isinstance(title, str):
-            raise ValueError(
-                "Shared extra is missing its title; duplicate check incomplete"
-            )
-        return row["id"], {
-            "title": title,
-            "text": "\n".join(
-                "".join(run["text"] for run in block["runs"]) for block in blocks
-            ),
-            "fingerprint": fingerprint(title, blocks),
-            "profile": TextProfile.from_blocks(blocks),
-        }
-
     # Any unreadable page fails the check rather than silently treating it as novel content.
-    documents = dict(await asyncio.gather(*(read(row) for row in rows)))
+    documents = await comparison_documents(rows, database["data_source_id"], reader)
     links, unresolved = [], 0
     for item in pending:
         # An interrupted upload may have selected a page without verifying the

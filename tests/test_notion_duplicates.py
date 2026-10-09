@@ -5,10 +5,11 @@ import copy
 import json
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from notion_books import NotionBooks, Page, content_signature, text_blocks
+from notion_books import FIELDS, NotionBooks, Page, content_signature, text_blocks
 from tests.notion_api import paragraphs as prose
 
 from src.notion.cms import STORAGE
@@ -90,6 +91,7 @@ class Library:
         self.calls = []
         self.reads = []
         self.filter = None
+        self.inventories = 0
 
     async def ensure_options(self, data_source, values):
         pass
@@ -103,6 +105,7 @@ class Library:
         )
 
     async def inventory(self, database):
+        self.inventories += 1
         return await NotionBooks(self).inventory(database)
 
     async def rows(self, view):
@@ -122,7 +125,7 @@ class Library:
             page_id=id,
             data_source_id=page.get("data_source", EXTRAS),
             title="",
-            revision="1",
+            revision=page.get("revision", "1"),
             fingerprint=content_signature(prose(page["content"])),
             properties=copy.deepcopy(page["properties"]),
             property_data=(
@@ -138,6 +141,7 @@ class Library:
             "page_id": id,
             "blocks": blocks,
             "targets": kwargs.get("targets", {}),
+            "before": [],
             "done": False,
         }
 
@@ -176,7 +180,13 @@ class Library:
             view = {"dataSourceUrl": f"collection://{EXTRAS}", "filter": self.filter}
             return {"text": "<view>\n" + json.dumps(view) + "\n</view>"}
         if name == "notion-query-data-sources":
-            return {"results": [{"url": id} for id in self.shared], "has_more": False}
+            return {
+                "results": [
+                    {"url": id, FIELDS["revision"]: self.pages[id].get("revision")}
+                    for id in self.shared
+                ],
+                "has_more": False,
+            }
         self.calls.append((name, args))
         if name == "notion-create-pages":
             id = f"00000000-0000-0000-0000-{len(self.pages):012d}"
@@ -346,6 +356,13 @@ class DuplicateUploadTests(unittest.IsolatedAsyncioTestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.state = Path(self.directory.name) / "import.json"
+        cache = patch(
+            "src.notion.duplicates.SHARED_EXTRA_CACHE",
+            Path(self.directory.name) / "shared-extras",
+            create=True,
+        )
+        cache.start()
+        self.addCleanup(cache.stop)
         self.book = source()
         self.library = Library()
 
@@ -523,6 +540,100 @@ class DuplicateUploadTests(unittest.IsolatedAsyncioTestCase):
         self.book = json.loads(self.state.read_text())
         with self.assertRaisesRegex(ValueError, "same page"):
             await self.preflight()
+
+    async def test_complete_fresh_inventory_reuses_unchanged_bodies_across_books(self):
+        self.library.pages[PAGE]["revision"] = "2020-01-01T12:00:00.000Z"
+        await self.warn()
+        self.choose(None)
+        await self.preflight()
+        self.book = source()
+        self.state = self.state.parent / "other-book" / "import.json"
+        await self.warn()
+        self.assertEqual(self.library.inventories, 3)
+        self.assertEqual(self.library.reads, [PAGE])
+
+    async def test_cache_refreshes_changed_and_new_pages_and_drops_deleted(self):
+        self.library.pages[PAGE]["revision"] = "2020-01-01T12:00:00.000Z"
+        await self.warn()
+        self.choose(None)
+        self.library.pages[PAGE]["content"] += "\n新的校对。"
+        self.library.pages[PAGE]["revision"] = "2020-01-01T12:01:00.000Z"
+        self.library.pages[SECOND] = copy.deepcopy(self.library.pages[PAGE])
+        self.library.shared.append(SECOND)
+        await self.warn()
+        self.assertCountEqual(self.library.reads, [PAGE, PAGE, SECOND])
+        self.assertNotIn("decision", self.book["extras"][0]["duplicate_review"])
+        self.choose(None)
+        self.library.shared.remove(PAGE)
+        await self.warn()
+        self.assertEqual(len(self.library.reads), 3)
+        candidates = self.book["extras"][0]["duplicate_review"]["candidates"]
+        self.assertEqual([item["page_id"] for item in candidates], [SECOND])
+        cache = next((Path(self.directory.name) / "shared-extras").rglob("*.json"))
+        self.assertEqual(set(json.loads(cache.read_text())["documents"]), {SECOND})
+
+    async def test_cached_library_still_invalidates_decision_when_source_changes(self):
+        self.library.pages[PAGE]["revision"] = "2020-01-01T12:00:00.000Z"
+        await self.warn()
+        self.choose(None)
+        self.book["extras"][0]["blocks"] = prose(TEXT + "\n来源增加一行。")
+        await self.warn()
+        self.assertEqual(self.library.reads, [PAGE])
+        self.assertNotIn("decision", self.book["extras"][0]["duplicate_review"])
+
+    async def test_same_minute_timestamp_does_not_hide_an_edit(self):
+        self.library.pages[PAGE]["revision"] = "2020-01-01T12:00:00.000Z"
+        with patch("src.notion.duplicates.datetime") as clock:
+            clock.fromisoformat = datetime.fromisoformat
+            clock.now.return_value = datetime(2020, 1, 1, 12, 0, 30, tzinfo=timezone.utc)
+            await self.warn()
+            self.choose(None)
+            self.library.pages[PAGE]["content"] += "\n同一分钟内校对。"
+            clock.now.return_value = datetime(2020, 1, 1, 12, 1, 30, tzinfo=timezone.utc)
+            await self.warn()
+        self.assertEqual(self.library.reads, [PAGE, PAGE])
+        self.assertNotIn("decision", self.book["extras"][0]["duplicate_review"])
+
+    async def test_missing_revision_always_reads_body_and_rechecks_review(self):
+        await self.warn()
+        self.choose(None)
+        self.library.pages[PAGE]["content"] += "\n没有版本时间的编辑。"
+        await self.warn()
+        self.assertEqual(self.library.reads, [PAGE, PAGE])
+        self.assertNotIn("decision", self.book["extras"][0]["duplicate_review"])
+
+    async def test_failed_body_read_preserves_other_cache_without_allowing_upload(self):
+        self.library.pages[PAGE]["revision"] = "2020-01-01T12:00:00.000Z"
+        self.library.pages[SECOND] = copy.deepcopy(self.library.pages[PAGE])
+        self.library.shared.append(SECOND)
+        original = self.library.document
+
+        async def unreadable(page):
+            if page == SECOND:
+                raise ValueError("Unreadable shared extra")
+            return await original(page)
+
+        with patch.object(self.library, "document", side_effect=unreadable):
+            with self.assertRaisesRegex(ValueError, "Unreadable shared extra"):
+                await self.preflight()
+        self.assertEqual(self.library.calls, [])
+        await self.warn()
+        self.assertEqual(self.library.reads, [PAGE, SECOND])
+        self.assertEqual(
+            len(self.book["extras"][0]["duplicate_review"]["candidates"]), 2
+        )
+
+    async def test_invalid_cache_falls_back_to_full_read(self):
+        self.library.pages[PAGE]["revision"] = "2020-01-01T12:00:00.000Z"
+        await self.warn()
+        self.choose(None)
+        cache = next((Path(self.directory.name) / "shared-extras").rglob("*.json"))
+        cache.write_text("broken JSON")
+        self.library.pages[PAGE]["content"] += "\n已有正文变化。"
+        self.library.pages[PAGE]["revision"] = "2020-01-01T12:01:00.000Z"
+        await self.warn()
+        self.assertEqual(self.library.reads, [PAGE, PAGE])
+        self.assertNotIn("decision", self.book["extras"][0]["duplicate_review"])
 
     async def test_unknown_candidate_rejected(self):
         await self.warn()

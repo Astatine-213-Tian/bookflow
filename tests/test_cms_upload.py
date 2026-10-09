@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import copy
 import io
 import json
@@ -20,7 +21,7 @@ from src.crawler.models import CrawledBook
 from src.epub.writer import export_local
 from src.notion.cms import STORAGE, chapter_entries, ensure_views, ensure_work
 from src.notion.cover import finish_cover, upload_cover, validate_cover, verify_cover
-from src.notion.upload import upload_draft, upload_row
+from src.notion.upload import UPLOAD_CONCURRENCY, upload_draft, upload_row, upload_rows
 from src.runtime.files import digest
 from src.workflows.ingest import OutputOptions, write_outputs
 from tests.fixtures import isolated_workdir, prepared_crawl as prepare_crawl
@@ -219,6 +220,13 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
                 properties = tools.call.call_args.args[1]["pages"][0]["properties"]
                 self.assertEqual(properties["语言"], language or "zh-CN")
                 self.assertEqual(book["metadata"], original)
+                self.assertEqual(
+                    book["template_request"],
+                    {"template_id": WORK, "status": "requested"},
+                )
+                self.assertEqual(
+                    tools.call.call_args.args[1]["pages"][0]["template_id"], WORK
+                )
 
     async def test_template_discovery_selects_manual_views_over_display_views(self):
         chapter_database = "33333333-3333-4333-8333-333333333333"
@@ -306,15 +314,34 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
         api = BlockAPI()
 
         class Tools:
-            call_api = api.__call__
+            async def call_api(self, request):
+                response = await api(request)
+                if request["method"] == "POST" and request["path"] == "pages":
+                    self.record(response["body"]["id"], {
+                        "properties": {
+                            name: (
+                                "".join(run["text"]["content"] for run in value["title"])
+                                if "title" in value else
+                                [r["id"] for r in value["relation"]]
+                                if "relation" in value else
+                                value["select"]["name"] if value["select"] else None
+                            )
+                            for name, value in request["json"]["properties"].items()
+                        }
+                    })
+                return response
+
+            def record(self, id, page):
+                calls.append(page)
+                created[id] = page
+                view = "main" if "章节" in page["properties"] else "extras"
+                rows[view].insert(0, {"id": id})
 
             async def call(self, name, args):
-                calls.append((name, args))
                 if name != "notion-create-pages":
                     raise AssertionError("Unexpected write: " + name)
                 page = args["pages"][0]
                 id = f"00000000-0000-0000-0000-{len(created) + 1:012d}"
-                created[id] = page
                 props = {}
                 for name, value in page["properties"].items():
                     if isinstance(value, list):
@@ -329,8 +356,7 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
                 api.add_page(
                     id, page["properties"][title_field], DS, title_field, props
                 )
-                view = "main" if "章节" in page["properties"] else "extras"
-                rows[view].insert(0, {"id": id})
+                self.record(id, page)
                 return {"pages": [{"id": id}]}
 
         async def read_rows(_reader, view):
@@ -356,7 +382,7 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
                 ["简介", "第1章", "第2章"],
             )
             self.assertEqual(
-                created[rows["main"][1]["id"]]["properties"]["所属标题"], "卷1"
+                created[rows["main"][1]["id"]]["properties"]["所属标题"], "卷一"
             )
             count = len(calls)
             edited = rows["main"][1]["id"]
@@ -407,7 +433,7 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
         book = source()
         item = next(iter(book["chapters"].values()))
         tools = AsyncMock()
-        tools.call.side_effect = TimeoutError("response lost")
+        tools.call_api.side_effect = TimeoutError("response lost")
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory) / "import.json"
             kwargs = {
@@ -423,7 +449,81 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(item["pending"])
             with self.assertRaisesRegex(ValueError, "response was lost"):
                 await upload_row(item, book, state, **kwargs)
-            self.assertEqual(tools.call.await_count, 1)
+            self.assertEqual(tools.call_api.await_count, 1)
+            tools.call.assert_not_awaited()
+
+    async def test_body_workers_are_bounded_and_drain_after_failure(self):
+        for fail in (False, True):
+            with self.subTest(fail=fail):
+                started, finished = [], []
+                full = asyncio.Event()
+                release = asyncio.Event()
+                active = 0
+                peak = 0
+
+                async def row(*, item, **kwargs):
+                    nonlocal active, peak
+                    started.append(item)
+                    active += 1
+                    peak = max(peak, active)
+                    if active == UPLOAD_CONCURRENCY:
+                        full.set()
+                    await release.wait()
+                    active -= 1
+                    finished.append(item)
+                    if fail and item == 0:
+                        raise ValueError("row failed")
+
+                with patch("src.notion.upload.upload_row", side_effect=row):
+                    run = asyncio.create_task(upload_rows(
+                        [{"item": i} for i in range(25)], {}, Path("unused"),
+                        tools=None, destinations={},
+                    ))
+                    await asyncio.wait_for(full.wait(), 2)
+                    self.assertEqual(len(started), UPLOAD_CONCURRENCY)
+                    self.assertFalse(run.done())
+                    release.set()
+                    if fail:
+                        with self.assertRaisesRegex(ValueError, "row failed"):
+                            await run
+                        self.assertEqual(len(started), UPLOAD_CONCURRENCY)
+                    else:
+                        await run
+                        self.assertEqual(len(started), 25)
+                self.assertEqual(peak, UPLOAD_CONCURRENCY)
+                self.assertCountEqual(started, finished)
+
+    async def test_initial_body_read_is_reused_and_editor_content_is_preserved(self):
+        from tests.notion_api import PAGE, write
+        from notion_books import NotionBooks
+
+        for existing in ("", "正文", "Editor changed this"):
+            with self.subTest(existing=existing), tempfile.TemporaryDirectory() as directory:
+                book = source()
+                item = next(iter(book["chapters"].values()))
+                item.update(page_id=PAGE, blocks=paragraphs("正文"))
+                api = BlockAPI()
+                api.add_page(PAGE, item["title"], DS)
+                if existing:
+                    await write(NotionBooks(api=api), paragraphs(existing))
+                api.calls.clear()
+                before = api.mutations
+                kwargs = dict(
+                    data_source=DS, properties={"章节": item["title"]},
+                    title_property="章节", tools=api,
+                )
+                if existing == "Editor changed this":
+                    with self.assertRaisesRegex(ValueError, "editor content"):
+                        await upload_row(item, book, Path(directory) / "import.json", **kwargs)
+                    self.assertEqual(api.mutations, before)
+                    self.assertNotIn("content_write", item)
+                else:
+                    await upload_row(item, book, Path(directory) / "import.json", **kwargs)
+                    self.assertTrue(item["verified"])
+                    if existing:
+                        self.assertEqual(api.mutations, before)
+                    page_reads = [r for r in api.calls if r["method"] == "GET" and r["path"].startswith("pages/")]
+                    self.assertEqual(len(page_reads), 2)
 
     async def test_old_catalog_state_cannot_be_written(self):
         with self.assertRaisesRegex(ValueError, "old library"):

@@ -32,6 +32,8 @@ from src.notion.mcp import (
 )
 from src.runtime.files import digest, write_json
 
+UPLOAD_CONCURRENCY = 8
+
 
 def source_digest(book: dict) -> str:
     source = {k: book[k] for k in ("metadata", "sections", "chapters", "extras")}
@@ -51,7 +53,9 @@ async def create_row(
         )
     item["pending"] = True
     write_json(state, book)
-    item["page_id"] = await NotionBooks(tools).create_page(data_source, properties)
+    item["page_id"] = await NotionBooks(tools, api=tools.call_api).create_page(
+        data_source, properties
+    )
     item.pop("pending")
     write_json(state, book)
 
@@ -65,6 +69,7 @@ async def upload_row(
     properties: dict,
     title_property: str,
     tools,
+    destinations: dict | None = None,
 ) -> None:
     await create_row(
         item, book, state, data_source=data_source, properties=properties, tools=tools
@@ -72,20 +77,14 @@ async def upload_row(
     if item.get("verified"):
         return
     reader = NotionBooks(tools, api=tools.call_api)
-    destinations = targets(book)
+    if destinations is None:
+        destinations = targets(book)
     if not item.get("reused"):
-        if not item.get("content_write"):
-            document = await reader.document(item["page_id"])
-            if document.blocks and not content_matches(
-                document.blocks, item["blocks"], destinations
-            ):
-                raise ValueError(
-                    "New page contains editor content; reconcile without overwriting edits"
-                )
-            expected = document.fingerprint
-        else:
-            expected = ""
-        await write_content(reader, item, state, book, destinations, expected=expected)
+        # prepare_content already reads the complete page. Its before snapshot
+        # rejects editor content without an identical second preliminary read.
+        await write_content(
+            reader, item, state, book, destinations, require_empty=True
+        )
     document = await reader.document(item["page_id"])
     props = document.properties
     if item.get("reuse_fingerprint"):
@@ -112,6 +111,42 @@ async def upload_row(
     item["verified"] = True
     item.pop("content_write", None)
     write_json(state, book)
+
+
+async def upload_rows(
+    rows: list[dict], book: dict, state: Path, *, tools, destinations: dict
+) -> None:
+    """Bound independent bodies under the caller's single request limiter.
+
+    Identities must already exist so concurrent bodies cannot alter manual order.
+    On failure stop scheduling and drain in-flight rows before releasing locks.
+    """
+    remaining = iter(rows)
+    failures: list[Exception] = []
+    completed = 0
+
+    async def worker() -> None:
+        nonlocal completed
+        while not failures:
+            row = next(remaining, None)
+            if row is None:
+                return
+            try:
+                await upload_row(
+                    book=book, state=state, tools=tools,
+                    destinations=destinations, **row,
+                )
+                completed += 1
+                if completed % 10 == 0 or completed == len(rows):
+                    print(f"Content verified {completed}/{len(rows)}", flush=True)
+            except Exception as error:
+                failures.append(error)
+
+    await asyncio.gather(
+        *(worker() for _ in range(min(UPLOAD_CONCURRENCY, len(rows))))
+    )
+    if failures:
+        raise failures[0]
 
 
 async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
@@ -186,20 +221,18 @@ async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
             },
             tools=tools,
         )
+    rows = []
     for member, parent in reversed(entries):
         item = book["chapters"][member]
-        await upload_row(
-            item,
-            book,
-            state,
-            data_source=book["chapters_data_source_id"],
-            properties={
+        rows.append({
+            "item": item,
+            "data_source": book["chapters_data_source_id"],
+            "properties": {
                 FIELDS["chapter_title"]: item["title"],
                 FIELDS["parent_title"]: parent or None,
             },
-            title_property=FIELDS["chapter_title"],
-            tools=tools,
-        )
+            "title_property": FIELDS["chapter_title"],
+        })
     for item in reversed(book["extras"]):
         if item.get("reused") and not item.get("verified"):
             document = await reader.document(item["page_id"])
@@ -217,18 +250,16 @@ async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
                     document,
                     {FIELDS["related_works"]: works + [book["work_id"]]},
                 )
-        await upload_row(
-            item,
-            book,
-            state,
-            data_source=config["databases"]["extras"]["data_source_id"],
-            properties={
+        rows.append({
+            "item": item,
+            "data_source": config["databases"]["extras"]["data_source_id"],
+            "properties": {
                 FIELDS["extra_title"]: item["title"],
                 FIELDS["related_works"]: [book["work_id"]],
             },
-            title_property=FIELDS["extra_title"],
-            tools=tools,
-        )
+            "title_property": FIELDS["extra_title"],
+        })
+    await upload_rows(rows, book, state, tools=tools, destinations=targets(book))
     for view, expected in [
         (
             book["chapters_view_id"],

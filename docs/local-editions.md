@@ -24,6 +24,13 @@ Codex vision and the maintained coverage/double-reading procedure. For irregular
 TXT, a session may resolve structure into that same JSON. Script uncertainty is
 a reason to inspect and supply a reviewed result, not to discard difficult text.
 
+Review hierarchy separately from normalization. For a source with 卷 → 回 → 章,
+Notion can represent the volume as `所属标题`, each 回 as a chapter row, and its
+题记/章 labels as H3 headings within that row. Confirm the intended reading units
+from the source and user instructions; do not concatenate all levels into the
+volume label merely to fit Notion's one-parent limit. Preserve every body block
+and original ordering when combining reading units.
+
 ## EPUB inventory and review
 
 EPUB 2/3 navigation, spine, fragments, metadata, CSS emphasis/alignment and covers
@@ -58,7 +65,7 @@ An omission needs a reason. `parent` supplies a volume title. Optional top-level
 `block`, for reviewed image transcription or a confirmed extraction repair.
 Resolve ambiguous number/title boundaries during this review: `卷一万物复苏`
 could be misread as volume 10000. Once the source confirms volume 1, supply
-`卷一 万物复苏` or `第一卷万物复苏`; shared normalization produces `卷1·万物复苏`.
+`卷一 万物复苏` or `第一卷万物复苏`; shared normalization produces `卷一·万物复苏`.
 
 ```bash
 uv run book-prepare original.epub --review reviewed-ranges.json \

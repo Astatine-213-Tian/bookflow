@@ -1,14 +1,12 @@
-"""Explicit, checkpointed recovery of an empty book template through MCP."""
+"""Wait for an import's original template request without creating duplicates."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from notion_books import CATALOG_SCHEMA, NotionBooks, notion_id
+from notion_books import NotionBooks
 
 from src.notion.cms import STORAGE, ensure_views
-from src.notion.mcp import finish_write
-from src.runtime.files import write_json
 
 
 async def recover_template(book: dict, state: Path, config: dict, *, tools) -> None:
@@ -24,36 +22,8 @@ async def recover_template(book: dict, state: Path, config: dict, *, tools) -> N
     page = await reader.page(book["work_id"])
     if page.data_source_id != works["data_source_id"]:
         raise ValueError("Checkpoint work belongs to another catalog")
-    layout = await reader.layout(book["work_id"])
-    if book.get("template_recovery_requested") or layout.shell.strip():
-        # An accepted or uncertain append must never be repeated.
-        await ensure_views(book, state, config, tools=tools)
-        return
-    if any(i.get("page_id") for i in [*book["chapters"].values(), *book["extras"]]):
-        raise ValueError("Template recovery cannot replace existing chapter content")
-    catalog = await reader.catalog(
-        {
-            "works": works
-            | {
-                "fields": {
-                    name: {"type": kind, "writable": True}
-                    for name, kind in CATALOG_SCHEMA["works"].items()
-                }
-            }
-        }
-    )
-    template = catalog["works"].get("default_template")
-    if not template:
-        raise ValueError("Works has no default template")
-    book["template_recovery_requested"] = notion_id(template)
-    write_json(state, book)
-    await finish_write(
-        tools,
-        "notion-update-page",
-        {
-            "page_id": book["work_id"],
-            "command": "apply_template",
-            "template_id": notion_id(template),
-        },
-    )
+    # ensure_work already supplied the template during creation, including for
+    # legacy checkpoints without template_request. Even a freshly fetched blank
+    # page can have that job queued. Reapplying it creates duplicate databases
+    # when both jobs eventually finish; recovery must remain read-only.
     await ensure_views(book, state, config, tools=tools)

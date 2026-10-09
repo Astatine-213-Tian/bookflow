@@ -87,7 +87,18 @@ class BlockAPI:
             }
         else:
             self.mutations += 1
-            if method == "PATCH" and path.endswith("/children"):
+            if method == "POST" and path == "pages":
+                payload = request["json"]
+                id = str(uuid.uuid4())
+                props = {
+                    name: {"type": next(iter(value)), **copy.deepcopy(value)}
+                    for name, value in payload["properties"].items()
+                }
+                title_field = next(name for name, value in props.items() if value["type"] == "title")
+                title = "".join(run["text"]["content"] for run in props[title_field]["title"])
+                self.add_page(id, title, payload["parent"]["data_source_id"], title_field, props)
+                body = self.pages[id]
+            elif method == "PATCH" and path.endswith("/children"):
                 ids = [self._create(node) for node in request["json"]["children"]]
                 self.children[parts[1]].extend(ids)
                 body = {
