@@ -128,8 +128,7 @@ class BlockAPI:
 
 async def write(reader, blocks, page_id=PAGE, *, targets=None):
     plan = await reader.prepare_content(page_id, blocks, targets=targets or {})
-    while not plan["done"]:
-        plan = await reader.advance_content(plan)
+    plan = await reader.write_content(plan, checkpoint=lambda plan: None)
     return await reader.document(page_id)
 
 

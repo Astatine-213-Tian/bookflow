@@ -18,6 +18,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import httpx
 from mcp import ClientSession
+from notion_books.transport import RequestBudget, api_failure, network_error, read_only_tool, tool_error
 from mcp.client.auth import OAuthClientProvider
 from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.auth import (
@@ -206,55 +207,39 @@ class MCPTools:
     def __init__(self, session: ClientSession, api: httpx.AsyncClient) -> None:
         self.session = session
         self.api = api
-        self.last_call = 0.0
-        self.pacing = asyncio.Lock()
+        self.api_budget = RequestBudget()
+        self.tool_budget = RequestBudget()
 
     async def call_api(self, request: dict) -> dict:
         from src.notion.api import api_request, api_token
         from notion_books import API_VERSION
 
-        async with self.pacing:
-            await asyncio.sleep(max(0, 0.4 - (time.monotonic() - self.last_call)))
-            self.last_call = time.monotonic()
-        return await api_request(
-            self.api,
-            request,
-            headers={
-                "Authorization": "Bearer " + api_token(),
-                "Notion-Version": API_VERSION,
-            },
+        async def request_once():
+            try:
+                return await api_request(
+                    self.api, request,
+                    headers={"Authorization": "Bearer " + api_token(),
+                             "Notion-Version": API_VERSION},
+                )
+            except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError) as error:
+                raise network_error(error) from error
+
+        return await self.api_budget.call(
+            request_once, read_only=request["method"] == "GET",
+            response_failure=api_failure,
         )
 
     async def call(self, name: str, arguments: dict) -> dict:
-        attempts = (
-            3
-            if name
-            in {"notion-fetch", "notion-query-data-sources", "notion-get-async-task"}
-            else 1
-        )
-        for attempt in range(attempts):
-            async with self.pacing:
-                await asyncio.sleep(max(0, 0.4 - (time.monotonic() - self.last_call)))
-                self.last_call = time.monotonic()
+        async def request_once():
             try:
                 result = await self.session.call_tool(name, arguments)
-                if result.isError:
-                    messages = " ".join(
-                        part.text for part in result.content if part.type == "text"
-                    )
-                    error = ValueError(
-                        f"Notion MCP {name} failed; inspect the tool error before retrying"
-                    )
-                    error.tool_message = messages
-                    raise error
-                break
-            except LoginRequired:
-                raise
-            except Exception:
-                # Reads are safe to repeat; writes require checkpoint reconciliation.
-                if attempt + 1 == attempts:
-                    raise
-                await asyncio.sleep(2 ** (attempt + 1))
+            except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError) as error:
+                raise network_error(error) from error
+            if result.isError:
+                raise tool_error(name, result)
+            return result
+
+        result = await self.tool_budget.call(request_once, read_only=read_only_tool(name))
         if result.structuredContent is not None:
             return result.structuredContent
         parts = [part.text for part in result.content if part.type == "text"]

@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from notion_books import FIELDS, NotionBooks, Page, content_signature, text_blocks
+from notion_books import FIELDS, NotionBooks, Document, content_signature, text_blocks
 from tests.notion_api import paragraphs as prose
 
 from src.notion.cms import STORAGE
@@ -121,7 +121,8 @@ class Library:
     async def document(self, id):
         self.reads.append(id)
         page = self.pages[id]
-        return Page(
+        return Document(
+            native=[],
             page_id=id,
             data_source_id=page.get("data_source", EXTRAS),
             title="",
@@ -145,9 +146,11 @@ class Library:
             "done": False,
         }
 
-    async def advance_content(self, plan):
+    async def write_content(self, plan, *, checkpoint):
         self.pages[plan["page_id"]]["content"] = "\n".join(text_blocks(plan["blocks"]))
-        return {**plan, "done": True}
+        completed = {**plan, "done": True}
+        checkpoint(completed)
+        return completed
 
     async def call_api(self, request):
         id = request["path"].split("/")[1]

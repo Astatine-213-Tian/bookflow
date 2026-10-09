@@ -153,11 +153,6 @@ class ToolTests(unittest.IsolatedAsyncioTestCase):
             "Book outline changed",
         )
 
-    def setUp(self):
-        sleeping = patch("src.notion.mcp.asyncio.sleep", new_callable=AsyncMock)
-        sleeping.start()
-        self.addCleanup(sleeping.stop)
-
     async def test_failed_reads_retry_but_uncertain_writes_do_not_repeat(self):
         session = AsyncMock()
         result = CallToolResult(content=[], structuredContent={"text": "body"})
@@ -183,14 +178,12 @@ class ToolTests(unittest.IsolatedAsyncioTestCase):
             ),
         ]:
             session.call_tool.return_value = result
-            tools.last_call = 0
             self.assertEqual(
                 await tools.call("notion-fetch", {"id": "test"}), {"results": []}
             )
         session.call_tool.return_value = CallToolResult(
             isError=True, content=[TextContent(type="text", text="private-value")]
         )
-        tools.last_call = 0
         with self.assertRaises(ValueError) as error:
             await tools.call("notion-fetch", {"id": "test"})
         self.assertNotIn("private-value", str(error.exception))

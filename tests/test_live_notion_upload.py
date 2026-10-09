@@ -96,7 +96,7 @@ class LiveUploadRecoveryTests(unittest.TestCase):
                             "00000000-0000-4000-8000-000000000001"
                         ],
                     },
-                    blocks=None,
+                    property_data={},
                     cover=None,
                     cover_known=False,
                 )

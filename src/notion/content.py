@@ -77,10 +77,11 @@ async def write_content(
         or plan["targets"] != targets
     ):
         raise ValueError("Content changed since the write checkpoint was prepared")
-    while not plan["done"]:
-        plan = await reader.advance_content(plan)
-        item["content_write"] = plan
+    def save(next_plan):
+        item["content_write"] = next_plan
         write_json(state, checkpoint)
+
+    await reader.write_content(plan, checkpoint=save)
 
 
 def targets(book: dict) -> dict[str, str]:

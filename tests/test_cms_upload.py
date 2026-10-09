@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 from lxml import etree as ET
-from notion_books import NotionError, Page, work_properties
+from notion_books import NotionError, work_properties
 from PIL import Image
 
 from src.content.models import Chapter, Volume
