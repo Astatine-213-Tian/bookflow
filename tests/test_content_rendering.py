@@ -89,3 +89,28 @@ class ContentTests(unittest.TestCase):
         self.assertIsNone(root[1].get("style"))
         self.assertEqual(ET.QName(root[2]).localname, "p")
         self.assertEqual(ET.QName(root[2][0]).localname, "strong")
+
+    def test_author_notes_keep_body_size_and_list_structure(self):
+        blocks = [{"kind": "paragraph", "runs": [{"text": "Narrative", "styles": []}]},
+                  {"kind": "divider", "runs": []},
+                  {"kind": "paragraph", "runs": [{"text": "作者有话说：", "styles": ["bold"]}]},
+                  {"kind": "paragraph", "runs": [{"text": "超阶法宝：", "styles": []}]},
+                  {"kind": "bulleted_list_item", "runs": [{"text": "东皇钟", "styles": []}],
+                   "children": [{"kind": "numbered_list_item", "runs": [{"text": "说明", "styles": []}]}]}]
+        after = roundtrip(blocks)
+        self.assertEqual(content_signature(after), content_signature(blocks))
+        root = ET.Element("body")
+        render_blocks(root, after)
+        section = root.find("{*}section")
+        self.assertIsNotNone(section)
+        self.assertEqual(root[0].text, "Narrative")
+        self.assertEqual(section.get("class"), "author-note")
+        self.assertEqual(ET.QName(section[0]).localname, "p")
+        self.assertIsNotNone(section[0].find("{*}strong"))
+        self.assertIsNotNone(section.find("{*}ul/{*}li/{*}ol/{*}li"))
+        self.assertFalse(section.xpath(".//*[local-name()='h2' or local-name()='h3']"))
+        # The section wrapper remains transparent to EPUB source import.
+        html = ET.Element("html")
+        html.append(root)
+        imported = read_html_blocks(ET.tostring(html), "notes.xhtml", {})
+        self.assertIn("作者有话说：", ["".join(r["text"] for r in b["runs"]) for b in imported])
