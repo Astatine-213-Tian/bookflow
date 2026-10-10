@@ -2053,6 +2053,13 @@
       "note": "Author Risk explicitly confirms Chinese name in Chapter 031 reply to Abai name question.",
       "confidence": "high",
       "source_comment": "226417297"
+    },
+    "Wyrqi": {
+      "zh": "维尔奇",
+      "note": "Chapter 034 中获释海龙自报的名字；暂用音译，尚无作者确认的中文名。",
+      "confidence": "medium",
+      "source_chapter": "Chapter 034—Warfire",
+      "source_post": "171588400"
     }
   },
   "sentence_translations": [
