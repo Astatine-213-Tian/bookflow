@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment, NavigableString
 
 from src.metadata.jjwxc import novel_id_from_url, parse_jjwxc_contents
 from src.runtime.files import write_json
@@ -19,7 +19,7 @@ CATALOG_JS = """(() => ({url: location.href, html: document.documentElement.oute
  author: document.querySelector('[itemprop="author"]')?.textContent || ''}))()"""
 CHAPTER_JS = """(() => {
  const node = document.querySelector('#paragraph_comment_content') || document.querySelector('.noveltext');
- return {url: location.href, title: document.title, body_html: node?.innerHTML || '',
+ return {url: location.href, title: document.title, body_html: node?.outerHTML || '',
    note_html: document.querySelector('#note_str')?.innerHTML || '',
    note_present: !!document.querySelector('#note_str'),
    note_images: [...(document.querySelector('#note_str')?.querySelectorAll('img') || [])].map(n => ({src:n.src,alt:n.alt,loaded:n.complete && n.naturalWidth > 0})),
@@ -41,8 +41,13 @@ def reference_url(value: str) -> tuple[str, str]:
     return novel_id, f"https://www.jjwxc.net/onebook.php?novelid={novel_id}"
 
 
+def body_text(text: str) -> str:
+    # This provider injects its inline watermark into both chapter layouts.
+    return re.sub(r"@(?:无限好文，尽在晋江文学城|晋江文学城)", "", text).strip()
+
+
 def parse_body(markup: str) -> list[dict]:
-    """Paragraph spans delimit prose; only intervening BRs establish scene gaps.
+    """Read paragraph wrappers or the older content div's BR delimiters.
 
     Font-obfuscated characters remain unchanged. They can support masked layout
     matching, but must never be used as replacement text.
@@ -50,13 +55,36 @@ def parse_body(markup: str) -> list[dict]:
     soup = BeautifulSoup(markup, "html.parser")
     paragraphs = soup.select(".onebook_paragraph_comment_text")
     if not paragraphs:
-        raise ValueError("Unrecognized Jinjiang body layout; inspect before collecting")
+        containers = soup.find_all("div", id=re.compile(r"^content_\d+$"))
+        if not containers:
+            containers = soup.select("div#paragraph_comment_content")
+        if len(containers) != 1:
+            raise ValueError("Unrecognized Jinjiang body layout; inspect before collecting")
+        container = containers[0]
+        for node in container.select("script, style, input"):
+            node.decompose()
+        lines = [""]
+        for node in container.descendants:
+            if getattr(node, "name", None) == "br":
+                lines.append("")
+            elif isinstance(node, NavigableString) and not isinstance(node, Comment):
+                # Formatting newlines in the HTML are not scene breaks.
+                lines[-1] += str(node).replace("\r", "").replace("\n", "")
+        lines = [body_text(line) for line in lines]
+        while lines and not lines[0]:
+            lines.pop(0)
+        while lines and not lines[-1]:
+            lines.pop()
+        if not lines:
+            raise ValueError("Jinjiang returned no readable paragraphs")
+        return [
+            {"kind": "paragraph", "runs": [{"text": text, "styles": []}] if text else []}
+            for text in lines
+        ]
     blocks = []
     previous = None
     for paragraph in paragraphs:
-        text = paragraph.get_text().strip()
-        # This provider's inline watermark is injected into its paragraph spans.
-        text = re.sub(r"@(?:无限好文，尽在晋江文学城|晋江文学城)", "", text).strip()
+        text = body_text(paragraph.get_text())
         if not text:
             continue
         if previous is not None:
@@ -139,7 +167,7 @@ def collect_in_browser(
                 break
             time.sleep(0.5)
         state["captured_at"] = time.time()
-        state["capture_version"] = 2
+        state["capture_version"] = 3
         return state
 
     if probe:
@@ -159,7 +187,7 @@ def collect_in_browser(
         if (
             state.get("status") != "readable"
             or state.get("requested_url") != chapter.url
-            or state.get("capture_version") != 2
+            or state.get("capture_version") != 3
         ):
             state = capture(chapter)
             state["requested_url"] = chapter.url

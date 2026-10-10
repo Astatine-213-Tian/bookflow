@@ -24,6 +24,23 @@ ENTRY_ONLY = re.compile(
 def plain_note(markup: str) -> dict:
     soup = BeautifulSoup(markup, "html.parser")
     removed = []
+    image_reference_texts = set()
+    # Old notes sometimes put an image URL inside angle brackets. HTML repair
+    # turns it into a tag that contains the following caption, so keep that text
+    # for semantic review instead of treating it as independent prose.
+    for node in soup.find_all(["http:", "https:"]):
+        if any(re.search(r"\.(?:jpe?g|png|gif|webp)$", key, re.I) for key in node.attrs):
+            image_reference_texts.update(
+                value.strip() for value in node.get_text("\n").splitlines() if value.strip()
+            )
+            removed.append({"kind": "malformed_image_element", "tag": node.name})
+            node.unwrap()
+    # Recommendation links can be rendered as buttons; their visible titles
+    # have the same value as anchor labels. Never execute the click handler.
+    for node in soup.select('input[type="button"][onclick], button[onclick]'):
+        if re.search(r"\bwindow\.open\(\s*['\"]https?://", node["onclick"]):
+            label = node.get("value", "") if node.name == "input" else node.get_text()
+            node.replace_with(f"\n{label}\n")
     for node in soup.select(
         "script,style,img,iframe,object,form,input,button,#danmu_main,.danmu_main,.marquee"
     ):
@@ -46,7 +63,7 @@ def plain_note(markup: str) -> dict:
             removed.append({"kind": "site_widget_or_empty_entry", "text": line})
             continue
         # Captions need a semantic decision; a word like 插图 can occur in prose.
-        if IMAGE_CAPTION.search(line):
+        if IMAGE_CAPTION.search(line) or line in image_reference_texts:
             review.append(len(lines))
         # Anchor labels survive, but links and bare URLs are never exported.
         line = re.sub(r"https?://\S+", "", line).strip()

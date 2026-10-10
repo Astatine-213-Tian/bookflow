@@ -45,6 +45,46 @@ def book(*texts: str) -> dict:
 
 
 class ReferenceParserTests(unittest.TestCase):
+    def test_free_body_without_comment_wrappers_preserves_br_boundaries(self):
+        html = """<div id="paragraph_comment_content">
+         　　第一段。<br>　　第二段。<br><br>　　第三段。
+        </div>"""
+        self.assertEqual(
+            [block_text(b) for b in parse_body(html)],
+            ["第一段。", "第二段。", "", "第三段。"],
+        )
+
+    def test_vip_body_without_comment_wrappers_preserves_br_boundaries(self):
+        html = """<div id="content_33000413"><br>　　第一段。
+        <br><br>　　<span class="c_one">第二</span><span class="c_two">段。</span>
+        <br><br><br>　　字体\ue123‌@无限好文，尽在晋江文学城<br></div>
+        <div id="contentvars"><input value="not manuscript"></div>
+        <script>not manuscript</script>"""
+        self.assertEqual(
+            [block_text(b) for b in parse_body(html)],
+            ["第一段。", "", "第二段。", "", "", "字体\ue123‌"],
+        )
+        self.assertEqual(
+            access_status(
+                {
+                    "url": "https://my.jjwxc.net/onebook_vip.php?novelid=1&chapterid=2",
+                    "body_html": html,
+                },
+                novel_id="1",
+                chapter_id="2",
+            ),
+            "readable",
+        )
+
+    def test_unknown_or_ambiguous_body_is_not_readable(self):
+        for html in (
+            "<div>请登录后阅读<br>下一段</div>",
+            '<div id="content_1">甲</div><div id="content_2">乙</div>',
+            '<div id="content_1"><br><br></div>',
+        ):
+            with self.subTest(html=html), self.assertRaises(ValueError):
+                parse_body(html)
+
     def test_only_real_br_gaps_and_no_comment_counts(self):
         html = """<br><span class="onebook_paragraph_comment_anchor"><span class="onebook_paragraph_comment_text">甲</span><span class="onebook_paragraph_comment_bubble">99</span></span>
         <br><br><br><span class="onebook_paragraph_comment_anchor"><span class="onebook_paragraph_comment_text">乙@无限好文，尽在晋江文学城</span></span><br>"""
@@ -218,6 +258,22 @@ class ProofreadTests(unittest.TestCase):
                 "lines"
             ]
         )
+
+    def test_malformed_image_caption_is_reviewed_and_link_buttons_keep_titles(self):
+        parsed = plain_note(
+            '<br><http: image.example="" art.jpg=""><br>画师的小主角</http:>'
+        )
+        self.assertEqual(parsed["lines"], ["画师的小主角"])
+        self.assertEqual(parsed["image_reference_lines"], [0])
+        parsed = plain_note(
+            '<br>推荐一本书。<input type="button" value="《推荐书名》" '
+            'onclick="window.open(&quot;https://example.org/book&quot;)">'
+            '<input type="button" value="点我" '
+            'onclick="window.open(&quot;https://example.org/book&quot;)">'
+            '<input type="hidden" value="private">'
+        )
+        self.assertEqual(parsed["lines"], ["推荐一本书。", "《推荐书名》"])
+        self.assertFalse(parsed["image_reference_lines"])
 
     def test_missing_note_added_after_short_ending_and_not_duplicated(self):
         original, reference = book(LEFT, RIGHT, "全文完"), book(LEFT, RIGHT, "全文完")
