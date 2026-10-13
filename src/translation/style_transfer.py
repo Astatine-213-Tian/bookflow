@@ -49,6 +49,23 @@ LATIN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_'-]*")
 PLACEHOLDER_RE = re.compile(r"<(?:TERM|CONTENT|NUM|LATIN)>")
 JSON_RESIDUE_RE = re.compile(r"(?:\}\s*,\s*\{|```|\[\s*\{|\}\s*\])")
 PRINT_LOCK = threading.Lock()
+# These overrides belong to child sessions only; never persist them in user config.
+ISOLATED_CONTEXT_ARGS = (
+    "--disable",
+    "memories",
+    "--disable",
+    "external_agent_memory_import",
+    "--disable",
+    "plugins",
+    "--config",
+    "memories.use_memories=false",
+    "--config",
+    "memories.generate_memories=false",
+    "--config",
+    "project_doc_max_bytes=0",
+    "--config",
+    'web_search="disabled"',
+)
 
 
 def utc_now() -> str:
@@ -481,13 +498,35 @@ def _minimal_child_environment(temp_dir: Path) -> dict[str, str]:
 
 
 def _sandbox_profile() -> str:
-    root = str(repo_root())
+    codex_home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+    # Keep authentication available, but exclude all locally saved model context.
+    # project_doc_max_bytes alone does not suppress global AGENTS.md discovery.
+    protected = [
+        repo_root(),
+        *(
+            codex_home / name
+            for name in (
+                "memories",
+                "sessions",
+                "archived_sessions",
+                "skills",
+                "AGENTS.md",
+                "AGENTS.override.md",
+            )
+        ),
+        Path.home() / ".agents" / "skills",
+    ]
     return "\n".join(
         (
             "(version 1)",
             "(allow default)",
-            f'(deny file-read* (subpath "{root}"))',
-            f'(deny file-write* (subpath "{root}"))',
+            *(
+                "(deny file-read* file-write* "
+                f"(subpath {json.dumps(str(path.expanduser().resolve()))}))"
+                for path in protected
+            ),
+            "(deny file-write* "
+            f"(literal {json.dumps(str((codex_home / 'config.toml').expanduser().resolve()))}))",
             "",
         )
     )
@@ -561,6 +600,7 @@ def run_structured_attempt(
             "--ephemeral",
             "--ignore-user-config",
             "--ignore-rules",
+            *ISOLATED_CONTEXT_ARGS,
             "--skip-git-repo-check",
             "--dangerously-bypass-approvals-and-sandbox",
             "--disable",

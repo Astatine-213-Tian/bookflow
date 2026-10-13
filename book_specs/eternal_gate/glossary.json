@@ -1571,9 +1571,12 @@
     },
     "Ascending Dragon Way": {
       "zh": "升龙道",
-      "note": "从黄金港进入望潮城的具名道路。",
+      "note": "从黄金港进入望潮城的具名道路。 Chapter 035 的 Ascending Dragon Path 是同一路径的英文异名。",
       "confidence": "high",
-      "source_chunk": "18_001"
+      "source_chunk": "18_001",
+      "aliases": [
+        "Ascending Dragon Path"
+      ]
     },
     "sea-folk": {
       "zh": "海民",
@@ -2124,6 +2127,24 @@
       "note": "Risk 在 Chapter 015 评论中给出的九行诗官方中文版本；按连续诗节逐行保护。",
       "confidence": "high",
       "source_comment": "220662849"
+    },
+    {
+      "source": [
+        "When descends the tide of frost that sweeps across the ages,",
+        "Rendering all between heaven and earth to naught,",
+        "We can but kindle a fire of the soul,",
+        "And cling to one another till dawn breaks."
+      ],
+      "zh": [
+        "当席卷岁月的寒潮来到之时，",
+        "天地再无痕迹。",
+        "只能在当下生起灵魂之火",
+        "依偎到天明。"
+      ],
+      "note": "Chapter 035 的海国歌谣四行节选；沿用 Risk 在 Chapter 015 给出的对应中文诗句，英文第三行省略了 Within this dark。",
+      "confidence": "high",
+      "source_comment": "220662849",
+      "source_post": "171588589"
     }
   ],
   "translation_run": {

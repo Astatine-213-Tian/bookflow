@@ -108,6 +108,15 @@ and direct positive-scene methods retain their existing QA/reuse checks and all
 write structured bilingual content through the ordinary EPUB writer. Follow the
 book configuration and [Eternal Gate workflow](AGENTS.md#eternal-gate-updates).
 
+Direct scene generation, semantic review and bilingual alignment each start a
+fresh Codex session with memory use, memory generation and memory imports
+explicitly disabled for that subprocess. The same isolation applies to the
+structured author-style runner. These overrides never change global Codex
+memory settings. On macOS, the child sandbox also blocks saved memories, past
+sessions, global agent instructions, local skills and repository files, while
+leaving authentication available. Glossaries and selected examples are supplied
+explicitly in the request. Existing translation baselines are still reused.
+
 ## Training and research
 
 TXT output is independent of research. Request dataset bookkeeping explicitly:
