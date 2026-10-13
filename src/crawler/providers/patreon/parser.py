@@ -830,7 +830,49 @@ def _chapter_from_post(post_ref: PostRef, data: dict[str, Any]) -> Chapter:
         paragraphs = paragraphs[1:]
         if html_blocks:
             html_blocks = html_blocks[1:]
+    paragraphs, html_blocks = _without_reader_poll_footer(paragraphs, html_blocks)
     return Chapter(title=title, paragraphs=paragraphs, html_blocks=html_blocks or None)
+
+
+def _without_reader_poll_footer(
+    paragraphs: list[str], html_blocks: list[str]
+) -> tuple[list[str], list[str]]:
+    """Drop a detached bold poll section, including its introductory paragraphs."""
+    nodes = [BeautifulSoup(block, "html.parser").find() for block in html_blocks]
+    boundary = next(
+        (
+            i
+            for i in range(len(nodes) - 1, -1, -1)
+            if nodes[i] is not None and nodes[i].name == "hr"
+        ),
+        None,
+    )
+    if boundary is None or not any(
+        node is not None and node.get_text(strip=True) for node in nodes[:boundary]
+    ):
+        return paragraphs, html_blocks
+    tail = [
+        node
+        for node in nodes[boundary + 1 :]
+        if node is not None and node.get_text(strip=True)
+    ]
+    if not tail or any(
+        node.name != "p"
+        or any(
+            text.strip() and text.find_parent(["b", "strong"]) is None
+            for text in node.strings
+        )
+        for node in tail
+    ):
+        return paragraphs, html_blocks
+    if not tail[-1].get_text().strip().endswith(("?", "？")):
+        return paragraphs, html_blocks
+    # Plain and rich content may differ in inline whitespace, but must describe
+    # the same footer before either representation is trimmed.
+    footer = [SPACE_RE.sub("", node.get_text()) for node in tail]
+    if [SPACE_RE.sub("", text) for text in paragraphs[-len(tail) :]] != footer:
+        raise ValueError("Patreon poll footer differs between plain and rich content")
+    return paragraphs[: -len(tail)], html_blocks[:boundary]
 
 
 def _normalize_title_like(value: str) -> str:

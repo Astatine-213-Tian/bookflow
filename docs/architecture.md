@@ -107,6 +107,12 @@ views; stable source IDs and content hashes support existing delta reuse.
 Comments remain review evidence and never enter prompts as instructions.
 Configured comment authorities and reviewed glossaries belong to the book spec.
 
+The Patreon parser excludes reader-poll footers from rich post content: a final
+divider followed only by bold paragraphs ending in a question. It removes the
+entire section, including its introduction and divider, from both text and HTML
+before returning a chapter; raw post evidence remains intact. Existing snapshots
+are repaired once. Translation and output consume the already-clean source.
+
 ## Changes and destination guarantees
 
 A change task contains explicit chapter replacement/addition, independent extra,
