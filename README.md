@@ -44,6 +44,9 @@ uv run book-prepare agent-content.json --run-dir generated/ingest/transcribed
 ```
 
 See [local editions](docs/local-editions.md) for EPUB range review and comparison.
+For typography, punctuation, covers and filename/metadata cleanup, follow the
+agent-led [EPUB proofreading workflow](docs/epub-proofreading.md), with previews
+before changes are applied.
 Images and irregular TXT can be parsed by an agent into schema-validated JSON;
 use the [image transcription procedure](.agents/skills/book-management/references/image-transcription.md).
 No traditional OCR is used. Normalization follows [one rule document](docs/normalization.md).

@@ -34,6 +34,12 @@ For working files and task completion, follow [storage and cleanup](../../../doc
 - **Correct existing content, formatting, TOC or metadata:** read
   [formatting.md](references/formatting.md). Edit uploaded content in Notion;
   repair a local archive when requested.
+- **Proofread an EPUB's typography, mixed-language punctuation, cover or download
+  metadata:** follow [EPUB proofreading](../../../docs/epub-proofreading.md).
+  Audit each book, show representative before/after previews, and apply only
+  the confirmed version. Update local inputs in their original directory, using
+  title-only filenames; do not move them into the repository by default.
+  Keep this agent-led review within this skill.
 - **Proofread an existing edition against Jinjiang:** follow
   [Jinjiang proofreading](../../../docs/jinjiang-proofread.md) for `book-proofread`,
   including missing blank lines, suspect-text evidence and plain-text author notes.

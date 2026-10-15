@@ -118,6 +118,11 @@ incorrect; never retarget all same-URL occurrences from one textual guess.
 
 ## Existing EPUB maintenance
 
+For visual proofreading, cover cleanup or downloaded filenames/metadata, use
+[EPUB proofreading](epub-proofreading.md): audit each book, preview representative
+changes, then apply the confirmed scope. Its reviewed role-specific alignment
+and numbering choices override the generic preparation defaults below.
+
 `book-normalize FILE --check` audits an existing archive; omit `--check` only for
 an explicitly requested repair. This maintenance command optionally enriches
 metadata, applies shared [text and volume-label rules](normalization.md) and
