@@ -89,7 +89,7 @@ class BilingualUpdateTests(unittest.TestCase):
         return code, json.loads(printed.call_args_list[-1].args[0])
 
     def state(self) -> dict:
-        return json.loads((self.root / "state/bilingual/fake_book.json").read_text())
+        return json.loads((self.root / "bilingual/fake_book/state.json").read_text())
 
     def test_first_update_builds_and_records_the_next_baseline(self):
         code, result = self.update()
@@ -150,6 +150,60 @@ class BilingualUpdateTests(unittest.TestCase):
             self.update("--recrawl")
         self.assertEqual(len(self.collections), 2)
         self.assertNotEqual(self.state()["pending"]["snapshot"], pending["snapshot"])
+
+    def old_epub(self, english: str) -> Path:
+        from src.workflows.bilingual import write_bilingual
+        from src.workflows.ingest import OutputOptions
+
+        built, epub = self.root / "old", self.root / "old.epub"
+        write_source(built, [english])
+        write_json(
+            built / "translations/01.json",
+            {"translations": [{"index": 0, "zh": "门开了。"}]},
+        )
+        write_bilingual(
+            built,
+            built / "translations",
+            OutputOptions(output=epub, output_formats=("epub",)),
+        )
+        return epub
+
+    def seed(self, epub: Path, *args: str) -> tuple[int, dict]:
+        with patch("builtins.print") as printed:
+            code = bilingual_main(
+                ["seed", "fake_book", "--from-epub", str(epub), *args]
+            )
+        return code, json.loads(printed.call_args_list[-1].args[0])
+
+    def test_seed_recovers_matching_chapters_that_update_reuses(self):
+        epub = self.old_epub("The door opened.")
+        code, seeded = self.seed(epub)
+        self.assertEqual(code, 0)
+        self.assertEqual((seeded["seeded"], seeded["to_translate"]), (["01"], {}))
+        recovered = json.loads(
+            (self.root / seeded["baseline_run"] / "translations/01.json").read_text()
+        )
+        self.assertEqual(
+            recovered["groups"], [{"english_indices": [0], "paragraphs": ["门开了。"]}]
+        )
+
+        code, updated = self.update()
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.collections), 1)
+        self.assertEqual(updated["snapshot"], seeded["snapshot"])
+        self.assertEqual(
+            self.fake.baselines[0].run_dir, self.root / seeded["baseline_run"]
+        )
+
+        code, refused = self.seed(epub)
+        self.assertEqual((code, refused["status"]), (1, "failed"))
+        self.assertIn("--replace", refused["error"])
+
+    def test_seed_leaves_chapters_with_changed_english_to_translate(self):
+        code, seeded = self.seed(self.old_epub("The door closed."))
+        self.assertEqual(code, 0)
+        self.assertEqual(seeded["seeded"], [])
+        self.assertEqual(seeded["to_translate"], {"01": "English differs"})
 
     def test_run_directory_is_bound_to_one_method(self):
         self.update()

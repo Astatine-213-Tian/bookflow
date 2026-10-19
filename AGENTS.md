@@ -22,8 +22,11 @@ uv run book-bilingual update eternal_gate --headless
 
 It collects a fresh dated snapshot, reuses the last successful build as the
 baseline, translates with the spec's method, validates, writes the spec's output
-and records the new baseline in `state/bilingual/<book>.json`. Rerunning resumes
-the pending run. Act on the `status` in its final JSON line:
+and records the new baseline in `bilingual/<book>/state.json`; snapshots and runs
+live beside it. Rerunning resumes the pending run. With no baseline but an earlier
+bilingual EPUB, first run `uv run book-bilingual seed <book> --from-epub PATH`:
+it crawls, recovers each chapter whose English is unchanged, and `update` then
+translates only the rest. Act on the `status` in its final JSON line:
 
 - `complete`: report `outputs` and any `epub_check` issues. Review
   `comment_evidence` against the glossary, preserving canonical names and
@@ -61,7 +64,8 @@ assets with no separate reading page. Keep credentials and checkpoints local.
 
 - `book_specs/` stores maintained per-book settings and reviewed glossaries.
 - `assets/` stores reusable local inputs; `state/notion/` stores durable checkpoints.
-- `generated/` stores working runs and retained translation baselines.
+- `bilingual/<book>/` stores a bilingual book's snapshots, runs and baseline state.
+- `generated/` stores other working runs.
 - `books/` stores final reader outputs grouped by author, not source code.
 - `tests/` contains production contract tests.
 - `research/` is an independent nested `uv` project for corpora and experiments;
@@ -102,12 +106,12 @@ same functions. `book-bilingual methods` lists translation methods.
 
 ```bash
 uv run book-crawl --config book_specs/eternal_gate/config.json \
-  --output generated/crawls/eternal_gate/DATE --headless
-uv run book-bilingual translate generated/crawls/eternal_gate/DATE \
-  --book eternal_gate --run-dir generated/translation_runs/eternal_gate/DATE
-uv run book-bilingual validate generated/translation_runs/eternal_gate/DATE --book eternal_gate
-uv run book-bilingual build generated/crawls/eternal_gate/DATE \
-  --book eternal_gate --run-dir generated/translation_runs/eternal_gate/DATE
+  --output bilingual/eternal_gate/snapshots/DATE --headless
+uv run book-bilingual translate bilingual/eternal_gate/snapshots/DATE \
+  --book eternal_gate --run-dir bilingual/eternal_gate/runs/DATE
+uv run book-bilingual validate bilingual/eternal_gate/runs/DATE --book eternal_gate
+uv run book-bilingual build bilingual/eternal_gate/snapshots/DATE \
+  --book eternal_gate --run-dir bilingual/eternal_gate/runs/DATE
 ```
 
 Dataset TXT output and manifests live under `research/datasets/`. The production

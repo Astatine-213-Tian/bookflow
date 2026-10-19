@@ -142,9 +142,9 @@ independent nested uv project; production never imports experiments or corpora.
 ## Local files
 
 `books/` holds reader outputs, `state/notion/` holds durable upload/recovery state,
-and `assets/` holds reusable local inputs. `generated/` holds working runs and
-retained translation baselines. Use the system temporary directory for one-off
-diagnostics and previews. Follow [storage and cleanup](docs/storage.md) when a task
+and `assets/` holds reusable local inputs. `bilingual/<book>/` holds bilingual
+snapshots, runs and baselines; `generated/` holds other working runs. Use the
+system temporary directory for one-off diagnostics and previews. Follow [storage and cleanup](docs/storage.md) when a task
 finishes; successful runs do not require keeping every intermediate file.
 
 ## Validation

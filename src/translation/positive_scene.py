@@ -318,8 +318,8 @@ def run_positive_scenes(
                     and evidence.get("baseline_sha256") == source_digest(old_chapter)
                     and bool(evidence.get("reason"))
                 )
-            if same:
-                source = baseline_run / "translations" / f"{previous['id']}.json"
+            source = baseline_run / "translations" / f"{previous['id']}.json"
+            if same and source.exists():
                 destination = run / "translations" / f"{cid}.json"
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source, destination)

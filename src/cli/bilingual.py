@@ -19,6 +19,7 @@ from src.translation.methods import METHODS, Baseline, TranslateOptions
 from src.workflows.bilingual import (
     build_book,
     translate_snapshot,
+    seed_baseline,
     update_book,
     validate_run,
     write_comment_evidence,
@@ -85,6 +86,17 @@ def build_parser() -> argparse.ArgumentParser:
     update.add_argument("-o", "--output", type=Path, help="Override the spec's EPUB")
     _codex_arguments(update)
 
+    seed = sub.add_parser(
+        "seed",
+        help="Recover a baseline from a bilingual EPUB built earlier for this book",
+    )
+    seed.add_argument("book", help="Book spec slug or config path")
+    seed.add_argument("--from-epub", type=Path, required=True)
+    seed.add_argument(
+        "--replace", action="store_true", help="Replace an existing baseline"
+    )
+    seed.add_argument("--headless", action="store_true")
+
     translate = sub.add_parser(
         "translate", help="Translate a snapshot with the spec's method"
     )
@@ -147,6 +159,14 @@ def run(args: argparse.Namespace, progress: ProgressLogger) -> dict[str, Any]:
             headless=args.headless,
             output=args.output,
             options=options,
+        )
+    if args.command == "seed":
+        return seed_baseline(
+            args.book,
+            args.from_epub,
+            replace=args.replace,
+            headless=args.headless,
+            progress=progress,
         )
     config = load_config(args.book)
     base = {"status": "complete", "book": book_slug(config)}

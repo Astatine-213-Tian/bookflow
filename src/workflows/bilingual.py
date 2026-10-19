@@ -230,8 +230,13 @@ def write_bilingual(
 # ------------------------------------------------------------------------------
 
 
+def book_root(slug: str) -> Path:
+    """``bilingual/<book>/`` holds the book's snapshots, runs and state."""
+    return repo_root() / "bilingual" / slug
+
+
 def state_path(slug: str) -> Path:
-    return repo_root() / "state" / "bilingual" / f"{slug}.json"
+    return book_root(slug) / "state.json"
 
 
 def load_state(slug: str) -> dict[str, Any]:
@@ -239,6 +244,42 @@ def load_state(slug: str) -> dict[str, Any]:
     if not path.exists():
         return {"baseline": None, "pending": None}
     return json.loads(path.read_text())
+
+
+def _stamp() -> str:
+    return datetime.now().strftime("%Y%m%d-%H%M%S")
+
+
+def _start_pending(
+    state: dict[str, Any], slug: str, *, restart: bool, recrawl: bool
+) -> dict[str, Any]:
+    stamp = _stamp()
+    pending = state.get("pending")
+    if recrawl or not pending:
+        pending = {
+            "snapshot": f"bilingual/{slug}/snapshots/{stamp}",
+            "run": f"bilingual/{slug}/runs/{stamp}",
+            "started_at": datetime.now().isoformat(timespec="seconds"),
+        }
+    elif restart:
+        pending = {**pending, "run": f"bilingual/{slug}/runs/{stamp}"}
+    state["pending"] = pending
+    write_json(state_path(slug), state)
+    return pending
+
+
+def _ensure_snapshot(
+    config: dict[str, Any], snapshot: Path, *, headless: bool, progress: ProgressLogger
+) -> None:
+    if (snapshot / "evidence.json").exists():
+        progress.info(f"reusing collected snapshot {snapshot}")
+        return
+    if snapshot.exists() and any(snapshot.iterdir()):
+        raise ValueError(
+            f"Pending snapshot {snapshot} is incomplete; rerun with --recrawl"
+        )
+    progress.section("Collect")
+    collect_snapshot(config, snapshot, options=crawl_options(config, headless=headless))
 
 
 def _usable_baseline(
@@ -281,31 +322,9 @@ def update_book(
     slug = book_slug(config)
     method = method_for(config)
     state = load_state(slug)
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    pending = state.get("pending")
-    if recrawl or not pending:
-        pending = {
-            "snapshot": f"generated/crawls/{slug}/{stamp}",
-            "run": f"generated/translation_runs/{slug}/{stamp}",
-            "started_at": datetime.now().isoformat(timespec="seconds"),
-        }
-    elif restart:
-        pending = {**pending, "run": f"generated/translation_runs/{slug}/{stamp}"}
-    state["pending"] = pending
-    write_json(state_path(slug), state)
+    pending = _start_pending(state, slug, restart=restart, recrawl=recrawl)
     snapshot, run = _absolute(pending["snapshot"]), _absolute(pending["run"])
-
-    if (snapshot / "evidence.json").exists():
-        progress.info(f"reusing collected snapshot {snapshot}")
-    else:
-        if snapshot.exists() and any(snapshot.iterdir()):
-            raise ValueError(
-                f"Pending snapshot {snapshot} is incomplete; rerun with --recrawl"
-            )
-        progress.section("Collect")
-        collect_snapshot(
-            config, snapshot, options=crawl_options(config, headless=headless)
-        )
+    _ensure_snapshot(config, snapshot, headless=headless, progress=progress)
     comments = None
     if config.get("comment_authorities"):
         comments = write_comment_evidence(snapshot, config)
@@ -356,4 +375,124 @@ def update_book(
         "outputs": outputs,
         "comment_evidence": comments["path"] if comments else None,
         "epub_check": list(check.issues) if check else None,
+    }
+
+
+# ------------------------------------------------------------------------------
+# seed: recover a baseline from a bilingual EPUB this repository built
+# ------------------------------------------------------------------------------
+
+
+def _expected_english(snapshot: Path) -> dict[str, list[list[str]]]:
+    """English paragraphs per chapter as raw source and as the build renders them.
+
+    A bilingual build normalizes the joined book, so the EPUB's English may be the
+    normalized form; both forms identify the same reviewed source text.
+    """
+    from tempfile import TemporaryDirectory
+
+    from src.content.html import is_scene_break_text
+    from src.translation.output import translated_source
+    from src.translation.source import chapter_ids, load_chapter, load_source
+    from src.workflows.prepare import prepare_book
+
+    source = load_source(snapshot)
+    with TemporaryDirectory() as empty:
+        joined, _, _ = translated_source(snapshot, Path(empty))
+    rendered, _ = prepare_book(joined)
+    rendered_chapters = {
+        **rendered["chapters"],
+        **{extra["id"]: extra for extra in rendered["extras"]},
+    }
+    result = {}
+    for cid in chapter_ids(source):
+        raw = [p["english"] for p in load_chapter(source, cid)["paragraphs"]]
+        normalized = []
+        for block in rendered_chapters[cid]["blocks"]:
+            text = "".join(r["text"] for r in block.get("runs", []))
+            if block.get("kind") == "divider" or is_scene_break_text(text):
+                continue
+            if text.strip():
+                normalized.append(text)
+        result[cid] = [raw, normalized]
+    return result
+
+
+def seed_baseline(
+    book: str | Path,
+    epub: Path,
+    *,
+    replace: bool = False,
+    headless: bool = False,
+    progress: ProgressLogger | None = None,
+) -> dict[str, Any]:
+    """Make the pending snapshot's baseline from translations already in ``epub``.
+
+    A chapter is seeded only when its English in the EPUB matches the snapshot
+    exactly; the next ``update`` translates every other chapter.
+    """
+    from src.translation.seed import matching_groups, read_bilingual_epub
+
+    progress = progress or ProgressLogger()
+    config = load_config(book)
+    slug = book_slug(config)
+    method = method_for(config)
+    if not method.reuses_baseline:
+        raise ValueError(f"{method.name} does not reuse a baseline; nothing to seed")
+    state = load_state(slug)
+    if state.get("baseline") and not replace:
+        raise ValueError(
+            "This book already has a baseline; pass --replace to seed over it"
+        )
+    pending = _start_pending(state, slug, restart=False, recrawl=False)
+    snapshot = _absolute(pending["snapshot"])
+    _ensure_snapshot(config, snapshot, headless=headless, progress=progress)
+
+    progress.section("Seed")
+    recovered = read_bilingual_epub(epub)
+    run = book_root(slug) / "runs" / f"seed-{_stamp()}"
+    seeded, unmatched = [], {}
+    for cid, forms in _expected_english(snapshot).items():
+        if cid not in recovered:
+            unmatched[cid] = "not in EPUB"
+            continue
+        groups = next(
+            (g for form in forms if (g := matching_groups(form, recovered[cid]))),
+            None,
+        )
+        if groups is None:
+            unmatched[cid] = recovered[cid].get("error") or "English differs"
+            continue
+        write_json(
+            run / "translations" / f"{cid}.json", {"chapter_id": cid, "groups": groups}
+        )
+        seeded.append(cid)
+    write_json(
+        run / RUN_RECORD,
+        {
+            "method": method.name,
+            "snapshot_dir": pending["snapshot"],
+            "seeded_from": _relative(epub),
+        },
+    )
+    state["baseline"] = {
+        "snapshot": pending["snapshot"],
+        "run": _relative(run),
+        "method": method.name,
+        "seeded_from": _relative(epub),
+        "completed_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    write_json(state_path(slug), state)
+    progress.info(
+        f"seeded {len(seeded)} chapter(s) from {epub}; "
+        f"{len(unmatched)} will be translated"
+    )
+    return {
+        "status": "complete",
+        "book": slug,
+        "snapshot": pending["snapshot"],
+        "baseline_run": _relative(run),
+        "seeded": seeded,
+        "to_translate": unmatched,
+        "next": f"book-bilingual update {slug}",
     }

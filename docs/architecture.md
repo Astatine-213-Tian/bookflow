@@ -202,8 +202,12 @@ build; each stage is also a `book-bilingual` subcommand. Methods register in
 A run directory records its method, snapshot and baseline in `bilingual_run.json`
 and refuses a different one. A stage that needs an agent decision raises
 `ReviewRequired` with the path to write it. `update` keeps the pending run and
-the last successful build in `state/bilingual/<book>.json`; the build becomes the
-next baseline only after its output is written.
+the last successful build in `bilingual/<book>/state.json`, beside the book's
+`snapshots/` and `runs/`; the build becomes the
+next baseline only after its output is written. `seed` recovers a baseline from
+an earlier bilingual EPUB: the writer marks each chapter ID and each block's
+`data-variant`, so a chapter whose English still matches the fresh snapshot keeps
+its reviewed groups; positive-scene reuse skips baseline chapters without them.
 
 `tests/test_architecture.py` enforces dependency direction. Fixture tests cover
 collection/preparation/output, fragment EPUBs, rich text, normalization rules,
