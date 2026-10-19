@@ -2,19 +2,18 @@
 
 from __future__ import annotations
 
-import tempfile
 from dataclasses import dataclass, replace
 from pathlib import Path
 
 from src.crawler.models import CrawledBook, CrawlOptions, DownloadedEdition
 from src.crawler.registry import ParserSpec
 from src.dataset.text import write_prepared_txt
-from src.inputs.crawl import extract_crawl
 from src.runtime.paths import (
     dataset_txt_output_path,
     resolve_output_path,
     resolve_txt_output_path,
 )
+from src.workflows.collect import Collected, collect, extract_collected
 from src.workflows.prepare import prepare_book, prepare_file, save_prepared
 from src.content.changes import content_hash
 from src.runtime.files import digest
@@ -143,23 +142,22 @@ def write_book(
     return IngestResult(epub_path, txt_path, notion_state)
 
 
-def write_outputs(book: CrawledBook, options: OutputOptions) -> IngestResult:
+def write_outputs(
+    book: CrawledBook | DownloadedEdition,
+    options: OutputOptions,
+    crawl_options: CrawlOptions | None = None,
+) -> IngestResult:
     requested_formats(options)
-    source = extract_crawl(
-        title=book.title,
-        author=book.author,
-        volumes=book.volumes,
-        source_url=book.source_url,
-        intro_paragraphs=book.intro_paragraphs,
-        intro_html=book.intro_html,
-        language=book.language,
-    )
+    return write_collected(extract_collected(book, crawl_options), options)
+
+
+def write_collected(collected: Collected, options: OutputOptions) -> IngestResult:
     return prepare_and_write(
-        source,
+        collected.book,
         options,
-        cover=book.cover_bytes,
-        cover_mime=book.cover_mime,
-        evidence=book.evidence,
+        cover=collected.cover,
+        cover_mime=collected.cover_mime,
+        evidence=collected.evidence or None,
     )
 
 
@@ -241,18 +239,4 @@ def ingest(
     output_options: OutputOptions,
 ) -> IngestResult:
     requested_formats(output_options)
-    collected = parser.crawl(target, crawl_options)
-    if isinstance(collected, DownloadedEdition):
-        from src.inputs.epub import read_epub_source
-
-        with tempfile.TemporaryDirectory(prefix="book-input-") as temporary:
-            path = Path(temporary) / "download.epub"
-            path.write_bytes(collected.epub_bytes)
-            edition = read_epub_source(path)
-            return prepare_and_write(
-                edition.source,
-                output_options,
-                cover=edition.cover,
-                cover_mime=edition.cover_mime,
-            )
-    return write_outputs(collected, output_options)
+    return write_collected(collect(target, parser, crawl_options), output_options)

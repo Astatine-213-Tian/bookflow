@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 import zipfile
@@ -59,6 +60,26 @@ class IngestWorkflowTests(unittest.TestCase):
                 self.assertIn(
                     "第二段。", archive.read("EPUB/chapter_0001.xhtml").decode()
                 )
+
+    def test_ingest_applies_collection_overrides_like_book_crawl(self):
+        parser = ParserSpec(
+            "fixture", ("example.org",), "fixture", Mock(return_value=book())
+        )
+        options = CrawlOptions(title="覆盖书名", author="覆盖作者", language="en")
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "book.txt"
+            with patch("src.workflows.prepare.enrich_source", return_value={}):
+                result = ingest(
+                    "https://example.org/book",
+                    parser=parser,
+                    crawl_options=options,
+                    output_options=OutputOptions(txt_output=target),
+                )
+            text = target.read_text()
+            self.assertIn("覆盖书名", text)
+            self.assertIn("覆盖作者", text)
+            source = json.loads(result.source_path.read_text())
+            self.assertEqual(source["metadata"]["language"], "en")
 
     def test_invalid_output_and_unsupported_draft_stop_before_collection(self):
         crawl = Mock()
