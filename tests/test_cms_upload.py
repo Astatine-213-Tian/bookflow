@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 from lxml import etree as ET
-from notion_books import NotionError, work_properties
+from notion_books import PROPERTIES, PUBLICATION_FIELDS, NotionError, work_properties
 from PIL import Image
 
 from src.content.models import Chapter, Volume
@@ -25,10 +25,11 @@ from src.notion.upload import UPLOAD_CONCURRENCY, upload_draft, upload_row, uplo
 from src.runtime.files import digest
 from src.workflows.ingest import OutputOptions, write_outputs
 from tests.fixtures import isolated_workdir, prepared_crawl as prepare_crawl
-from tests.notion_api import BlockAPI, paragraphs
+from tests.notion_api import BlockAPI, paragraphs, schema_api
 
 WORK = "11111111-1111-1111-1111-111111111111"
 DS = "22222222-2222-2222-2222-222222222222"
+EXTRAS_DS = "99999999-9999-4999-8999-999999999999"
 
 
 def source():
@@ -146,13 +147,14 @@ class DestinationTests(unittest.TestCase):
             "description": "摘要",
         }
         props = work_properties(metadata, [WORK, DS])
-        self.assertEqual(props["作者"], [WORK, DS])
-        self.assertEqual(props["系列序号"], 1.5)
-        self.assertEqual(props["书籍分类"], ["爱情", "耽美"])
-        self.assertEqual(props["date:出版日期:start"], "2020-02-01")
-        self.assertEqual(props["来源"], "https://example.org/book")
-        self.assertNotIn("发表日期", props)
-        self.assertFalse(any("发布" in key or "Bookshelf" in key for key in props))
+        self.assertEqual(props["authors"], [WORK, DS])
+        self.assertEqual(props["series_position"], 1.5)
+        self.assertEqual(props["subjects"], ["爱情", "耽美"])
+        self.assertEqual(props["date:publication_date:start"], "2020-02-01")
+        self.assertEqual(props["source"], "https://example.org/book")
+        fields = {key.split(":")[1] if key.startswith("date:") else key for key in props}
+        self.assertLessEqual(fields, set(PROPERTIES["works"]))
+        self.assertFalse(fields & {*PUBLICATION_FIELDS, "book_binding"})
 
     def test_cms_rejects_deeper_toc_without_flattening_local_structure(self):
         book = source()
@@ -200,6 +202,7 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
                 }
                 tools = AsyncMock()
                 tools.call.return_value = {"pages": [{"id": WORK}]}
+                tools.call_api.side_effect = schema_api({DS: "works"})
                 with (
                     tempfile.TemporaryDirectory() as directory,
                     patch(
@@ -212,7 +215,7 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
                         "notion_books.NotionBooks.rows",
                         new=AsyncMock(
                             side_effect=[
-                                [{"id": WORK, "作者": original["creator"]}],
+                                [{"id": WORK, "title": original["creator"]}],
                                 [],
                             ]
                         ),
@@ -284,6 +287,10 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
         }
 
         class Tools:
+            call_api = staticmethod(
+                schema_api({DS: "chapters", extras_source: "extras"})
+            )
+
             async def call(self, name, arguments):
                 if name != "notion-fetch":
                     raise AssertionError("Unexpected write during discovery")
@@ -309,7 +316,7 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
         config = {
             "databases": {
                 "works": {"data_source_id": DS},
-                "extras": {"data_source_id": DS, "view_id": "all-extras"},
+                "extras": {"data_source_id": EXTRAS_DS, "view_id": "all-extras"},
             }
         }
         rows = {"main": [], "extras": [], "all-extras": []}
@@ -317,54 +324,45 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
         calls = []
 
         api = BlockAPI()
+        api.add_source(DS, "chapters")
+        api.add_source(EXTRAS_DS, "extras")
+        fields = {
+            kind: {spec["id"]: field for field, spec in PROPERTIES[kind].items()}
+            for kind in ("chapters", "extras")
+        }
 
         class Tools:
             async def call_api(self, request):
                 response = await api(request)
                 if request["method"] == "POST" and request["path"] == "pages":
-                    self.record(response["body"]["id"], {
+                    source = request["json"]["parent"]["data_source_id"]
+                    kind = "chapters" if source == DS else "extras"
+                    page = {
                         "properties": {
-                            name: (
+                            fields[kind][id]: (
                                 "".join(run["text"]["content"] for run in value["title"])
                                 if "title" in value else
                                 [r["id"] for r in value["relation"]]
                                 if "relation" in value else
                                 value["select"]["name"] if value["select"] else None
                             )
-                            for name, value in request["json"]["properties"].items()
+                            for id, value in request["json"]["properties"].items()
                         }
-                    })
+                    }
+                    calls.append(page)
+                    created[response["body"]["id"]] = page
+                    view = "main" if kind == "chapters" else "extras"
+                    rows[view].insert(0, {"id": response["body"]["id"]})
                 return response
 
-            def record(self, id, page):
-                calls.append(page)
-                created[id] = page
-                view = "main" if "章节" in page["properties"] else "extras"
-                rows[view].insert(0, {"id": id})
-
             async def call(self, name, args):
-                if name != "notion-create-pages":
-                    raise AssertionError("Unexpected write: " + name)
-                page = args["pages"][0]
-                id = f"00000000-0000-0000-0000-{len(created) + 1:012d}"
-                props = {}
-                for name, value in page["properties"].items():
-                    if isinstance(value, list):
-                        props[name] = {
-                            "type": "relation",
-                            "relation": [{"id": x} for x in value],
-                            "has_more": False,
-                        }
-                    elif name not in ("章节", "番外"):
-                        props[name] = {"type": "select", "select": {"name": value}}
-                title_field = "章节" if "章节" in page["properties"] else "番外"
-                api.add_page(
-                    id, page["properties"][title_field], DS, title_field, props
-                )
-                self.record(id, page)
-                return {"pages": [{"id": id}]}
+                raise AssertionError("Unexpected MCP call: " + name)
 
-        async def read_rows(_reader, view):
+        async def read_rows(_reader, view, data_source, kind):
+            self.assertEqual(
+                (data_source, kind),
+                (DS, "chapters") if view == "main" else (EXTRAS_DS, "extras"),
+            )
             return rows[view]
 
         with (
@@ -383,11 +381,11 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
             await upload_draft(book, state, config, tools=Tools())
             self.assertTrue(book["uploaded"])
             self.assertEqual(
-                [created[r["id"]]["properties"]["章节"] for r in rows["main"]],
+                [created[r["id"]]["properties"]["title"] for r in rows["main"]],
                 ["简介", "第1章", "第2章"],
             )
             self.assertEqual(
-                created[rows["main"][1]["id"]]["properties"]["所属标题"], "卷一"
+                created[rows["main"][1]["id"]]["properties"]["parent_title"], "卷一"
             )
             count = len(calls)
             edited = rows["main"][1]["id"]
@@ -443,8 +441,8 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
             state = Path(directory) / "import.json"
             kwargs = {
                 "data_source": DS,
-                "properties": {"章节": item["title"]},
-                "title_property": "章节",
+                "kind": "chapters",
+                "properties": {"title": item["title"]},
                 "tools": tools,
             }
             with self.assertRaises(NotionError) as caught:
@@ -514,8 +512,8 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
                 api.calls.clear()
                 before = api.mutations
                 kwargs = dict(
-                    data_source=DS, properties={"章节": item["title"]},
-                    title_property="章节", tools=api,
+                    data_source=DS, kind="chapters",
+                    properties={"title": item["title"]}, tools=api,
                 )
                 if existing == "Editor changed this":
                     with self.assertRaisesRegex(ValueError, "editor content"):

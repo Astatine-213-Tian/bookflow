@@ -12,13 +12,16 @@ import copy
 import json
 from pathlib import Path
 
-from notion_books import FIELDS, NotionBooks, notion_id
+from notion_books import NotionBooks, notion_id
 
 from src.content.blocks import block_text, replace_run_text
 from src.content.contract import metadata_defaults, validate_book
 from src.content.proofread import chapters
 from src.content.quote_review import review_fingerprint
 from src.runtime.files import write_json
+
+# Snapshots written before property IDs recorded the title column's display name.
+LEGACY_TITLE_FIELDS = {"章节": "chapters", "番外": "extras"}
 
 
 def outline_identity(rows: list[dict]) -> list[dict]:
@@ -46,15 +49,15 @@ async def snapshot_book(
     if source.get("extras_view") and not source.get("extras_view_complete"):
         raise ValueError("Extras view is incomplete")
     outline = await reader.outline(source, extras_source, view_policy="editorial")
-    page = await reader.page(work_id)
+    page = await reader.page(work_id, "works")
     book = {
         "version": 3,
         "identifier": f"notion:{work_id}",
         "source_format": "notion",
         "metadata": metadata_defaults(
             {
-                "title": page.properties[FIELDS["title"]],
-                "source": page.properties.get("来源", ""),
+                "title": page.properties["title"],
+                "source": page.properties.get("source", ""),
                 "language": "zh-CN",
             }
         ),
@@ -73,23 +76,21 @@ async def snapshot_book(
 
     async def read(row):
         async with semaphore:
-            document = await reader.document(row["page_id"])
-            title_field = (
-                FIELDS["extra_title"] if row["extra"] else FIELDS["chapter_title"]
-            )
+            kind = "extras" if row["extra"] else "chapters"
+            document = await reader.document(row["page_id"], kind)
             expected_ds = (
                 extras_source if row["extra"] else source["chapters_data_source"]
             )
             if (
                 document.data_source_id != expected_ds
-                or document.properties.get(title_field) != row["title"]
+                or document.properties.get("title") != row["title"]
             ):
                 raise ValueError("Chapter identity changed while snapshotting")
             print(f"Notion read: {row['title']}", flush=True)
-            return row, document, title_field
+            return row, document, kind
 
     rows = await asyncio.gather(*(read(row) for row in outline))
-    for ordinal, (row, document, title_field) in enumerate(rows):
+    for ordinal, (row, document, kind) in enumerate(rows):
         chapter = {"title": row["title"], "blocks": document.blocks}
         if row["extra"]:
             member = f"extra:{len(book['extras'])}"
@@ -109,7 +110,7 @@ async def snapshot_book(
             "page_id": document.page_id,
             "data_source_id": document.data_source_id,
             "title": row["title"],
-            "title_field": title_field,
+            "kind": kind,
             "native": document.native,
             "fingerprint": document.fingerprint,
         }
@@ -124,6 +125,15 @@ async def snapshot_book(
     write_json(output / "source.json", book)
     write_json(output / "evidence.json", evidence)
     return book, evidence
+
+
+def page_kind(saved: dict) -> str:
+    # Evidence is part of a journal's fingerprint, so legacy files are read as is.
+    if "kind" in saved:
+        return saved["kind"]
+    if saved.get("title_field") in LEGACY_TITLE_FIELDS:
+        return LEGACY_TITLE_FIELDS[saved["title_field"]]
+    raise ValueError("Snapshot evidence has no page kind; take a new snapshot")
 
 
 def native_equal(
@@ -378,10 +388,10 @@ async def apply_edits(
             )
 
             async def current():
-                page = await reader.document(saved["page_id"])
+                page = await reader.document(saved["page_id"], page_kind(saved))
                 if (
                     page.data_source_id != saved["data_source_id"]
-                    or page.properties.get(saved["title_field"]) != saved["title"]
+                    or page.properties.get("title") != saved["title"]
                 ):
                     raise ValueError(
                         "Page membership/title changed during proofreading"

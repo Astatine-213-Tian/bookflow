@@ -11,7 +11,6 @@ from unittest.mock import patch
 from zipfile import ZipFile
 
 from lxml import etree as ET
-from notion_books import FIELDS
 
 from src.content.contract import validate_book
 from src.epub.writer import export_local
@@ -72,11 +71,9 @@ class ExtraReferenceTests(unittest.IsolatedAsyncioTestCase):
         saved = checkpoint()
         pages = {}
         for chapter in [*saved["chapters"].values(), *saved["extras"]]:
-            title_field = FIELDS[
-                "extra_title" if chapter["role"] == "extra" else "chapter_title"
-            ]
-            pages[chapter["page_id"]] = SimpleNamespace(
-                properties={title_field: chapter["title"]},
+            kind = "extras" if chapter["role"] == "extra" else "chapters"
+            pages[chapter["page_id"], kind] = SimpleNamespace(
+                properties={"title": chapter["title"]},
                 blocks=copy.deepcopy(chapter["blocks"]),
             )
 
@@ -84,8 +81,8 @@ class ExtraReferenceTests(unittest.IsolatedAsyncioTestCase):
             def __init__(self, *args, **kwargs):
                 pass
 
-            async def document(self, page_id):
-                return copy.deepcopy(pages[page_id])
+            async def document(self, page_id, kind):
+                return copy.deepcopy(pages[page_id, kind])
 
         with patch("src.notion.update.NotionBooks", Reader):
             return await read_current(

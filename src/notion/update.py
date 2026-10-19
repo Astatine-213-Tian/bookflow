@@ -6,7 +6,7 @@ import copy
 import json
 from pathlib import Path
 
-from notion_books import FIELDS, NotionBooks, content_matches
+from notion_books import NotionBooks, content_matches
 
 from src.content.blocks import content_signature
 from src.content.changes import apply_changes, content_hash
@@ -52,8 +52,8 @@ async def read_current(checkpoint: dict, *, tools, allow_pending: bool = False) 
             if allow_pending:
                 continue
             raise ValueError("Complete or recover the import before editing")
-        page = await reader.document(row["page_id"])
-        chapter["title"] = page.properties[FIELDS["chapter_title"]]
+        page = await reader.document(row["page_id"], "chapters")
+        chapter["title"] = page.properties["title"]
         chapter["blocks"] = page.blocks
     for index, chapter in enumerate(book["extras"]):
         row = checkpoint["extras"][index]
@@ -61,8 +61,8 @@ async def read_current(checkpoint: dict, *, tools, allow_pending: bool = False) 
             if allow_pending:
                 continue
             raise ValueError("Complete or recover the extras import first")
-        page = await reader.document(row["page_id"])
-        chapter["title"] = page.properties[FIELDS["extra_title"]]
+        page = await reader.document(row["page_id"], "extras")
+        chapter["title"] = page.properties["title"]
         chapter["blocks"] = page.blocks
     localize_chapter_links(book, checkpoint_page_ids(checkpoint))
     validate_book(book)
@@ -164,8 +164,8 @@ async def apply_update(state: Path, change: dict, config: dict, *, tools) -> dic
             },
         )
         if not item.get("content_write"):
-            page = await reader.document(item["page_id"])
-            if page.properties[FIELDS["chapter_title"]] not in {
+            page = await reader.document(item["page_id"], "chapters")
+            if page.properties["title"] not in {
                 before["title"],
                 desired["title"],
             } or not (
@@ -181,20 +181,20 @@ async def apply_update(state: Path, change: dict, config: dict, *, tools) -> dic
         await write_content(
             reader, item, journal_path, journal, destinations, expected=expected
         )
-        page = await reader.document(item["page_id"])
+        page = await reader.document(item["page_id"], "chapters")
         if not content_matches(
             page.blocks, desired["blocks"], destinations
-        ) or page.properties[FIELDS["chapter_title"]] not in {
+        ) or page.properties["title"] not in {
             before["title"],
             desired["title"],
         }:
             raise ValueError(f"Concurrent edit: {key}")
-        if page.properties[FIELDS["chapter_title"]] != desired["title"]:
+        if page.properties["title"] != desired["title"]:
             await reader.write_properties(
-                page, {FIELDS["chapter_title"]: desired["title"]}
+                page, {"title": desired["title"]}
             )
-        page = await reader.document(item["page_id"])
-        if page.properties[FIELDS["chapter_title"]] != desired[
+        page = await reader.document(item["page_id"], "chapters")
+        if page.properties["title"] != desired[
             "title"
         ] or not content_matches(page.blocks, desired["blocks"], destinations):
             raise ValueError(f"Notion update readback differs: {key}")

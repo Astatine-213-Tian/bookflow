@@ -14,11 +14,7 @@ from datetime import datetime, timezone
 from functools import cached_property
 from pathlib import Path
 
-from notion_books import (
-    FIELDS,
-    NotionBooks,
-    notion_id,
-)
+from notion_books import NotionBooks, notion_id
 from opencc import OpenCC
 
 from src.content.blocks import content_signature
@@ -328,7 +324,7 @@ async def comparison_documents(
     snapshots = {
         row["id"]: cached[row["id"]]
         for row in rows
-        if reusable_comparison(cached.get(row["id"]), row.get(FIELDS["revision"]))
+        if reusable_comparison(cached.get(row["id"]), row.get("revision"))
     }
     missing = [row for row in rows if row["id"] not in snapshots]
     print(
@@ -343,9 +339,9 @@ async def comparison_documents(
         nonlocal completed
         async with semaphore:
             started = datetime.now(timezone.utc)
-            document = await reader.document(row["id"])
+            document = await reader.document(row["id"], "extras")
         props, blocks = document.properties, document.blocks
-        title = props.get(FIELDS["extra_title"])
+        title = props.get("title")
         if not isinstance(title, str):
             raise ValueError(
                 "Shared extra is missing its title; duplicate check incomplete"
@@ -416,7 +412,7 @@ async def preflight_extras(
             "A page create response was lost; reconcile the checkpoint before retrying"
         )
     database = config["databases"]["extras"]
-    rows = await reader.inventory(database)
+    rows = await reader.inventory(database, "extras")
     print(
         f"Checking {len(pending)} incoming extras against {len(rows)} shared Notion pages…",
         flush=True,

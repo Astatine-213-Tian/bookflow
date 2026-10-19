@@ -4,12 +4,109 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import uuid
-from urllib.parse import urlsplit
-from notion_books import NotionBooks
+from urllib.parse import unquote, urlsplit
+from notion_books import PROPERTIES, NotionBooks
 
 PAGE = "11111111-1111-4111-8111-111111111111"
 SOURCE = "22222222-2222-4222-8222-222222222222"
+
+# Current workspace names. Bookflow identifies properties by ID; these are what
+# MCP payloads and REST responses show, and editors may rename them.
+DISPLAY = {
+    "chapters": {
+        "title": "章节",
+        "parent_title": "所属标题",
+        "publish": "发布章节",
+        "last_published": "上次发布（勿手动修改）",
+        "publication_result": "发布结果（勿手动修改）",
+        "content_status": "正文状态（勿手动修改）",
+        "revision": "最近编辑（勿手动修改）",
+    },
+    "extras": {
+        "title": "番外",
+        "related_works": "涉及作品",
+        "publish": "发布至收录书",
+        "last_published": "上次发布（勿手动修改）",
+        "publication_result": "发布结果（勿手动修改）",
+        "content_status": "正文状态（勿手动修改）",
+        "revision": "最近编辑",
+    },
+    "works": {
+        "title": "作品",
+        "authors": "作者",
+        "subjects": "书籍分类",
+        "series": "系列",
+        "series_position": "系列序号",
+        "language": "语言",
+        "description": "简介",
+        "source": "来源",
+        "publication_date": "出版日期",
+        "publish": "全书发布",
+        "last_published": "上次发布（勿手动修改）",
+        "publication_result": "发布结果（勿手动修改）",
+        "book_binding": "Bookshelf 绑定（勿手动修改）",
+    },
+    "authors": {"title": "作者", "homepage": "作者主页"},
+}
+
+
+def display_names(kind, renamed=None):
+    return DISPLAY[kind] | (renamed or {})
+
+
+def schema_body(data_source, kind="chapters", renamed=None, omit=()):
+    """The REST data source schema the SDK binds property IDs against."""
+    names = display_names(kind, renamed)
+    properties = {}
+    for field, spec in PROPERTIES[kind].items():
+        if field in omit:
+            continue
+        typ = "rich_text" if spec["type"] == "text" else spec["type"]
+        properties[names[field]] = {"id": spec["id"], "name": names[field], "type": typ}
+    return {"object": "data_source", "id": data_source, "properties": properties}
+
+
+def mcp_schema(kind="chapters", renamed=None, omit=(), options=None, **state):
+    """MCP's name-keyed data source state, as notion-fetch returns it."""
+    names = display_names(kind, renamed)
+    schema = {
+        names[field]: {"type": spec["type"], "options": (options or {}).get(field, [])}
+        for field, spec in PROPERTIES[kind].items()
+        if field not in omit
+    }
+    return "<data-source-state>\n" + json.dumps(
+        {"schema": schema, **state}, ensure_ascii=False
+    ) + "\n</data-source-state>"
+
+
+def schema_api(sources):
+    """A REST transport serving only schemas; ``sources`` maps data source to kind."""
+
+    async def api(request):
+        path = request["path"]
+        if request["method"] != "GET" or not path.startswith("data_sources/"):
+            raise AssertionError("unexpected REST request: " + path)
+        source = path.split("/")[1]
+        return {"status": 200, "body": schema_body(source, sources[source])}
+
+    return api
+
+
+def rest_values(written):
+    """Store REST write values, keyed by property ID, as REST page values."""
+    return {
+        key: {"id": key, "type": next(iter(value)), **copy.deepcopy(value)}
+        for key, value in written.items()
+    }
+
+
+def field_for(kind, property_id):
+    for field, spec in PROPERTIES[kind].items():
+        if unquote(spec["id"]) == unquote(property_id):
+            return field
+    return None
 
 
 def paragraphs(text):
@@ -27,20 +124,43 @@ class BlockAPI:
         self.calls = []
         self.mutations = 0
         self.lose_reply = None
+        self.sources = {}
         self.add_page(PAGE)
 
-    def add_page(
-        self, page_id, title="Example", source=SOURCE, property="章节", properties=None
-    ):
+    def add_source(self, data_source, kind, renamed=None, omit=()):
+        self.sources[data_source] = (kind, renamed or {}, tuple(omit))
+
+    def named(self, data_source, properties):
+        """Key REST properties by current display name, as Notion responds."""
+        kind, renamed, omit = self.sources[data_source]
+        names = display_names(kind, renamed)
+        result = {}
+        for key, value in properties.items():
+            field = field_for(kind, value.get("id", key))
+            if field is None or field in omit:
+                raise AssertionError(f"{kind} has no property {key}")
+            spec = PROPERTIES[kind][field]
+            result[names[field]] = {**copy.deepcopy(value), "id": spec["id"]}
+        return result
+
+    def add_page(self, page_id, title="Example", source=SOURCE, properties=None):
+        """``properties`` holds REST values keyed by contract field."""
+        self.sources.setdefault(source, ("chapters", {}, ()))
+        kind = self.sources[source][0]
+        values = {"title": {"type": "title", "title": [{"plain_text": title}]}}
+        values |= properties or {}
         self.pages[page_id] = {
             "object": "page",
             "id": page_id,
             "parent": {"data_source_id": source},
             "last_edited_time": "0",
-            "properties": {
-                property: {"type": "title", "title": [{"plain_text": title}]},
-                **(properties or {}),
-            },
+            "properties": self.named(
+                source,
+                {
+                    field: {"id": PROPERTIES[kind][field]["id"], **value}
+                    for field, value in values.items()
+                },
+            ),
         }
         self.children.setdefault(page_id, [])
 
@@ -51,9 +171,10 @@ class BlockAPI:
         if name == "notion-create-pages":
             row = arguments["pages"][0]
             id = str(uuid.uuid4())
-            property, title = next(iter(row["properties"].items()))
             source = arguments["parent"]["data_source_id"]
-            self.add_page(id, title, source, property)
+            kind, renamed, _ = self.sources.setdefault(source, ("chapters", {}, ()))
+            title = row["properties"][display_names(kind, renamed)["title"]]
+            self.add_page(id, title, source)
             return {"pages": [{"id": id}]}
         raise AssertionError((name, arguments))
 
@@ -74,6 +195,9 @@ class BlockAPI:
         parts = path.split("/")
         if method == "GET" and parts[0] == "pages":
             body = self.pages[parts[1]]
+        elif method == "GET" and parts[0] == "data_sources":
+            kind, renamed, omit = self.sources[parts[1]]
+            body = schema_body(parts[1], kind, renamed, omit)
         elif method == "GET" and parts[0] == "blocks":
             body = {
                 "object": "list",
@@ -90,13 +214,17 @@ class BlockAPI:
             if method == "POST" and path == "pages":
                 payload = request["json"]
                 id = str(uuid.uuid4())
-                props = {
-                    name: {"type": next(iter(value)), **copy.deepcopy(value)}
-                    for name, value in payload["properties"].items()
+                source = payload["parent"]["data_source_id"]
+                self.sources.setdefault(source, ("chapters", {}, ()))
+                props = self.named(source, rest_values(payload["properties"]))
+                self.pages[id] = {
+                    "object": "page",
+                    "id": id,
+                    "parent": {"data_source_id": source},
+                    "last_edited_time": "0",
+                    "properties": props,
                 }
-                title_field = next(name for name, value in props.items() if value["type"] == "title")
-                title = "".join(run["text"]["content"] for run in props[title_field]["title"])
-                self.add_page(id, title, payload["parent"]["data_source_id"], title_field, props)
+                self.children[id] = []
                 body = self.pages[id]
             elif method == "PATCH" and path.endswith("/children"):
                 ids = [self._create(node) for node in request["json"]["children"]]
@@ -108,9 +236,9 @@ class BlockAPI:
                 }
             elif method == "PATCH" and parts[0] == "pages":
                 body = self.pages[parts[1]]
-                for name, value in request["json"]["properties"].items():
-                    kind = next(iter(value))
-                    body["properties"][name] = {"type": kind, **copy.deepcopy(value)}
+                source = body["parent"]["data_source_id"]
+                properties = rest_values(request["json"]["properties"])
+                body["properties"].update(self.named(source, properties))
             elif method == "PATCH" and parts[0] == "blocks":
                 self.nodes[parts[1]].update(copy.deepcopy(request["json"]))
                 body = self.nodes[parts[1]]
@@ -126,16 +254,16 @@ class BlockAPI:
         return {"status": 200, "body": copy.deepcopy(body)}
 
 
-async def write(reader, blocks, page_id=PAGE, *, targets=None):
+async def write(reader, blocks, page_id=PAGE, *, targets=None, kind="chapters"):
     plan = await reader.prepare_content(page_id, blocks, targets=targets or {})
     plan = await reader.write_content(plan, checkpoint=lambda plan: None)
-    return await reader.document(page_id)
+    return await reader.document(page_id, kind)
 
 
 def roundtrip(blocks):
     async def run():
         api = BlockAPI()
         await write(NotionBooks(api=api), blocks)
-        return (await NotionBooks(api=api).document(PAGE)).blocks
+        return (await NotionBooks(api=api).document(PAGE, "chapters")).blocks
 
     return asyncio.run(run())

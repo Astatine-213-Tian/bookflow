@@ -552,7 +552,7 @@ class WriteRecoveryTests(unittest.IsolatedAsyncioTestCase):
                     "page_id": "page",
                     "data_source_id": "ds",
                     "title": "第一章",
-                    "title_field": "章节",
+                    "kind": "chapters",
                     "native": copy.deepcopy(native),
                 }
             },
@@ -567,10 +567,11 @@ class WriteRecoveryTests(unittest.IsolatedAsyncioTestCase):
                 return []
 
             async def document(self, *args):
+                test.assertEqual(args, ("page", "chapters"))
                 return SimpleNamespace(
                     native=copy.deepcopy(native),
                     data_source_id="ds",
-                    properties={"章节": "第一章"},
+                    properties={"title": "第一章"},
                 )
 
         class Tools:
@@ -629,6 +630,7 @@ class WriteRecoveryTests(unittest.IsolatedAsyncioTestCase):
         plan = plan_proofread(original, reference)
         candidate, ops = apply_plan(original, reference, plan)
         native = [{"id": "a", **paragraph(LEFT)}, {"id": "b", **paragraph(RIGHT)}]
+        test = self
         evidence = {
             "work_id": "work",
             "discovery": {},
@@ -639,6 +641,7 @@ class WriteRecoveryTests(unittest.IsolatedAsyncioTestCase):
                     "page_id": "page",
                     "data_source_id": "ds",
                     "title": "第一章",
+                    # Earlier snapshots recorded the title column's display name.
                     "title_field": "章节",
                     "native": copy.deepcopy(native),
                 }
@@ -653,10 +656,11 @@ class WriteRecoveryTests(unittest.IsolatedAsyncioTestCase):
                 return []
 
             async def document(self, *args):
+                test.assertEqual(args, ("page", "chapters"))
                 return SimpleNamespace(
                     native=copy.deepcopy(native),
                     data_source_id="ds",
-                    properties={"章节": "第一章"},
+                    properties={"title": "第一章"},
                 )
 
         class Tools:

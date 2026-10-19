@@ -90,7 +90,7 @@ requires-dist = [
     { name = "jsonschema", specifier = ">=4.23,<5" },
     { name = "lxml", specifier = "==6.1.0" },
     { name = "mcp", specifier = "==1.26.0" },
-    { name = "notion-books", git = "https://github.com/Astatine-213-Tian/notion-books?tag=v0.13.2" },
+    { name = "notion-books", git = "https://github.com/Astatine-213-Tian/notion-books?tag=v0.14.0" },
     { name = "opencc-python-reimplemented", specifier = "==0.1.7" },
     { name = "pillow", specifier = ">=11.3,<13" },
     { name = "referencing", specifier = ">=0.36,<1" },
@@ -643,8 +643,8 @@ wheels = [
 
 [[package]]
 name = "notion-books"
-version = "0.13.2"
-source = { git = "https://github.com/Astatine-213-Tian/notion-books?tag=v0.13.2#50db39761c76f1a866ed8732541bc09fe4108daf" }
+version = "0.14.0"
+source = { git = "https://github.com/Astatine-213-Tian/notion-books?tag=v0.14.0#660d8a00fb908bfabede299db53e0ecefecb4b72" }
 
 [[package]]
 name = "opencc-python-reimplemented"

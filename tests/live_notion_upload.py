@@ -14,7 +14,7 @@ from pathlib import Path
 CRAWLER = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CRAWLER))
 
-from notion_books import FIELDS, NotionBooks, relation_ids
+from notion_books import NotionBooks, relation_ids
 
 from src.content.blocks import content_signature
 from src.content.models import Chapter, Volume
@@ -105,20 +105,18 @@ def import_book(root: Path) -> None:
     book = load(result.notion_state)
 
     async def verify(reader, tools):
-        work = (await reader.page(book["work_id"])).properties
-        assert work[FIELDS["title"]] == book["metadata"]["title"]
-        run["author_ids"] = relation_ids(work[FIELDS["authors"]])
+        work = (await reader.page(book["work_id"], "works")).properties
+        assert work["title"] == book["metadata"]["title"]
+        run["author_ids"] = relation_ids(work["authors"])
         save(manifest, run)
         for author_id in run["author_ids"]:
-            author = (await reader.page(author_id)).properties
-            assert author[FIELDS["authors"]] == book["metadata"]["creator"]
+            author = (await reader.page(author_id, "authors")).properties
+            assert author["title"] == book["metadata"]["creator"]
         for item in list(book["chapters"].values()) + book["extras"]:
-            document = await reader.document(item["page_id"])
+            kind = "chapters" if item in book["chapters"].values() else "extras"
+            document = await reader.document(item["page_id"], kind)
             props, body = document.properties, document.blocks
-            title_field = (
-                "chapter_title" if item in book["chapters"].values() else "extra_title"
-            )
-            assert props[FIELDS[title_field]] == item["title"]
+            assert props["title"] == item["title"]
             assert content_signature(body) == content_signature(item["blocks"])
         print(
             "PASS live Notion readback: all chapter and extra blocks match", flush=True
@@ -143,29 +141,23 @@ def verify_cleanup(root: Path) -> None:
 
     async def verify(reader, tools):
         expected = {
-            "works": (
-                {book.get("work_id"), run.get("work_id")},
-                FIELDS["title"],
-                fixture.title,
-            ),
-            "authors": (
-                set(run.get("author_ids", [])),
-                FIELDS["authors"],
-                fixture.author,
-            ),
+            "works": ({book.get("work_id"), run.get("work_id")}, fixture.title),
+            "authors": (set(run.get("author_ids", [])), fixture.author),
             "extras": (
                 {item.get("page_id") for item in book.get("extras", [])},
-                FIELDS["extra_title"],
                 f"独立番外 {run['marker']}",
             ),
         }
-        for kind, (removed, title_field, title) in expected.items():
-            rows = await reader.rows(run["config"]["databases"][kind]["view_id"])
+        for kind, (removed, title) in expected.items():
+            database = run["config"]["databases"][kind]
+            rows = await reader.rows(
+                database["view_id"], database["data_source_id"], kind
+            )
             # Unique fixture names also catch a create whose response was lost.
             remaining = {
                 row["id"]
                 for row in rows
-                if row["id"] in removed or row.get(title_field) == title
+                if row["id"] in removed or row.get("title") == title
             }
             assert not remaining, f"Test {kind} still active: {sorted(remaining)}"
 

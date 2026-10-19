@@ -152,9 +152,13 @@ remains in `epub/`; `notion/content.py` projects the app's book model and persis
 write plans. Official MCP handles catalogs, explicit templates, linked views and
 manual chapter order. Plain page creation, metadata and body reads/writes use REST with
 `NOTION_API_TOKEN`. Document reads capture metadata and blocks once. Property
-updates reuse the observed REST page. `WriteContent` runs one continuous session
-with a durable checkpoint callback, verifies replacements before cleanup and the
-final result afterward, and reconciles interrupted sessions before continuing.
+updates reuse the observed REST page. Properties are identified by Notion
+property ID through the SDK's contract fields; display names belong to editors.
+Where MCP needs names (view rows, template creates, column DDL), the current
+name is resolved by ID from the data source schema. `WriteContent` runs one
+continuous session with a durable checkpoint callback, verifies replacements
+before cleanup and the final result afterward, and reconciles interrupted
+sessions before continuing.
 The importer owns the page while writing; edits during cleanup may be archived.
 See the shared [write-session decision](https://github.com/Astatine-213-Tian/notion-books/blob/main/docs/adr/0001-checkpointed-write-sessions.md).
 The importer creates identities serially to preserve manual order, then runs up

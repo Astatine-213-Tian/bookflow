@@ -61,7 +61,7 @@ class LiveUploadRecoveryTests(unittest.TestCase):
             [
                 {
                     "id": "unknown-author",
-                    live.FIELDS["authors"]: live.source(run).author,
+                    "title": live.source(run).author,
                 }
             ],
         ]
@@ -82,17 +82,18 @@ class LiveUploadRecoveryTests(unittest.TestCase):
             )
             return SimpleNamespace(notion_state=self.checkpoint)
 
-        async def document(page_id):
+        async def document(page_id, kind):
             if page_id == "created-work":
                 run = live.load(self.manifest)
                 return Page(
                     page_id=page_id,
+                    kind=kind,
                     data_source_id="",
                     title="",
                     revision="",
                     properties={
-                        live.FIELDS["title"]: live.source(run).title,
-                        live.FIELDS["authors"]: [
+                        "title": live.source(run).title,
+                        "authors": [
                             "00000000-0000-4000-8000-000000000001"
                         ],
                     },

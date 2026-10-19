@@ -252,7 +252,7 @@ class NotionChangesTests(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as temporary:
             state = Path(temporary) / "import.json"
             write_json(state, source)
-            other_before = await NotionBooks(api=api).document(other)
+            other_before = await NotionBooks(api=api).document(other, "chapters")
             with self.assertRaises(ValueError):
                 await apply_update(state, task, config, tools=api)
             mutations = api.mutations
@@ -260,7 +260,7 @@ class NotionChangesTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(api.mutations, mutations)
             self.assertEqual(result["chapters"][key]["title"], "第1章 修订")
             self.assertEqual(
-                content_signature((await NotionBooks(api=api).document(other)).blocks),
+                content_signature((await NotionBooks(api=api).document(other, "chapters")).blocks),
                 content_signature(other_before.blocks),
             )
             await write(NotionBooks(api=api), [paragraph("后来手改。")], id)

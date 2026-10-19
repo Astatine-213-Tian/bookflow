@@ -20,6 +20,7 @@ from src.runtime.files import digest
 WORK = "11111111-1111-1111-1111-111111111111"
 DS = "22222222-2222-2222-2222-222222222222"
 TEMPLATE = "33333333-3333-3333-3333-333333333333"
+TOOLS = SimpleNamespace(call_api=None)
 
 
 def book():
@@ -68,7 +69,7 @@ class ImportControlsTests(unittest.IsolatedAsyncioTestCase):
             patch("src.notion.cms.asyncio.sleep", new=AsyncMock()),
         ):
             await ensure_views(
-                value, Path(temporary) / "state.json", config, tools=None
+                value, Path(temporary) / "state.json", config, tools=TOOLS
             )
             self.assertEqual(value["view_id"], "extra")
             reader.discover.side_effect = NotionError(
@@ -77,7 +78,7 @@ class ImportControlsTests(unittest.IsolatedAsyncioTestCase):
             )
             with self.assertRaisesRegex(NotionError, "permission denied"):
                 await ensure_views(
-                    value, Path(temporary) / "state.json", config, tools=None
+                    value, Path(temporary) / "state.json", config, tools=TOOLS
                 )
 
     async def test_new_volume_colors_preserve_existing_options_and_resume(self):
@@ -85,11 +86,17 @@ class ImportControlsTests(unittest.IsolatedAsyncioTestCase):
         tools = SimpleNamespace(call=AsyncMock(return_value={}))
         before = {"用户标签": "brown"}
         after = before | {"上卷": "blue", "尾声": "green"}
+
+        def column(colors):
+            # The parent title column was renamed; DDL must use its current name.
+            options = [{"name": n, "color": c} for n, c in colors.items()]
+            return {"name": "分卷", "type": "select", "options": options}
+
         with (
             tempfile.TemporaryDirectory() as temporary,
             patch(
-                "src.notion.presentation.volume_options",
-                new=AsyncMock(side_effect=[before, after, after, after]),
+                "src.notion.presentation.parent_title",
+                new=AsyncMock(side_effect=[column(c) for c in (before, after, after, after)]),
             ),
         ):
             state = Path(temporary) / "state.json"
@@ -98,6 +105,7 @@ class ImportControlsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(value["volume_colors"], {"上卷": "blue", "尾声": "green"})
         tools.call.assert_awaited_once()
         statement = tools.call.call_args.args[1]["statements"]
+        self.assertTrue(statement.startswith('ALTER COLUMN "分卷" SET SELECT('))
         self.assertIn("'用户标签':brown", statement)
         self.assertIn("'尾声':green", statement)
 
@@ -201,7 +209,7 @@ class ImportControlsTests(unittest.IsolatedAsyncioTestCase):
             patch("src.notion.cms.asyncio.sleep", new=AsyncMock()),
         ):
             await ensure_views(
-                value, Path(temporary) / "state.json", config, tools=None
+                value, Path(temporary) / "state.json", config, tools=TOOLS
             )
         self.assertEqual(reader.discover.await_count, 32)
         self.assertEqual(value["view_id"], "extra")
@@ -231,7 +239,7 @@ class ImportControlsTests(unittest.IsolatedAsyncioTestCase):
         ):
             with self.assertRaisesRegex(ValueError, "Resume the same checkpoint"):
                 await ensure_views(
-                    value, Path(temporary) / "state.json", config, tools=None
+                    value, Path(temporary) / "state.json", config, tools=TOOLS
                 )
         self.assertEqual(value["template_request"]["status"], "requested")
 

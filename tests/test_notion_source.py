@@ -175,8 +175,8 @@ class BatchResumeTests(unittest.IsolatedAsyncioTestCase):
                 book,
                 state,
                 data_source=SOURCE,
-                properties={"章节": "Chapter"},
-                title_property="章节",
+                kind="chapters",
+                properties={"title": "Chapter"},
                 tools=api,
             )
             saved = json.loads(state.read_text())["chapters"][member]
@@ -187,16 +187,16 @@ class BatchResumeTests(unittest.IsolatedAsyncioTestCase):
                 book,
                 state,
                 data_source=SOURCE,
-                properties={"章节": "Chapter"},
-                title_property="章节",
+                kind="chapters",
+                properties={"title": "Chapter"},
                 tools=api,
             )
             self.assertEqual(api.mutations, mutations)
-            doc = await NotionBooks(api=api).document(saved["page_id"])
+            doc = await NotionBooks(api=api).document(saved["page_id"], "chapters")
             self.assertEqual(text_blocks(doc.blocks), ["1. 第一项。", "2. 第二项。"])
 
     async def test_title_only_source_page_is_readable(self):
         api = BlockAPI()
-        document = await NotionBooks(api=api).document(PAGE)
-        self.assertEqual(document.properties["章节"], "Example")
+        document = await NotionBooks(api=api).document(PAGE, "chapters")
+        self.assertEqual(document.properties["title"], "Example")
         self.assertEqual(document.blocks, [])

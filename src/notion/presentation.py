@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import httpx
-from notion_books import FIELDS, NotionBooks
+from notion_books import NotionBooks
 
 from src.notion.cms import chapter_entries
 from src.notion.cover import validate_cover
@@ -27,29 +27,33 @@ VOLUME_COLORS = (
 )
 
 
-async def volume_options(book: dict, *, tools) -> dict:
-    schema = await NotionBooks(tools).catalog(
+async def parent_title(book: dict, *, tools) -> dict:
+    schema = await NotionBooks(tools, api=tools.call_api).catalog(
         {
             "chapters": {
                 "data_source_id": book["chapters_data_source_id"],
                 "view_id": book["chapters_view_id"],
-                "fields": {
-                    FIELDS["parent_title"]: {"type": "select", "writable": True}
-                },
+                "kind": "chapters",
             }
         }
     )
-    options = (
-        schema["chapters"]["properties"][FIELDS["parent_title"]].get("options") or []
-    )
-    return {o["name"]: o.get("color", "default") for o in options}
+    return schema["chapters"]["properties"]["parent_title"]
+
+
+def option_colors(property: dict) -> dict:
+    return {o["name"]: o.get("color", "default") for o in property.get("options") or []}
+
+
+async def volume_options(book: dict, *, tools) -> dict:
+    return option_colors(await parent_title(book, tools=tools))
 
 
 async def ensure_volume_colors(book: dict, state: Path, *, tools) -> None:
     names = list(dict.fromkeys(parent for _, parent in chapter_entries(book) if parent))
     if not names:
         return
-    existing = await volume_options(book, tools=tools)
+    property = await parent_title(book, tools=tools)
+    existing = option_colors(property)
     expected = book.get("volume_colors")
     if expected is None:
         expected = {name: existing[name] for name in names if name in existing}
@@ -66,11 +70,9 @@ async def ensure_volume_colors(book: dict, state: Path, *, tools) -> None:
     missing = {name: color for name, color in expected.items() if name not in existing}
     if missing:
         values = existing | missing
-        sql = (
-            'ALTER COLUMN "'
-            + FIELDS["parent_title"].replace('"', '""')
-            + '" SET SELECT('
-        )
+        # MCP DDL addresses columns by display name; use the name the catalog
+        # resolved from the property ID, since editors may rename the column.
+        sql = 'ALTER COLUMN "' + property["name"].replace('"', '""') + '" SET SELECT('
         sql += (
             ", ".join(
                 "'" + name.replace("'", "''") + "':" + color
@@ -111,7 +113,7 @@ async def attach_public_cover(book: dict, state: Path, *, tools) -> None:
         return
     url = book["cover_url"]
     reader = NotionBooks(tools, api=tools.call_api)
-    page = await reader.page(book["work_id"])
+    page = await reader.page(book["work_id"], "works")
     if not page.cover_known:
         raise ValueError("Notion omitted cover metadata")
     if page.cover is not None and page.cover.get("url") != url:
@@ -133,7 +135,7 @@ async def attach_public_cover(book: dict, state: Path, *, tools) -> None:
                 "cover": url,
             },
         )
-    page = await reader.page(book["work_id"])
+    page = await reader.page(book["work_id"], "works")
     if not page.cover_known or not page.cover or page.cover.get("url") != url:
         raise ValueError("External cover readback differs")
     if digest(await asyncio.to_thread(public_cover, url)) != book["cover_sha256"]:

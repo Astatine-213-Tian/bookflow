@@ -7,12 +7,7 @@ import copy
 import json
 from pathlib import Path
 
-from notion_books import (
-    FIELDS,
-    NotionBooks,
-    relation_ids,
-    content_matches,
-)
+from notion_books import NotionBooks, relation_ids, content_matches
 
 from src.notion.content import targets, write_content
 from src.notion.cms import (
@@ -44,7 +39,14 @@ def source_digest(book: dict) -> str:
 
 
 async def create_row(
-    item: dict, book: dict, state: Path, *, data_source: str, properties: dict, tools
+    item: dict,
+    book: dict,
+    state: Path,
+    *,
+    data_source: str,
+    kind: str,
+    properties: dict,
+    tools,
 ) -> None:
     if item.get("page_id"):
         return
@@ -55,7 +57,7 @@ async def create_row(
     item["pending"] = True
     write_json(state, book)
     item["page_id"] = await NotionBooks(tools, api=tools.call_api).create_page(
-        data_source, properties
+        data_source, kind, properties
     )
     item.pop("pending")
     write_json(state, book)
@@ -67,13 +69,19 @@ async def upload_row(
     state: Path,
     *,
     data_source: str,
+    kind: str,
     properties: dict,
-    title_property: str,
     tools,
     destinations: dict | None = None,
 ) -> None:
     await create_row(
-        item, book, state, data_source=data_source, properties=properties, tools=tools
+        item,
+        book,
+        state,
+        data_source=data_source,
+        kind=kind,
+        properties=properties,
+        tools=tools,
     )
     if item.get("verified"):
         return
@@ -86,27 +94,27 @@ async def upload_row(
         await write_content(
             reader, item, state, book, destinations, require_empty=True
         )
-    document = await reader.document(item["page_id"])
+    document = await reader.document(item["page_id"], kind)
     props = document.properties
     if item.get("reuse_fingerprint"):
         matches = (
-            fingerprint(props.get(title_property), document.blocks)
+            fingerprint(props.get("title"), document.blocks)
             == item["reuse_fingerprint"]
         )
     else:
-        matches = props.get(title_property) == item["title"] and content_matches(
+        matches = props.get("title") == item["title"] and content_matches(
             document.blocks, item["blocks"], destinations
         )
     if not matches:
         raise ValueError(
             "CMS draft readback differs from prepared content; reconcile without overwriting edits"
         )
-    if FIELDS["parent_title"] in properties and (
-        props.get(FIELDS["parent_title"]) or ""
-    ) != (properties[FIELDS["parent_title"]] or ""):
+    if "parent_title" in properties and (props.get("parent_title") or "") != (
+        properties["parent_title"] or ""
+    ):
         raise ValueError("CMS draft parent title differs from prepared content")
-    if FIELDS["related_works"] in properties and book["work_id"] not in relation_ids(
-        props.get(FIELDS["related_works"])
+    if "related_works" in properties and book["work_id"] not in relation_ids(
+        props.get("related_works")
     ):
         raise ValueError("CMS extra readback has the wrong work relation")
     item["verified"] = True
@@ -160,6 +168,7 @@ async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
         )
     entries = chapter_entries(book)
     reader = NotionBooks(tools, api=tools.call_api)
+    extras_ds = config["databases"]["extras"]["data_source_id"]
     if not book.get("uploaded"):
         # Resolve possible shared duplicates before creating a work or uploading rows.
         await preflight_extras(book, state, config, reader)
@@ -172,11 +181,16 @@ async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
         print("Draft already uploaded; later Notion edits are preserved")
         return
     # Existing unknown rows indicate manual edits or an ambiguous earlier create.
-    for key, items in [
-        ("chapters_view_id", list(book["chapters"].values())),
-        ("view_id", book["extras"]),
+    for key, data_source, kind, items in [
+        (
+            "chapters_view_id",
+            book["chapters_data_source_id"],
+            "chapters",
+            list(book["chapters"].values()),
+        ),
+        ("view_id", extras_ds, "extras", book["extras"]),
     ]:
-        rows = await reader.rows(book[key])
+        rows = await reader.rows(book[key], data_source, kind)
         known = {i["page_id"] for i in items if i.get("page_id")}
         required = {
             i["page_id"]
@@ -193,7 +207,8 @@ async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
     await ensure_volume_colors(book, state, tools=tools)
     await reader.ensure_options(
         book["chapters_data_source_id"],
-        {FIELDS["parent_title"]: [p for _, p in entries]},
+        "chapters",
+        {"parent_title": [p for _, p in entries]},
     )
     # New records enter manual views at the top. Create from the end, then verify
     # the actual editorial order instead of assuming query insertion order.
@@ -204,10 +219,8 @@ async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
             book,
             state,
             data_source=book["chapters_data_source_id"],
-            properties={
-                FIELDS["chapter_title"]: item["title"],
-                FIELDS["parent_title"]: parent or None,
-            },
+            kind="chapters",
+            properties={"title": item["title"], "parent_title": parent or None},
             tools=tools,
         )
     for item in reversed(book["extras"]):
@@ -215,11 +228,9 @@ async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
             item,
             book,
             state,
-            data_source=config["databases"]["extras"]["data_source_id"],
-            properties={
-                FIELDS["extra_title"]: item["title"],
-                FIELDS["related_works"]: [book["work_id"]],
-            },
+            data_source=extras_ds,
+            kind="extras",
+            properties={"title": item["title"], "related_works": [book["work_id"]]},
             tools=tools,
         )
     rows = []
@@ -228,47 +239,42 @@ async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
         rows.append({
             "item": item,
             "data_source": book["chapters_data_source_id"],
-            "properties": {
-                FIELDS["chapter_title"]: item["title"],
-                FIELDS["parent_title"]: parent or None,
-            },
-            "title_property": FIELDS["chapter_title"],
+            "kind": "chapters",
+            "properties": {"title": item["title"], "parent_title": parent or None},
         })
     for item in reversed(book["extras"]):
         if item.get("reused") and not item.get("verified"):
-            document = await reader.document(item["page_id"])
+            document = await reader.document(item["page_id"], "extras")
             props, blocks = document.properties, document.blocks
             expected = item.get("reuse_fingerprint") or fingerprint(
                 item["title"], item["blocks"]
             )
-            if fingerprint(props.get(FIELDS["extra_title"]), blocks) != expected:
+            if fingerprint(props.get("title"), blocks) != expected:
                 raise ValueError(
                     "Shared extra changed after duplicate review; reconcile before linking"
                 )
-            works = relation_ids(props.get(FIELDS["related_works"]))
+            works = relation_ids(props.get("related_works"))
             if book["work_id"] not in works:
                 await reader.write_properties(
-                    document,
-                    {FIELDS["related_works"]: works + [book["work_id"]]},
+                    document, {"related_works": works + [book["work_id"]]}
                 )
         rows.append({
             "item": item,
-            "data_source": config["databases"]["extras"]["data_source_id"],
-            "properties": {
-                FIELDS["extra_title"]: item["title"],
-                FIELDS["related_works"]: [book["work_id"]],
-            },
-            "title_property": FIELDS["extra_title"],
+            "data_source": extras_ds,
+            "kind": "extras",
+            "properties": {"title": item["title"], "related_works": [book["work_id"]]},
         })
     await upload_rows(rows, book, state, tools=tools, destinations=targets(book))
-    for view, expected in [
+    for view, data_source, kind, expected in [
         (
             book["chapters_view_id"],
+            book["chapters_data_source_id"],
+            "chapters",
             [book["chapters"][m]["page_id"] for m, _ in entries],
         ),
-        (book["view_id"], [i["page_id"] for i in book["extras"]]),
+        (book["view_id"], extras_ds, "extras", [i["page_id"] for i in book["extras"]]),
     ]:
-        if [r["id"] for r in await reader.rows(view)] != expected:
+        if [r["id"] for r in await reader.rows(view, data_source, kind)] != expected:
             raise ValueError(
                 "CMS manual order differs from source; reorder the draft view, then resume"
             )

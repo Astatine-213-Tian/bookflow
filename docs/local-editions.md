@@ -25,11 +25,12 @@ TXT, a session may resolve structure into that same JSON. Script uncertainty is
 a reason to inspect and supply a reviewed result, not to discard difficult text.
 
 Review hierarchy separately from normalization. For a source with 卷 → 回 → 章,
-Notion can represent the volume as `所属标题`, each 回 as a chapter row, and its
-题记/章 labels as H3 headings within that row. Confirm the intended reading units
-from the source and user instructions; do not concatenate all levels into the
-volume label merely to fit Notion's one-parent limit. Preserve every body block
-and original ordering when combining reading units.
+Notion can represent the volume as the parent title (`parent_title`), each 回
+as a chapter row, and its 题记/章 labels as H3 headings within that row. Confirm
+the intended reading units from the source and user instructions; do not
+concatenate all levels into the volume label merely to fit Notion's one-parent
+limit. Preserve every body block and original ordering when combining reading
+units.
 
 ## EPUB inventory and review
 

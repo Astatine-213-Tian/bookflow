@@ -9,7 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from notion_books import FIELDS, NotionBooks, Document, content_signature, text_blocks
+from notion_books import PROPERTIES, NotionBooks, Document, content_signature, text_blocks
+from tests.notion_api import DISPLAY, field_for, schema_body
 from tests.notion_api import paragraphs as prose
 
 from src.notion.cms import STORAGE
@@ -79,10 +80,12 @@ CONFIG = {
 
 
 class Library:
+    """Shared extras keyed by contract field; Notion payloads use IDs or names."""
+
     def __init__(self):
         self.pages = {
             PAGE: {
-                "properties": {"番外": "用户重命名的标题", "涉及作品": [OTHER]},
+                "properties": {"title": "用户重命名的标题", "related_works": [OTHER]},
                 "content": TEXT.replace("纸袋", "布袋"),
             }
         }
@@ -93,45 +96,67 @@ class Library:
         self.filter = None
         self.inventories = 0
 
-    async def ensure_options(self, data_source, values):
+    async def ensure_options(self, data_source, kind, values):
         pass
 
-    async def create_page(self, data_source, properties, **kwargs):
-        return await NotionBooks(self).create_page(data_source, properties, **kwargs)
+    async def create_page(self, data_source, kind, properties, **kwargs):
+        self.calls.append(("create", {"kind": kind, "properties": properties}))
+        id = f"00000000-0000-0000-0000-{len(self.pages):012d}"
+        self.pages[id] = {
+            "kind": kind,
+            "properties": copy.deepcopy(properties),
+            "content": "",
+            "data_source": data_source,
+        }
+        (self.main if data_source == "main-db" else self.shared).insert(0, id)
+        return id
 
     async def write_properties(self, page, properties):
         return await NotionBooks(self, api=self.call_api).write_properties(
             page, properties
         )
 
-    async def inventory(self, database):
+    async def inventory(self, database, kind):
         self.inventories += 1
-        return await NotionBooks(self).inventory(database)
+        return await NotionBooks(self, api=self.call_api).inventory(database, kind)
 
-    async def rows(self, view):
+    async def rows(self, view, data_source, kind):
         ids = self.main if view == "main" else self.shared
         if view == "extras":
             ids = [
                 id
                 for id in ids
-                if WORK in self.pages[id]["properties"].get("涉及作品", [])
+                if WORK in self.pages[id]["properties"].get("related_works", [])
             ]
         return [{"id": id} for id in ids]
 
-    async def document(self, id):
+    def rest_properties(self, id):
+        page = self.pages[id]
+        properties = {}
+        for field, value in page["properties"].items():
+            spec = PROPERTIES[page.get("kind", "extras")][field]
+            if spec["type"] == "relation":
+                value = [{"id": id} for id in value]
+            elif spec["type"] == "select":
+                value = value and {"name": value}
+            else:
+                value = [{"plain_text": value}]
+            properties[field] = {"id": spec["id"], "type": spec["type"], spec["type"]: value}
+        return properties
+
+    async def document(self, id, kind):
         self.reads.append(id)
         page = self.pages[id]
         return Document(
             native=[],
             page_id=id,
+            kind=kind,
             data_source_id=page.get("data_source", EXTRAS),
             title="",
             revision=page.get("revision", "1"),
             fingerprint=content_signature(prose(page["content"])),
             properties=copy.deepcopy(page["properties"]),
-            property_data=(
-                await self.call_api({"method": "GET", "path": "pages/" + id})
-            )["body"]["properties"],
+            property_data=self.rest_properties(id),
             blocks=prose(page["content"]) if page["content"] else [],
             cover=None,
             cover_known=False,
@@ -153,26 +178,20 @@ class Library:
         return completed
 
     async def call_api(self, request):
-        id = request["path"].split("/")[1]
+        kind, id = request["path"].split("/")[:2]
+        if kind == "data_sources":
+            return {"status": 200, "body": schema_body(id, "extras")}
         page = self.pages[id]
         if request["method"] == "PATCH":
             self.calls.append(("PATCH", copy.deepcopy(request)))
-            for name, value in request["json"]["properties"].items():
-                if "relation" in value:
-                    page["properties"][name] = [
-                        item["id"] for item in value["relation"]
-                    ]
-                else:
+            for key, value in request["json"]["properties"].items():
+                if "relation" not in value:
                     raise AssertionError(value)
-        properties = {}
-        for name, value in page["properties"].items():
-            if isinstance(value, list):
-                properties[name] = {
-                    "type": "relation",
-                    "relation": [{"id": id} for id in value],
-                }
-            else:
-                properties[name] = {"type": "title", "title": [{"plain_text": value}]}
+                page["properties"][field_for("extras", key)] = [
+                    item["id"] for item in value["relation"]
+                ]
+        names = DISPLAY["extras"]
+        properties = {names[f]: v for f, v in self.rest_properties(id).items()}
         return {
             "status": 200,
             "body": {"object": "page", "id": id, "properties": properties},
@@ -183,28 +202,14 @@ class Library:
             view = {"dataSourceUrl": f"collection://{EXTRAS}", "filter": self.filter}
             return {"text": "<view>\n" + json.dumps(view) + "\n</view>"}
         if name == "notion-query-data-sources":
+            revision = DISPLAY["extras"]["revision"]
             return {
                 "results": [
-                    {"url": id, FIELDS["revision"]: self.pages[id].get("revision")}
+                    {"url": id, revision: self.pages[id].get("revision")}
                     for id in self.shared
                 ],
                 "has_more": False,
             }
-        self.calls.append((name, args))
-        if name == "notion-create-pages":
-            id = f"00000000-0000-0000-0000-{len(self.pages):012d}"
-            self.pages[id] = {
-                **copy.deepcopy(args["pages"][0]),
-                "content": "",
-                "data_source": args["parent"]["data_source_id"],
-            }
-            ids = (
-                self.main
-                if args["parent"]["data_source_id"] == "main-db"
-                else self.shared
-            )
-            ids.insert(0, id)
-            return {"pages": [{"id": id}]}
         raise AssertionError(f"Unexpected mutation: {name}")
 
 
@@ -408,11 +413,11 @@ class DuplicateUploadTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.book["uploaded"])
         self.assertEqual(self.library.pages[PAGE]["content"], existing["content"])
         self.assertEqual(
-            self.library.pages[PAGE]["properties"]["番外"],
-            existing["properties"]["番外"],
+            self.library.pages[PAGE]["properties"]["title"],
+            existing["properties"]["title"],
         )
         self.assertEqual(
-            self.library.pages[PAGE]["properties"]["涉及作品"], [OTHER, WORK]
+            self.library.pages[PAGE]["properties"]["related_works"], [OTHER, WORK]
         )
         self.assertEqual(
             [
@@ -420,7 +425,13 @@ class DuplicateUploadTests(unittest.IsolatedAsyncioTestCase):
                 for name, args in self.library.calls
                 if name == "PATCH"
             ],
-            [{"涉及作品": {"relation": [{"id": OTHER}, {"id": WORK}]}}],
+            [
+                {
+                    PROPERTIES["extras"]["related_works"]["id"]: {
+                        "relation": [{"id": OTHER}, {"id": WORK}]
+                    }
+                }
+            ],
         )
         count = len(self.library.calls)
         self.library.pages[PAGE]["content"] = "Later editorial change"
@@ -433,7 +444,7 @@ class DuplicateUploadTests(unittest.IsolatedAsyncioTestCase):
         await self.upload()
         self.assertTrue(self.book["uploaded"])
         self.assertNotEqual(self.book["extras"][0]["page_id"], PAGE)
-        self.assertEqual(self.library.pages[PAGE]["properties"]["涉及作品"], [OTHER])
+        self.assertEqual(self.library.pages[PAGE]["properties"]["related_works"], [OTHER])
 
     async def test_partial_overlap_stops_upload_and_reports_matching_excerpts(self):
         incoming, existing = different_versions(proofread=True)
@@ -455,7 +466,7 @@ class DuplicateUploadTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_exact_existing_still_reuses_without_review(self):
         page = self.library.pages[PAGE]
-        page["properties"]["番外"] = self.book["extras"][0]["title"]
+        page["properties"]["title"] = self.book["extras"][0]["title"]
         page["content"] = TEXT
         await self.preflight()
         self.assertEqual(self.book["extras"][0]["page_id"], PAGE)
@@ -468,7 +479,7 @@ class DuplicateUploadTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(candidates[0]["similarity"], 1)
 
     async def test_same_title_unrelated_body_creates_normally(self):
-        self.library.pages[PAGE]["properties"]["番外"] = self.book["extras"][0]["title"]
+        self.library.pages[PAGE]["properties"]["title"] = self.book["extras"][0]["title"]
         self.library.pages[PAGE]["content"] = "另一个故事"
         await self.upload()
         self.assertTrue(self.book["uploaded"])
@@ -524,7 +535,7 @@ class DuplicateUploadTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("decision", self.book["extras"][0]["duplicate_review"])
 
     async def test_multiple_exact_copies_require_choice(self):
-        self.library.pages[PAGE]["properties"]["番外"] = self.book["extras"][0]["title"]
+        self.library.pages[PAGE]["properties"]["title"] = self.book["extras"][0]["title"]
         self.library.pages[PAGE]["content"] = TEXT
         self.library.pages[SECOND] = copy.deepcopy(self.library.pages[PAGE])
         self.library.shared.append(SECOND)
@@ -611,10 +622,10 @@ class DuplicateUploadTests(unittest.IsolatedAsyncioTestCase):
         self.library.shared.append(SECOND)
         original = self.library.document
 
-        async def unreadable(page):
+        async def unreadable(page, kind):
             if page == SECOND:
                 raise ValueError("Unreadable shared extra")
-            return await original(page)
+            return await original(page, kind)
 
         with patch.object(self.library, "document", side_effect=unreadable):
             with self.assertRaisesRegex(ValueError, "Unreadable shared extra"):

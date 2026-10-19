@@ -19,7 +19,7 @@ async def recover_template(book: dict, state: Path, config: dict, *, tools) -> N
     if book.get("uploaded") or not book.get("work_id"):
         raise ValueError("Template recovery requires an existing, incomplete work")
     reader = NotionBooks(tools, api=tools.call_api)
-    page = await reader.page(book["work_id"])
+    page = await reader.page(book["work_id"], "works")
     if page.data_source_id != works["data_source_id"]:
         raise ValueError("Checkpoint work belongs to another catalog")
     # ensure_work already supplied the template during creation, including for

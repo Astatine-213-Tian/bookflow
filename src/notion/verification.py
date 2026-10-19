@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 
-from notion_books import FIELDS, NotionBooks, relation_ids, content_matches
+from notion_books import NotionBooks, relation_ids, content_matches
 
 from src.notion.content import targets
-from src.notion.cms import AUTHOR_HOMEPAGE, chapter_entries
+from src.notion.cms import chapter_entries
 from src.notion.duplicates import fingerprint
 from src.notion.presentation import public_cover, volume_options
 from src.runtime.files import digest
@@ -25,74 +25,75 @@ def _value(value):
 
 async def verify_draft(book: dict, config: dict, *, tools) -> dict:
     reader = NotionBooks(tools, api=tools.call_api)
-    page = await reader.page(book["work_id"])
+    page = await reader.page(book["work_id"], "works")
     if page.data_source_id != config["databases"]["works"]["data_source_id"]:
         raise ValueError("Book belongs to another catalog")
     metadata = book["metadata"]
     for key in ("title", "description", "source", "language", "series"):
         expected = metadata.get(key) or ("zh-CN" if key == "language" else "")
-        actual = page.properties.get(FIELDS[key]) or ""
+        actual = page.properties.get(key) or ""
         if key == "description":
             actual = actual.replace("<br>", "\n")
         if actual != expected:
             raise ValueError(f"Notion metadata differs: {key}")
-    if (_value(page.properties.get(FIELDS["subjects"])) or []) != (
+    if (_value(page.properties.get("subjects")) or []) != (
         metadata.get("subjects") or []
     ):
         raise ValueError("Notion subjects differ")
     if metadata.get("date") and metadata["date"][:10] != page.properties.get(
-        "date:" + FIELDS["date"] + ":start"
+        "date:publication_date:start"
     ):
         raise ValueError("Notion publication date differs")
     if metadata.get("series_position") and float(metadata["series_position"]) != float(
-        page.properties.get(FIELDS["series_position"], 0)
+        page.properties.get("series_position", 0)
     ):
         raise ValueError("Notion series position differs")
     authors = []
-    for id in relation_ids(page.properties.get(FIELDS["authors"])):
-        author = await reader.page(id)
-        name = author.properties[FIELDS["authors"]]
+    for id in relation_ids(page.properties.get("authors")):
+        author = await reader.page(id, "authors")
+        name = author.properties["title"]
         authors.append(name)
         if homepage := book.get("author_jjwxc_urls", {}).get(name):
-            if author.properties.get(AUTHOR_HOMEPAGE) != homepage:
+            if author.properties.get("homepage") != homepage:
                 raise ValueError("Author Jinjiang homepage differs")
     if authors != (metadata.get("creators") or [metadata["creator"]]):
         raise ValueError("Notion author relations differ")
     entries = chapter_entries(book)
-    rows = await reader.rows(book["chapters_view_id"])
-    extras = await reader.rows(book["view_id"])
+    rows = await reader.rows(
+        book["chapters_view_id"], book["chapters_data_source_id"], "chapters"
+    )
+    extras = await reader.rows(
+        book["view_id"], config["databases"]["extras"]["data_source_id"], "extras"
+    )
     if [r["id"] for r in rows] != [book["chapters"][m]["page_id"] for m, _ in entries]:
         raise ValueError("Chapter manual order differs")
     if [r["id"] for r in extras] != [e["page_id"] for e in book["extras"]]:
         raise ValueError("Extra manual order differs")
     checked = 0
     destinations = targets(book)
-    for item, parent, title_field in [
-        *[
-            (book["chapters"][member], parent, FIELDS["chapter_title"])
-            for member, parent in entries
-        ],
-        *[(extra, None, FIELDS["extra_title"]) for extra in book["extras"]],
+    for item, parent, kind in [
+        *[(book["chapters"][member], parent, "chapters") for member, parent in entries],
+        *[(extra, None, "extras") for extra in book["extras"]],
     ]:
-        document = await reader.document(item["page_id"])
+        document = await reader.document(item["page_id"], kind)
         if item.get("reuse_fingerprint"):
             matches = (
-                fingerprint(document.properties.get(title_field), document.blocks)
+                fingerprint(document.properties.get("title"), document.blocks)
                 == item["reuse_fingerprint"]
             )
         else:
-            matches = document.properties.get(title_field) == item[
+            matches = document.properties.get("title") == item[
                 "title"
             ] and content_matches(document.blocks, item["blocks"], destinations)
         if not matches:
             raise ValueError(f"Content readback differs: {item['title']}")
         if (
             parent is not None
-            and (document.properties.get(FIELDS["parent_title"]) or "") != parent
+            and (document.properties.get("parent_title") or "") != parent
         ):
             raise ValueError(f"Parent title differs: {item['title']}")
         if parent is None and book["work_id"] not in relation_ids(
-            document.properties.get(FIELDS["related_works"])
+            document.properties.get("related_works")
         ):
             raise ValueError(f"Extra relation differs: {item['title']}")
         checked += 1

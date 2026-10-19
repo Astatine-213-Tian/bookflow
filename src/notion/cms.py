@@ -5,21 +5,13 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from notion_books import (
-    CATALOG_SCHEMA,
-    FIELDS,
-    NotionBooks,
-    NotionError,
-    notion_id,
-    work_properties,
-)
+from notion_books import NotionBooks, NotionError, notion_id, work_properties
 
 from src.metadata.catalog import MetadataLookup
 from src.runtime.files import write_json
 
 CONFIG = Path("book_specs/notion/config.json")
 STORAGE = "cms-chapter-database-v1"
-AUTHOR_HOMEPAGE = "晋江主页"
 TEMPLATE_POLL_ATTEMPTS = 120
 TEMPLATE_POLL_SECONDS = 5
 
@@ -27,11 +19,11 @@ TEMPLATE_POLL_SECONDS = 5
 async def verify_author_homepage(
     reader: NotionBooks, id: str, name: str, url: str, data_source: str
 ) -> None:
-    page = await reader.page(id)
+    page = await reader.page(id, "authors")
     if (
         page.data_source_id != data_source
-        or page.properties.get(FIELDS["authors"]) != name
-        or page.properties.get(AUTHOR_HOMEPAGE) != url
+        or page.properties.get("title") != name
+        or page.properties.get("homepage") != url
     ):
         raise ValueError(
             "Author homepage readback differs; reconcile the existing author"
@@ -84,21 +76,14 @@ def author_names(metadata: dict) -> list[str]:
 
 async def ensure_work(book: dict, path: Path, config: dict, *, tools) -> None:
     reader = NotionBooks(tools, api=tools.call_api)
+    databases = config["databases"]
     states = await reader.catalog(
-        {
-            kind: database
-            | {
-                "fields": {
-                    name: {"type": typ, "writable": True}
-                    for name, typ in CATALOG_SCHEMA[kind].items()
-                }
-            }
-            for kind, database in config["databases"].items()
-        }
+        {kind: database | {"kind": kind} for kind, database in databases.items()}
     )
-    works_ds = config["databases"]["works"]["data_source_id"]
+    works_ds = databases["works"]["data_source_id"]
+    authors_ds = databases["authors"]["data_source_id"]
     if book.get("work_id"):
-        if (await reader.page(book["work_id"])).data_source_id != works_ds:
+        if (await reader.page(book["work_id"], "works")).data_source_id != works_ds:
             raise ValueError(
                 "Checkpoint work belongs to another catalog; original library is read-only"
             )
@@ -111,10 +96,10 @@ async def ensure_work(book: dict, path: Path, config: dict, *, tools) -> None:
     template = states["works"].get("default_template")
     if not template:
         raise ValueError("CMS Works requires its default book template")
-    authors = await reader.rows(config["databases"]["authors"]["view_id"])
-    works = await reader.rows(config["databases"]["works"]["view_id"])
+    authors = await reader.rows(databases["authors"]["view_id"], authors_ds, "authors")
+    works = await reader.rows(databases["works"]["view_id"], works_ds, "works")
     # Refuse ambiguous identity rather than creating or overwriting another edition.
-    if any(row.get(FIELDS["title"]) == book["metadata"]["title"] for row in works):
+    if any(row.get("title") == book["metadata"]["title"] for row in works):
         raise ValueError(
             "A work with this title already exists; reconcile identity and its import checkpoint"
         )
@@ -122,17 +107,13 @@ async def ensure_work(book: dict, path: Path, config: dict, *, tools) -> None:
         raise ValueError("A work create response was lost; reconcile before retrying")
     ids = []
     for name in names:
-        found = [row for row in authors if row.get(FIELDS["authors"]) == name]
+        found = [row for row in authors if row.get("title") == name]
         if len(found) > 1:
             raise ValueError("Multiple authors share this name; resolve identity first")
         if found:
             if homepage := book.get("author_jjwxc_urls", {}).get(name):
                 await verify_author_homepage(
-                    reader,
-                    found[0]["id"],
-                    name,
-                    homepage,
-                    config["databases"]["authors"]["data_source_id"],
+                    reader, found[0]["id"], name, homepage, authors_ds
                 )
             ids.append(found[0]["id"])
             if book.get("pending_author") == name:
@@ -149,38 +130,30 @@ async def ensure_work(book: dict, path: Path, config: dict, *, tools) -> None:
                 MetadataLookup().find_author_homepage, name
             )
             write_json(path, book)
-        properties = {FIELDS["authors"]: name}
+        properties = {"title": name}
         if homepage := homepages[name]:
-            field = states["authors"]["properties"].get(AUTHOR_HOMEPAGE, {})
-            if field.get("type") != "url" or field.get("read_only"):
+            # The catalog verified the property's ID and URL type when present.
+            if "homepage" not in states["authors"]["properties"]:
                 raise ValueError(
-                    "Author catalog requires a writable 晋江主页 URL field"
+                    "Author catalog lacks the template's homepage URL property"
                 )
-            properties[AUTHOR_HOMEPAGE] = homepage
+            properties["homepage"] = homepage
         book["pending_author"] = name
         write_json(path, book)
-        id = await reader.create_page(
-            config["databases"]["authors"]["data_source_id"],
-            properties,
-        )
+        id = await reader.create_page(authors_ds, "authors", properties)
         if homepage:
-            await verify_author_homepage(
-                reader,
-                id,
-                name,
-                homepage,
-                config["databases"]["authors"]["data_source_id"],
-            )
+            await verify_author_homepage(reader, id, name, homepage, authors_ds)
         ids.append(id)
         book.pop("pending_author")
         write_json(path, book)
     properties = work_properties(metadata, ids)
     await reader.ensure_options(
         works_ds,
+        "works",
         {
-            FIELDS["subjects"]: properties[FIELDS["subjects"]],
-            FIELDS["series"]: [properties.get(FIELDS["series"], "")],
-            FIELDS["language"]: [properties[FIELDS["language"]]],
+            "subjects": properties["subjects"],
+            "series": [properties.get("series", "")],
+            "language": [properties["language"]],
         },
     )
     book["pending_work"] = True
@@ -190,9 +163,7 @@ async def ensure_work(book: dict, path: Path, config: dict, *, tools) -> None:
     }
     write_json(path, book)
     book["work_id"] = await reader.create_page(
-        works_ds,
-        properties,
-        template=template,
+        works_ds, "works", properties, template=template
     )
     book.pop("pending_work")
     write_json(path, book)
@@ -201,7 +172,7 @@ async def ensure_work(book: dict, path: Path, config: dict, *, tools) -> None:
 async def ensure_views(book: dict, path: Path, config: dict, *, tools) -> None:
     for attempt in range(TEMPLATE_POLL_ATTEMPTS):
         try:
-            source = await NotionBooks(tools).discover(
+            source = await NotionBooks(tools, api=tools.call_api).discover(
                 book["work_id"],
                 [config["databases"]["works"]["data_source_id"]],
                 config["databases"]["extras"]["data_source_id"],
