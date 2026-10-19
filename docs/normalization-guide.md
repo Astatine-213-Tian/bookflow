@@ -232,7 +232,20 @@ numbers start at one, they are continuous, and there are two or more items.
 ### 9.4 Author's notes
 
 `作者有话说：` and `作者有话要说：` become a separate paragraph. The author's note
-at the end of a chapter stays. Its text gets the same character, space,
+at the end of a chapter stays.
+
+Normalization adds a divider before the label when all of these are true:
+
+- A body paragraph comes before the label. Empty paragraphs between them are
+  permitted.
+- The note has text, on the label line or in the next paragraph.
+- No divider is already there.
+
+Notion and EPUB then show the text from the label to the end of the chapter as an
+author's note. Normalization does not add a divider before a note at the start
+of a chapter, a bilingual paragraph, or a paragraph with an anchor or footnote.
+In an EPUB archive, the label paragraph and the body paragraph must be adjacent
+`<p>` elements. Its text gets the same character, space,
 punctuation and name rules as the main text.
 
 ### 9.5 Scene markers, dividers and end markers

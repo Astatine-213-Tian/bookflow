@@ -8,7 +8,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from src.content.author_notes import missing_note_dividers, plain_note
+from src.content.author_notes import plain_note
+from src.content.normalize import missing_note_dividers
 from src.content.blocks import block_text
 from src.content.contract import metadata_defaults
 from src.content.prepared import load_prepared_source, save_source

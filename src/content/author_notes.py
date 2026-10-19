@@ -88,51 +88,6 @@ def note_blocks(lines: list[str]) -> list[dict]:
     ]
 
 
-def missing_note_dividers(blocks: list[dict]) -> list[int]:
-    """Return existing note headings needing separation from preceding prose."""
-    missing = []
-    for i, block in enumerate(blocks):
-        if (
-            block["kind"] != "paragraph"
-            or block.get("footnote")
-            or block.get("variant")
-        ):
-            continue
-        text = block_text(block).strip()
-        marker = AUTHOR_NOTE_HEADING_RE.match(text)
-        if not marker:
-            continue
-        # An empty existing heading is not grounds to create an empty section.
-        effective = re.sub(r"^\s*[:：]\s*", "", text[marker.end() :]).strip()
-        for following in blocks[i + 1 :]:
-            value = block_text(following).strip()
-            if (
-                following["kind"] == "divider"
-                or following["kind"].startswith("heading")
-                or AUTHOR_NOTE_HEADING_RE.match(value)
-            ):
-                break
-            if value:
-                effective = value
-                break
-        if not effective:
-            continue
-        before = i - 1
-        while before >= 0:
-            previous = blocks[before]
-            if (
-                previous["kind"] != "paragraph"
-                or block_text(previous).strip()
-                or previous.get("footnote")
-                or previous.get("variant")
-            ):
-                break
-            before -= 1
-        if before >= 0 and blocks[before]["kind"] != "divider":
-            missing.append(i)
-    return missing
-
-
 def author_note_ranges(blocks: list[dict]) -> list[tuple[int, int]]:
     """Explicit author-note spans, stopping before an ending or appended edition."""
     result = []

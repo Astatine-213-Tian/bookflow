@@ -827,18 +827,50 @@ class EpubNormalizerTests(unittest.TestCase):
 
             with zipfile.ZipFile(epub_path) as archive:
                 chapter = archive.read("EPUB/chap_01_001.xhtml").decode()
-            self.assertIn("<p>正文结束。</p>\n<p>作者有话说：第一条。</p>", chapter)
-            self.assertIn("<p>上一句还没结束，</p>", chapter)
-            self.assertIn("<p>作者有话要说：第二条。</p>", chapter)
+            self.assertIn("<p>正文结束。</p>\n<hr />\n<p>作者有话说：第一条。</p>", chapter)
+            self.assertRegex(
+                chapter, r"<p>上一句还没结束，</p>\s*<hr />\s*<p>作者有话要说：第二条。</p>"
+            )
             self.assertIn("这里作者有话说 4000，正文 4000。", chapter)
             self.assertEqual(
                 report.change_counts["author_note_paragraph_break_inserted"],
                 1,
             )
+            self.assertEqual(report.change_counts["author_note_divider_inserted"], 2)
             self.assertEqual(report.change_counts["comma_paragraph_break_merged"], 0)
 
             second = normalize_epub(epub_path)
             self.assertEqual(second.total_changes, 0)
+
+    def test_author_note_rules_are_added_once_and_only_after_body_text(self) -> None:
+        cases = {
+            "after-blank": (
+                "<p>正文。</p>\n<p></p>\n<p>作者有话说：</p>\n<p>谢谢。</p>",
+                1,
+            ),
+            "existing-rule": ("<p>正文。</p>\n<hr />\n<p>作者有话说：谢谢。</p>", 0),
+            "empty-note": ("<p>正文。</p>\n<p>作者有话说：</p>", 0),
+            "chapter-start": ("<p>作者有话说：今天两更。</p>\n<p>正文。</p>", 0),
+            "nested": ("<p>正文。</p>\n<div><p>作者有话说：谢谢。</p></div>", 0),
+            "anchored": ('<p>正文。</p>\n<p id="n">作者有话说：谢谢。</p>', 0),
+            "mention": ("<p>正文。</p>\n<p>作者有话说 4000。</p>", 0),
+        }
+        for name, (body, expected) in cases.items():
+            with self.subTest(name), tempfile.TemporaryDirectory() as temp:
+                epub_path = Path(temp) / f"{name}.epub"
+                self._write_fixture(epub_path, f"<html><body>\n{body}\n</body></html>")
+
+                report = normalize_epub(epub_path)
+
+                with zipfile.ZipFile(epub_path) as archive:
+                    chapter = archive.read("EPUB/chap_01_001.xhtml").decode()
+                self.assertEqual(
+                    report.change_counts["author_note_divider_inserted"], expected
+                )
+                self.assertEqual(chapter.count("<hr />"), body.count("<hr />") + expected)
+                if expected:
+                    self.assertRegex(chapter, r"<p></p>\s*<hr />\s*<p>作者有话说：</p>")
+                self.assertEqual(normalize_epub(epub_path).total_changes, 0)
 
     def test_bilingual_translation_paragraphs_are_not_merged_across_commas(
         self,

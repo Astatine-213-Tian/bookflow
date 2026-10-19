@@ -134,6 +134,46 @@ class NormalizationRulesTests(unittest.TestCase):
         self.assertEqual(normalize_chapter(result), result)
         self.assertTrue(content_matches(roundtrip(result["blocks"]), result["blocks"], {}))
 
+    def test_author_notes_after_body_text_get_one_divider(self):
+        divider = {"kind": "divider", "runs": []}
+        report = NormalizationReport(Path("content"), True)
+        result = normalize_chapter(
+            {
+                "title": "篇目",
+                "blocks": [
+                    paragraph("正文结束。作者有话说：第一条。"),
+                    paragraph(""),
+                    paragraph("作者有话要说："),
+                    paragraph("第二条。"),
+                ],
+            },
+            report=report,
+        )
+        self.assertEqual(
+            result["blocks"],
+            [
+                paragraph("正文结束。"),
+                divider,
+                paragraph("作者有话说：第一条。"),
+                {"kind": "paragraph", "runs": []},
+                divider,
+                paragraph("作者有话要说："),
+                paragraph("第二条。"),
+            ],
+        )
+        self.assertEqual(report.change_counts["author_note_divider_inserted"], 2)
+        self.assertEqual(normalize_chapter(result), result)
+        for blocks in (
+            [paragraph("正文。"), divider, paragraph("作者有话说：谢谢。")],
+            [paragraph("正文。"), paragraph("作者有话说：")],
+            [paragraph("作者有话说：今天两更。"), paragraph("正文。")],
+            [paragraph("正文。"), paragraph("作者有话说 4000。")],
+            [paragraph("正文。"), {**paragraph("作者有话说：谢谢。"), "variant": "translation"}],
+        ):
+            with self.subTest(blocks=blocks):
+                chapter = {"title": "篇目", "blocks": blocks}
+                self.assertEqual(normalize_chapter(chapter)["blocks"], blocks)
+
     def test_archive_marker_cleanup_preserves_inline_and_rule_identity(self):
         raw = (
             '<html xmlns="http://www.w3.org/1999/xhtml"><body>'

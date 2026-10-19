@@ -413,6 +413,50 @@ def _normalize_structural_paragraphs(
         text = text[:start] + after + text[end:]
 
 
+def _insert_author_note_rules(
+    text: str,
+    *,
+    member: str,
+    report: NormalizationReport,
+) -> str:
+    """Put a rule between body text and a following author note."""
+    if PROTECTED_STRUCTURE_RE.search(text):
+        return text
+    paragraphs = list(PARAGRAPH_RE.finditer(text))
+    visible = [_visible_fragment_text(p.group("body")).strip() for p in paragraphs]
+
+    def adjacent(index: int) -> bool:
+        return not text[paragraphs[index - 1].end() : paragraphs[index].start()].strip()
+
+    rules = []
+    for index, paragraph in enumerate(paragraphs):
+        marker = AUTHOR_NOTE_HEADING_RE.match(visible[index])
+        if marker is None or STRUCTURAL_IDENTITY_RE.search(paragraph[0]):
+            continue
+        # An empty heading followed by no note text is not grounds for a section.
+        content = re.sub(r"^\s*[:：]\s*", "", visible[index][marker.end() :])
+        if not content.strip() and index + 1 < len(paragraphs) and adjacent(index + 1):
+            content = visible[index + 1]
+        if not content.strip():
+            continue
+        # Only direct paragraph siblings count; an existing rule or any other
+        # element between them leaves the document unchanged.
+        start = index
+        while start > 0 and adjacent(start) and not visible[start - 1]:
+            start -= 1
+        if start > 0 and adjacent(start):
+            rules.append(paragraph)
+    for paragraph in reversed(rules):
+        prefix = re.match(r"<((?:[A-Za-z_][\w.-]*:)?)p\b", paragraph[0]).group(1)
+        indent = text[text.rfind("\n", 0, paragraph.start()) + 1 : paragraph.start()]
+        rule = f"<{prefix}hr />\n" + (indent if not indent.strip() else "")
+        report.record_change(
+            "author_note_divider_inserted", member, 1, paragraph[0], rule + paragraph[0]
+        )
+        text = text[: paragraph.start()] + rule + text[paragraph.start() :]
+    return text
+
+
 def _grouped_fanwai_title_labels(members: dict[str, bytes]) -> set[str]:
     labels: set[str] = set()
 
@@ -566,6 +610,7 @@ def normalize_member(
             member=member,
             report=report,
         )
+        text = _insert_author_note_rules(text, member=member, report=report)
 
     def replace(match: re.Match[str]) -> str:
         opening, fragment, closing = match.groups()

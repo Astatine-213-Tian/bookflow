@@ -27,7 +27,7 @@ from src.content.normalization import (
 from src.content.numerals import format_chinese_numeral
 from src.content.titles import normalize_outline, normalize_volume_colors
 
-RULES_SHA256 = "770e9e38201147fe8e4a916b25705a4190d2e2fc0b3383aa75b2909fdfa34fa0"
+RULES_SHA256 = "f93ac2bdcb046fedbc20ebb4d1bb6eb4c61880c180cb2685a88aeb6ea2da530b"
 
 SECTION_NUMBER = r"(?:[0-9０-９]{1,3}|[一二三四五六七八九十百零〇]+)"
 SECTION_LABEL_RE = re.compile(
@@ -182,6 +182,67 @@ def trim_subheading_gaps(blocks: list[dict]) -> list[dict]:
         ):
             result.extend(blocks[index:end])
         index = end
+    return result
+
+
+def missing_note_dividers(blocks: list[dict]) -> list[int]:
+    """Return existing note headings needing separation from preceding prose."""
+    missing = []
+    for i, block in enumerate(blocks):
+        if (
+            block["kind"] != "paragraph"
+            or block.get("footnote")
+            or block.get("variant")
+        ):
+            continue
+        text = block_text(block).strip()
+        marker = AUTHOR_NOTE_HEADING_RE.match(text)
+        if not marker:
+            continue
+        # An empty existing heading is not grounds to create an empty section.
+        effective = re.sub(r"^\s*[:：]\s*", "", text[marker.end() :]).strip()
+        for following in blocks[i + 1 :]:
+            value = block_text(following).strip()
+            if (
+                following["kind"] == "divider"
+                or following["kind"].startswith("heading")
+                or AUTHOR_NOTE_HEADING_RE.match(value)
+            ):
+                break
+            if value:
+                effective = value
+                break
+        if not effective:
+            continue
+        before = i - 1
+        while before >= 0:
+            previous = blocks[before]
+            if (
+                previous["kind"] != "paragraph"
+                or block_text(previous).strip()
+                or previous.get("footnote")
+                or previous.get("variant")
+            ):
+                break
+            before -= 1
+        if before >= 0 and blocks[before]["kind"] != "divider":
+            missing.append(i)
+    return missing
+
+
+def insert_note_dividers(
+    blocks: list[dict], *, member: str, report: NormalizationReport
+) -> list[dict]:
+    """Start each chapter-end author note after a divider, as renderers expect."""
+    missing = set(missing_note_dividers(blocks))
+    result = []
+    for i, block in enumerate(blocks):
+        if i in missing:
+            result.append({"kind": "divider", "runs": []})
+            report.record_change(
+                "author_note_divider_inserted", member, 1, block_text(block), "divider"
+            )
+        result.append(block)
     return result
 
 
@@ -345,6 +406,7 @@ def normalize_chapter(
         report.record_change(
             "chapter_leading_empty_removed", member, 1, "empty paragraph", ""
         )
+    blocks = insert_note_dividers(blocks, member=member, report=report)
     if result.get("role") != "intro":
         scan_content_issues(
             member,

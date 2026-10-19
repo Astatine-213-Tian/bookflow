@@ -10,16 +10,11 @@ from collections import Counter
 from difflib import SequenceMatcher
 from itertools import pairwise
 
-from src.content.author_notes import (
-    author_note_ranges,
-    missing_note_dividers,
-    note_blocks,
-    plain_note,
-)
+from src.content.author_notes import author_note_ranges, note_blocks, plain_note
 from src.content.blocks import block_text, replace_run_text
 from src.content.english_terms import code_term_ranges
 from src.content.normalization import KNOWN_MOJIBAKE
-from src.content.normalize import normalize_text
+from src.content.normalize import missing_note_dividers, normalize_text
 from src.content.outline import ordered_members
 from src.content.quote_review import review_fingerprint
 
