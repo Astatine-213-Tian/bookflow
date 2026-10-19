@@ -11,6 +11,7 @@ from src.crawler.models import CrawlOptions
 from src.crawler.registry import PARSERS, find_parser
 from src.crawler.search import build_previews, choose_preview, search_all
 from src.dataset.library import DEFAULT_JJWXC_MANIFEST, DEFAULT_JJWXC_TOP50
+from src.metadata.enrich import ENRICH_FIELDS, METADATA_FIELDS, parse_enrich_fields
 from src.metadata.jjwxc import GENRES, TIME_AREAS
 from src.runtime.progress import ProgressLogger, configure_progress
 from src.workflows.ingest import (
@@ -118,11 +119,6 @@ def main(argv: list[str] | None = None) -> int:
         help="Reviewed JSON chapter splits and main/extra/afterword classification",
     )
     parser.add_argument(
-        "--keep-outline",
-        action="store_true",
-        help="Preserve the local edition's outline",
-    )
-    parser.add_argument(
         "--cover-url", help="Public PNG/JPEG cover URL for a local Notion import"
     )
     parser.add_argument(
@@ -157,7 +153,11 @@ def main(argv: list[str] | None = None) -> int:
         "--overwrite", action="store_true", help="Replace requested output files"
     )
     parser.add_argument(
-        "--enrich-metadata", action="store_true", help="Look up missing metadata"
+        "--enrich",
+        metavar="FIELDS",
+        help="Fill missing metadata from Jinjiang/KadoKado: all, or a comma-separated "
+        "subset of " + ",".join(ENRICH_FIELDS) + "; volumes applies the official "
+        "volume titles to a local edition",
     )
     parser.add_argument("--review", type=Path, help="Reviewed EPUB block ranges")
     parser.add_argument(
@@ -207,6 +207,17 @@ def main(argv: list[str] | None = None) -> int:
 
     configure_progress(debug=args.verbose)
     progress = ProgressLogger()
+    local = bool(args.target and not args.search and Path(args.target).is_file())
+    try:
+        enrich = (
+            parse_enrich_fields(
+                args.enrich, allowed=ENRICH_FIELDS if local else METADATA_FIELDS
+            )
+            if args.enrich
+            else frozenset()
+        )
+    except ValueError as error:
+        parser.error(str(error))
     output_options = OutputOptions(
         output=args.output,
         txt_output=args.txt_output,
@@ -224,13 +235,12 @@ def main(argv: list[str] | None = None) -> int:
         else None,
         strict_epub=args.strict_epub_validation,
         prevent_overwrite=not args.overwrite,
-        enrich_metadata=args.enrich_metadata,
+        enrich=enrich,
     )
     try:
         requested_formats(output_options)
     except ValueError as error:
         parser.error(str(error))
-    local = bool(args.target and not args.search and Path(args.target).is_file())
     if args.author and not args.search and not local:
         parser.error("--author can only be used with --search")
     if not local and (
@@ -240,7 +250,6 @@ def main(argv: list[str] | None = None) -> int:
         or args.run_dir
         or args.chapter_aliases
         or args.chapter_layout
-        or args.keep_outline
         or args.cover_url
     ):
         parser.error("Local edition options require an existing local file")
@@ -271,7 +280,6 @@ def run(
             chapter_layout=json.loads(args.chapter_layout.read_text())
             if args.chapter_layout
             else None,
-            use_jjwxc_outline=args.enrich_metadata and not args.keep_outline,
             review=__import__("json").loads(args.review.read_text())
             if args.review
             else None,

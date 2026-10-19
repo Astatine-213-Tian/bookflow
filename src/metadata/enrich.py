@@ -4,8 +4,43 @@ from __future__ import annotations
 
 from src.metadata.catalog import MetadataLookup, PackageMetadata
 
+# `series` covers the series name and position; `volumes` applies the official
+# volume titles, which only a local edition's reviewed outline can take.
+METADATA_FIELDS = (
+    "title",
+    "language",
+    "date",
+    "source",
+    "description",
+    "subjects",
+    "series",
+)
+ENRICH_FIELDS = METADATA_FIELDS + ("volumes",)
 
-def enrich_source(book: dict, *, lookup: MetadataLookup | None = None) -> dict:
+
+def parse_enrich_fields(
+    value: str, *, allowed: tuple[str, ...] = ENRICH_FIELDS
+) -> frozenset[str]:
+    """Parse `all` or a comma-separated subset of the allowed fields."""
+    names = [name.strip() for name in value.split(",") if name.strip()]
+    if names == ["all"]:
+        return frozenset(allowed)
+    unknown = sorted(set(names) - set(allowed))
+    if not names or unknown:
+        raise ValueError(
+            "Enrichment fields must be all or a comma-separated subset of "
+            + ", ".join(allowed)
+            + (f"; unknown: {', '.join(unknown)}" if unknown else "")
+        )
+    return frozenset(names)
+
+
+def enrich_source(
+    book: dict,
+    *,
+    fields: frozenset[str] = frozenset(METADATA_FIELDS),
+    lookup: MetadataLookup | None = None,
+) -> dict:
     data = book["metadata"]
     package = PackageMetadata(
         title=data["title"],
@@ -36,6 +71,8 @@ def enrich_source(book: dict, *, lookup: MetadataLookup | None = None) -> dict:
             series=source.series or "", series_position=source.series_position or ""
         )
     for key, value in candidates.items():
+        if ("series" if key == "series_position" else key) not in fields:
+            continue
         if not data.get(key) or key == "language" and data[key] == "und":
             data[key] = value
     return {

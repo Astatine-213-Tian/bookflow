@@ -332,24 +332,13 @@ def parse_jjwxc_author_catalog(html: str) -> list[_JjwxcCandidate]:
 
 
 def parse_jjwxc_description(html: str) -> str:
+    """Return the text of Jinjiang's 一句话简介, without its label or the full 文案."""
     soup = BeautifulSoup(html, "html.parser")
-    whole = soup.select_one("#novelintro_whole")
-    intro = soup.select_one("#novelintro")
-    description_node = whole if whole is not None else intro
-    description = _clean_lines(
-        description_node.get_text("\n", strip=True)
-        if description_node is not None
-        else ""
-    )
-    one_line = ""
     for item in soup.select("li"):
         text = _clean_lines(item.get_text("\n", strip=True))
         if text.startswith("一句话简介："):
-            one_line = text
-            break
-    if one_line and one_line not in description:
-        description = f"{one_line}\n{description}" if description else one_line
-    return description
+            return text.removeprefix("一句话简介：").strip()
+    return ""
 
 
 class MetadataLookup:

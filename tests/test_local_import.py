@@ -128,16 +128,14 @@ class LocalImportTests(unittest.TestCase):
                     path=path, applied=False, status="unmatched"
                 ),
             ):
-                prepared, _, _ = prepare_local(
-                    path, root / "run", chapter_layout=layout, use_jjwxc_outline=False
-                )
+                prepared, _, _ = prepare_local(path, root / "run", chapter_layout=layout)
             self.assertEqual(prepared["chapters"][member]["title"], "后记")
             self.assertEqual(
                 json.loads((root / "run/report.json").read_text())["layout"][0]["role"],
                 "afterword",
             )
             with self.assertRaisesRegex(ValueError, "inputs changed"):
-                prepare_local(path, root / "run", use_jjwxc_outline=False)
+                prepare_local(path, root / "run")
 
     def test_prepared_txt_retains_extra_and_repeat_when_read_again(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -260,14 +258,12 @@ class LocalImportTests(unittest.TestCase):
                     path=path, applied=False, status="unmatched"
                 ),
             ):
-                first, _, _ = prepare_local(path, root / "run", use_jjwxc_outline=False)
+                first, _, _ = prepare_local(path, root / "run")
             with patch(
                 "src.inputs.load.read_input",
                 side_effect=AssertionError("repeated preparation"),
             ):
-                second, _, _ = prepare_local(
-                    path, root / "run", use_jjwxc_outline=False
-                )
+                second, _, _ = prepare_local(path, root / "run")
             self.assertEqual(first, second)
             self.assertEqual(digest(path.read_bytes()), before)
             self.assertEqual(
@@ -277,7 +273,7 @@ class LocalImportTests(unittest.TestCase):
                 0,
             )
             with self.assertRaisesRegex(ValueError, "inputs changed"):
-                prepare_local(path, root / "run", use_jjwxc_outline=True)
+                prepare_local(path, root / "run", enrich=frozenset({"volumes"}))
 
     def test_local_cli_bypasses_provider_and_passes_reviewed_options(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -293,9 +289,16 @@ class LocalImportTests(unittest.TestCase):
                 ) as run,
             ):
                 self.assertEqual(
-                    ingest_main([str(path), "--mode", "notion", "--keep-outline"]), 0
+                    ingest_main(
+                        [str(path), "--mode", "notion", "--enrich", "description,volumes"]
+                    ),
+                    0,
                 )
-            self.assertFalse(run.call_args.kwargs["use_jjwxc_outline"])
+            self.assertEqual(
+                run.call_args.args[1].enrich, frozenset({"description", "volumes"})
+            )
+            with self.assertRaises(SystemExit):
+                ingest_main([str(path), "--mode", "notion", "--enrich", "tags"])
 
     def test_reviewed_aliases_resume_incomplete_preparation_in_the_same_directory(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -317,14 +320,11 @@ class LocalImportTests(unittest.TestCase):
             }
             with patch("src.workflows.prepare.enrich_source", return_value=report):
                 with self.assertRaisesRegex(ValueError, "Edition title differs"):
-                    prepare_local(
-                        path, root / "run", enrich=True, use_jjwxc_outline=True
-                    )
+                    prepare_local(path, root / "run", enrich=frozenset({"volumes"}))
                 result, _, _ = prepare_local(
                     path,
                     root / "run",
-                    enrich=True,
-                    use_jjwxc_outline=True,
+                    enrich=frozenset({"volumes"}),
                     chapter_aliases={"第1章 起点": "新起点"},
                 )
             self.assertEqual(result["sections"][0]["title"], "始末")

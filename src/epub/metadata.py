@@ -18,6 +18,7 @@ from src.metadata.catalog import (
     PackageMetadata,
     SourceMetadata,
 )
+from src.metadata.enrich import METADATA_FIELDS
 from src.runtime.files import DEFAULT_BACKUP_DIR
 
 OPF_NS = "http://www.idpf.org/2007/opf"
@@ -110,16 +111,22 @@ def _package_metadata(opf_data: bytes) -> PackageMetadata:
 def _desired_package(
     current: PackageMetadata,
     source: SourceMetadata,
+    fields: frozenset[str],
 ) -> PackageMetadata:
-    replace_series = source.series_verified
+    replace_series = source.series_verified and "series" in fields
+    pick = lambda field, value, kept: value if field in fields else kept
     return PackageMetadata(
-        title=source.title or current.title,
+        title=pick("title", source.title or current.title, current.title),
         author=source.author or current.author,
-        language=source.language or current.language or "zh-CN",
-        date=source.date,
-        source=source.source,
-        description=source.description or current.description,
-        subjects=source.subjects or current.subjects,
+        language=pick(
+            "language", source.language or current.language or "zh-CN", current.language
+        ),
+        date=pick("date", source.date, current.date),
+        source=pick("source", source.source, current.source),
+        description=pick(
+            "description", source.description or current.description, current.description
+        ),
+        subjects=pick("subjects", source.subjects or current.subjects, current.subjects),
         series=source.series if replace_series else current.series,
         series_position=(
             str(source.series_position)
@@ -317,6 +324,7 @@ def enrich_epub_metadata(
     overwrite_backup: bool = False,
     primary_subject: str = DEFAULT_PRIMARY_SUBJECT,
     lookup: MetadataLookup | None = None,
+    fields: frozenset[str] = frozenset(METADATA_FIELDS),
 ) -> MetadataEnrichmentReport:
     path = Path(path)
     try:
@@ -345,7 +353,7 @@ def enrich_epub_metadata(
                 before=current.to_dict(),
                 after=current.to_dict(),
             )
-        desired = _desired_package(current, source)
+        desired = _desired_package(current, source, fields)
         changes = _changed_fields(current, desired)
         status = "enriched" if changes else "already_complete"
         report = MetadataEnrichmentReport(
@@ -379,7 +387,7 @@ def enrich_epub_metadata(
         updated = _updated_opf(
             opf_data,
             desired,
-            replace_series=source.series_verified,
+            replace_series=source.series_verified and "series" in fields,
             modified=modified,
         )
         _rewrite_epub_member(path, opf_member, updated)

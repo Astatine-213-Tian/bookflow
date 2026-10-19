@@ -51,8 +51,8 @@ Images and irregular TXT can be parsed by an agent into schema-validated JSON;
 use the [image transcription procedure](.agents/skills/book-management/references/image-transcription.md).
 No traditional OCR is used. Normalization follows [one rule document](docs/normalization.md);
 the [normalization guide](docs/normalization-guide.md) explains it with examples.
-Metadata enrichment is optional (`--enrich-metadata`) and preserves explicit
-values. Working reports and cover assets stay beside prepared JSON in the run
+Metadata enrichment is optional (`--enrich all` or a field subset such as
+`--enrich description,subjects`) and preserves explicit values. Working reports and cover assets stay beside prepared JSON in the run
 directory; [storage and cleanup](docs/storage.md) defines what survives completion.
 Local preparation scans possible quotations and uses authenticated `codex exec`
 only when candidates need judgment. Use `book prepare --scan-quotes` to inspect

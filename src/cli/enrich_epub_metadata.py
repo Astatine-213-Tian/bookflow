@@ -11,6 +11,7 @@ from src.metadata.catalog import (
     MetadataEnrichmentReport,
     MetadataLookup,
 )
+from src.metadata.enrich import METADATA_FIELDS, parse_enrich_fields
 from src.runtime.files import DEFAULT_BACKUP_DIR
 
 
@@ -81,6 +82,13 @@ def build_parser() -> argparse.ArgumentParser:
         help=("Supply a known Jinjiang author ID; repeat for multiple aliases."),
     )
     parser.add_argument(
+        "--fields",
+        default="all",
+        help="Metadata to update: all (default) or a comma-separated subset of "
+        + ",".join(METADATA_FIELDS)
+        + ".",
+    )
+    parser.add_argument(
         "--no-kadokado",
         action="store_true",
         help="Disable KadoKado fallback after a confirmed Jinjiang miss.",
@@ -121,7 +129,12 @@ def write_report(
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        args.fields = parse_enrich_fields(args.fields, allowed=METADATA_FIELDS)
+    except ValueError as error:
+        parser.error(str(error))
     return run_command(lambda: enrich(args))
 
 
@@ -145,6 +158,7 @@ def enrich(args: argparse.Namespace) -> dict:
             overwrite_backup=args.overwrite_backup,
             primary_subject=args.primary_subject,
             lookup=lookup,
+            fields=args.fields,
         )
         for path in paths
     ]

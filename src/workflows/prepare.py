@@ -16,11 +16,10 @@ from src.metadata.enrich import enrich_source
 def prepare_book(
     source: dict,
     *,
-    enrich: bool = False,
+    enrich: frozenset[str] = frozenset(),
     overrides: dict | None = None,
     layout: dict | None = None,
     aliases: dict | None = None,
-    official_outline: bool = False,
 ) -> tuple[dict, dict]:
     book = copy.deepcopy(source)
     book["metadata"] = override_metadata(
@@ -30,8 +29,8 @@ def prepare_book(
     if layout is not None:
         reports["layout"] = apply_edition_layout(book, layout)
     if enrich:
-        reports["metadata"] = enrich_source(book)
-        if official_outline and reports["metadata"].get("table_of_contents"):
+        reports["metadata"] = enrich_source(book, fields=enrich)
+        if "volumes" in enrich and reports["metadata"].get("table_of_contents"):
             reports["outline"] = apply_jjwxc_outline(
                 book, reports["metadata"]["table_of_contents"], aliases=aliases
             )
@@ -98,8 +97,7 @@ def prepare_file(
     review: dict | None = None,
     chapter_aliases: dict | None = None,
     chapter_layout: dict | None = None,
-    use_jjwxc_outline: bool = False,
-    enrich: bool = False,
+    enrich: frozenset[str] = frozenset(),
     quote_decisions: dict | None = None,
     quote_runner: Callable[[str], str] | None = None,
 ) -> tuple[dict, bytes | None, str]:
@@ -125,8 +123,7 @@ def prepare_file(
         "review": review,
         "layout": chapter_layout,
         "aliases": chapter_aliases,
-        "enrich": enrich,
-        "official_outline": use_jjwxc_outline,
+        "enrich": sorted(enrich),
         "quote_decisions": quote_decisions,
     }
     manifest = run_dir / "input.json"
@@ -152,7 +149,6 @@ def prepare_file(
         overrides=overrides,
         layout=chapter_layout,
         aliases=chapter_aliases,
-        official_outline=use_jjwxc_outline,
     )
     if digest(path.read_bytes()) != signature["input"]:
         raise ValueError("Source changed during preparation")

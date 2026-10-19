@@ -13,6 +13,7 @@ from src.content.models import Chapter, Volume
 from src.crawler.models import CrawledBook, CrawlOptions, DownloadedEdition
 from src.crawler.registry import ParserSpec
 from src.dataset.library import export_txt_dataset, load_manifest
+from src.metadata.enrich import METADATA_FIELDS
 from src.epub.validate import EpubCheck
 from src.workflows.ingest import (
     DatasetOptions,
@@ -311,7 +312,9 @@ class IngestWorkflowTests(unittest.TestCase):
             crawl = Mock(return_value=book())
             provider = ParserSpec("fixture", (), "fixture", crawl)
 
-            def enriched(source):
+            def enriched(source, *, fields):
+                # A crawl's volumes come from its own directory.
+                self.assertEqual(fields, frozenset(METADATA_FIELDS))
                 source["metadata"]["title"] = "官方书名"
                 return {"status": "matched"}
 
@@ -325,7 +328,8 @@ class IngestWorkflowTests(unittest.TestCase):
                 code = ingest_main(
                     [
                         "https://example.org/book",
-                        "--enrich-metadata",
+                        "--enrich",
+                        "all",
                         "--mode",
                         "epub",
                         "--mode",

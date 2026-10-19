@@ -48,7 +48,7 @@ class OutputOptions:
     output_formats: tuple[str, ...] = ()
     dataset: DatasetOptions | None = None
     prevent_overwrite: bool = True
-    enrich_metadata: bool = False
+    enrich: frozenset[str] = frozenset()
     strict_epub: bool = False
 
 
@@ -244,7 +244,7 @@ def prepare_and_write(
     cover_mime: str = "image/jpeg",
     evidence: dict | None = None,
 ) -> IngestResult:
-    prepared, reports = prepare_book(source, enrich=options.enrich_metadata)
+    prepared, reports = prepare_book(source, enrich=options.enrich)
     fingerprint = content_hash(
         {
             "book": prepared,
@@ -273,7 +273,6 @@ def ingest_local(
     review: dict | None = None,
     chapter_aliases: dict | None = None,
     chapter_layout: dict | None = None,
-    use_jjwxc_outline: bool = False,
     cover_url: str | None = None,
     quote_decisions: dict | None = None,
 ) -> IngestResult:
@@ -288,8 +287,7 @@ def ingest_local(
         quote_decisions=quote_decisions,
         chapter_aliases=chapter_aliases,
         chapter_layout=chapter_layout,
-        use_jjwxc_outline=use_jjwxc_outline,
-        enrich=options.enrich_metadata,
+        enrich=options.enrich,
     )
     return replace(
         write_book(

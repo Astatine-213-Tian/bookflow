@@ -14,8 +14,10 @@ uv run book ingest original.txt --title 书名 --author 作者 --mode txt \
 
 `book prepare` saves schema-validated `source.json`, optional cover bytes and
 `report.json`. Inspect normalization findings before upload. Enrichment is
-explicit: add `--enrich-metadata` to fill missing values; add `--official-outline`
-to use a reviewed official directory. `--chapter-aliases` can resolve known title
+explicit: `--enrich all` fills missing metadata and applies the official volume
+titles; `--enrich FIELDS` selects a comma-separated subset of `title`, `language`,
+`date`, `source`, `description`, `subjects`, `series` and `volumes`.
+`--chapter-aliases` can resolve known title
 differences without rewriting the chapter body. `--chapter-layout` applies
 exhaustive reviewed splits after extraction, using stable chapter IDs.
 
@@ -156,9 +158,13 @@ actual chapter identities before any rename. Preserve uncertain content.
 
 ### Metadata enrichment
 
-Normal preparation with `--enrich-metadata` fills missing fields and preserves
-source/user values. Explicit archive metadata repair has a different policy:
-`book enrich-metadata FILE --check --report PATH` proposes authoritative updates.
+Normal preparation with `--enrich` fills missing selected fields and preserves
+source/user values; `volumes` applies only to a local edition, since a crawl
+supplies its own directory. Explicit archive metadata repair has a different policy:
+`book enrich-metadata FILE --check --report PATH` proposes authoritative updates,
+limited by `--fields` (default `all`).
+The Jinjiang description is the text of its 一句话简介 without the label, not the
+full 文案; without one, the existing description is kept.
 Inspect `dc:date` as publication date and `dcterms:modified` as edit timestamp.
 A verified exact Jinjiang title/author match is primary; KadoKado is a fallback
 only after a completed lookup has no defensible match, not after a network error.

@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from src.cli.output import paths, run_command
+from src.metadata.enrich import ENRICH_FIELDS, parse_enrich_fields
 from src.workflows.prepare import (
     default_run_dir,
     prepare_file,
@@ -29,7 +30,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Extract EPUB blocks for agent review without normalizing",
     )
-    parser.add_argument("--enrich-metadata", action="store_true")
+    parser.add_argument(
+        "--enrich",
+        metavar="FIELDS",
+        help="Fill missing metadata from Jinjiang/KadoKado: all, or a comma-separated "
+        "subset of " + ",".join(ENRICH_FIELDS) + "; volumes applies the official volume titles",
+    )
     parser.add_argument(
         "--quote-review",
         type=Path,
@@ -42,8 +48,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--chapter-layout", type=Path)
     parser.add_argument("--chapter-aliases", type=Path)
-    parser.add_argument("--official-outline", action="store_true")
     args = parser.parse_args(argv)
+    try:
+        args.enrich = parse_enrich_fields(args.enrich) if args.enrich else frozenset()
+    except ValueError as error:
+        parser.error(str(error))
     return run_command(lambda: prepare(args))
 
 
@@ -72,8 +81,7 @@ def prepare(args: argparse.Namespace) -> dict:
         chapter_aliases=json.loads(args.chapter_aliases.read_text())
         if args.chapter_aliases
         else None,
-        use_jjwxc_outline=args.official_outline,
-        enrich=args.enrich_metadata,
+        enrich=args.enrich,
     )
     return {
         "outputs": paths(

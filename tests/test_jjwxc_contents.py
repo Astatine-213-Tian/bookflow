@@ -11,7 +11,12 @@ import requests
 
 from src.epub.metadata import enrich_epub_metadata
 from src.metadata.catalog import MetadataLookup, PackageMetadata
-from src.metadata.enrich import enrich_source
+from src.metadata.enrich import (
+    ENRICH_FIELDS,
+    METADATA_FIELDS,
+    enrich_source,
+    parse_enrich_fields,
+)
 from src.metadata.jjwxc import parse_jjwxc_contents
 
 CONTENTS = """
@@ -43,20 +48,26 @@ AUTHOR = """
 <tr><td>发表时间：2020-01-02 11:00:00</td></tr>
 </table>
 """
-DESCRIPTION = '<html><div id="novelintro">样本简介</div></html>'
+DESCRIPTION = (
+    '<html><div id="novelintro">简介：<br/>完整文案第一段</div>'
+    "<ul><li>内容标签：古色古香</li><li>一句话简介：面瘫攻脱线受手拉手盗墓</li></ul></html>"
+)
 
 
 class Session:
-    def __init__(self, contents: str | Exception = CONTENTS):
+    def __init__(
+        self, contents: str | Exception = CONTENTS, description: str = DESCRIPTION
+    ):
         self.headers = {}
         self.urls = []
         self.contents = contents
+        self.description = description
 
     def get(self, url, *, timeout):
         self.urls.append(url)
         values = {
             "https://m.jjwxc.net/wapauthor/456": AUTHOR,
-            "https://m.jjwxc.net/book2/123": DESCRIPTION,
+            "https://m.jjwxc.net/book2/123": self.description,
             "https://www.jjwxc.net/onebook.php?novelid=123": self.contents,
         }
         value = values[url]
@@ -171,6 +182,51 @@ class JinjiangContentsTests(unittest.TestCase):
                 self.assertIsNone(result.table_of_contents)
                 self.assertTrue(result.table_of_contents_error)
 
+    def test_description_is_only_the_one_line_intro(self):
+        self.assertEqual(
+            lookup(Session()).find(package()).description, "面瘫攻脱线受手拉手盗墓"
+        )
+        without = '<html><div id="novelintro">只有完整文案</div></html>'
+        current = PackageMetadata("样本", "作者", "zh-CN", "", "", "原有简介", (), None, None)
+        self.assertEqual(
+            lookup(Session(description=without)).find(current).description, "原有简介"
+        )
+
+    def test_enrichment_fills_only_selected_fields(self):
+        def book():
+            return {
+                "metadata": {
+                    "title": "样本",
+                    "creator": "作者",
+                    "language": "zh-CN",
+                    "date": "",
+                    "source": "",
+                    "description": "",
+                    "subjects": [],
+                    "series": "",
+                    "series_position": "",
+                }
+            }
+
+        value = book()
+        enrich_source(value, fields=frozenset({"description"}), lookup=lookup(Session()))
+        self.assertEqual(value["metadata"]["description"], "面瘫攻脱线受手拉手盗墓")
+        self.assertEqual((value["metadata"]["date"], value["metadata"]["source"]), ("", ""))
+        value = book()
+        enrich_source(value, fields=frozenset({"date"}), lookup=lookup(Session()))
+        self.assertEqual(value["metadata"]["date"], "2020-01-02")
+        self.assertEqual(value["metadata"]["description"], "")
+
+    def test_enrichment_fields_parse_all_or_a_subset(self):
+        self.assertEqual(parse_enrich_fields("all"), frozenset(ENRICH_FIELDS))
+        self.assertEqual(
+            parse_enrich_fields("description, subjects"),
+            frozenset({"description", "subjects"}),
+        )
+        for value in ["", "all,description", "tags", "volumes"]:
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                parse_enrich_fields(value, allowed=METADATA_FIELDS)
+
     def test_prepared_source_receives_contents_from_the_same_lookup(self):
         book = {
             "metadata": {
@@ -207,6 +263,13 @@ class JinjiangContentsTests(unittest.TestCase):
                 <manifest/><spine/></package>""",
                 )
                 archive.writestr("EPUB/chapter.xhtml", "<html>unchanged body</html>")
+            partial = enrich_epub_metadata(
+                path,
+                apply=False,
+                lookup=lookup(Session()),
+                fields=frozenset({"description"}),
+            )
+            self.assertEqual(partial.changed_fields, ["description"])
             report = enrich_epub_metadata(
                 path, backup_dir=None, lookup=lookup(Session())
             )
