@@ -62,7 +62,8 @@ requires an exhaustive reviewed range map.
 Images and irregular text can be parsed in an agent session into the same schema;
 see the [image workflow](../.agents/skills/book-management/references/image-transcription.md).
 
-Normalization follows [normalization.md](normalization.md), operating on text
+Normalization follows [normalization.md](normalization.md) (explained for people in
+the [normalization guide](normalization-guide.md)), operating on text
 and rich-text blocks. Uncertain findings stay in its report. It never invents
 chapter boundaries, silently removes uncertain content, searches the web, or
 round-trips through EPUB/Notion. Metadata enrichment fills missing values only;
