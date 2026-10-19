@@ -67,6 +67,27 @@ original (`cover-original.*`) and the source to rerun.
    OUT --restored` so the candidate is 2:3 and at most 1,000,000 bytes,
    preserving resolution where possible.
 
+### Generating a candidate
+
+Image generation runs through Codex CLI's built-in `image_generation` tool
+(OpenAI GPT Image); Claude Code sessions call it the same way. Pass the original
+and any reference covers as input images and give the rules above, the verified
+wording, and an output path in the run directory:
+
+```bash
+codex exec -C RUN_DIR -s workspace-write --skip-git-repo-check \
+  -i cover-original.png -i reference.jpg \
+  -o candidate-1.txt - < restore-prompt.md
+```
+
+`restore-prompt.md` names the 2:3 front cover to produce at 1024 × 1536 and the
+exact output file, such as `candidate-1.png`; lists every title, credit and line
+of text verbatim; and includes prior review comments for a regeneration. Treat
+the result as a draft: compare it with the original at full size, repair or reuse
+damaged text and seals from the original (steps 4–6), then run
+`book cover normalize … --restored`. Write a new prompt and candidate number for
+each attempt, so earlier candidates stay comparable.
+
 ## Review
 
 Show the user every changed cover from the round, and only those:
