@@ -195,8 +195,8 @@ and paragraph coverage.
 
 ## Bilingual books
 
-`book_specs/<book>/config.json` names a source, a translation method, a glossary
-and outputs. `workflows/bilingual.py` runs collect → translate → validate →
+`book_specs/<book>/config.json` names a source, a translation method, a glossary,
+outputs and reviewed `edition` choices that every build applies. `workflows/bilingual.py` runs collect → translate → validate →
 build; each stage is also a `book bilingual` subcommand. Methods register in
 `translation/methods.py` behind one interface: `translate` produces outputs,
 `validate` runs the method's review gates (semantic QA for style transfer), and

@@ -13,7 +13,9 @@ including quote direction and Chinese/Latin/digit spacing.
 ## Bilingual Books
 
 A bilingual book is one spec, `book_specs/<book>/config.json`: its `source`,
-`translation.method` and glossary, and `output`. For “update <book>”, such as
+`translation.method` and glossary, `output`, and `edition` (reviewed identifier,
+intro, section titles and extras that every build applies). Record such
+decisions in `edition`, never only in the built EPUB. For “update <book>”, such as
 “update eternal gate” / “更新永恒之门” (`eternal_gate`), run:
 
 ```bash
