@@ -18,7 +18,12 @@ from src.runtime.paths import (
     resolve_txt_output_path,
 )
 from src.workflows.collect import Collected, collect, extract_collected
-from src.workflows.prepare import prepare_book, prepare_file, save_prepared
+from src.workflows.prepare import (
+    default_run_dir,
+    prepare_book,
+    prepare_file,
+    save_prepared,
+)
 from src.content.changes import content_hash
 from src.runtime.files import digest
 
@@ -272,12 +277,8 @@ def ingest_local(
     cover_url: str | None = None,
     quote_decisions: dict | None = None,
 ) -> IngestResult:
-    from src.runtime.files import digest
-
     requested_formats(options)
-    directory = run_dir or (
-        work_root() / "generated" / "ingest" / digest(path.read_bytes())[:16]
-    )
+    directory = run_dir or default_run_dir(path)
     book, cover, mime = prepare_file(
         path,
         directory,

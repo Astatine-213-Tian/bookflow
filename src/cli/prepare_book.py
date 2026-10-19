@@ -7,9 +7,12 @@ import json
 from pathlib import Path
 
 from src.cli.output import paths, run_command
-from src.runtime.files import digest, write_json
-from src.runtime.paths import work_root
-from src.workflows.prepare import prepare_file
+from src.workflows.prepare import (
+    default_run_dir,
+    prepare_file,
+    write_inventory,
+    write_quote_candidates,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -45,33 +48,15 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def prepare(args: argparse.Namespace) -> dict:
-    directory = (
-        args.run_dir
-        or work_root() / "generated" / "ingest" / digest(args.source.read_bytes())[:16]
-    )
+    directory = args.run_dir or default_run_dir(args.source)
     if args.inventory:
-        from src.inputs.epub import inventory_epub
-
-        inventory = inventory_epub(args.source)
-        inventory.pop("files")
-        inventory["sha256"] = digest(args.source.read_bytes())
-        write_json(directory / "inventory.json", inventory)
-        return {"outputs": paths(inventory=directory / "inventory.json")}
+        return {"outputs": paths(inventory=write_inventory(args.source, directory))}
     review = json.loads(args.review.read_text()) if args.review else None
     if args.scan_quotes:
-        from src.inputs.load import read_input
-        from src.content.quote_review import find_quote_candidates
-
-        edition = read_input(
-            args.source, title=args.title, author=args.author, review=review
+        candidates = write_quote_candidates(
+            args.source, directory, title=args.title, author=args.author, review=review
         )
-        write_json(
-            directory / "quote-candidates.json",
-            find_quote_candidates(edition.source, edition.evidence),
-        )
-        return {
-            "outputs": paths(quote_candidates=directory / "quote-candidates.json")
-        }
+        return {"outputs": paths(quote_candidates=candidates)}
     prepare_file(
         args.source,
         directory,

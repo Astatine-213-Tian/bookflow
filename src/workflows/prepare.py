@@ -168,3 +168,47 @@ def prepare_file(
         evidence=edition.evidence,
     )
     return book, edition.cover, edition.cover_mime
+
+
+# ------------------------------------------------------------------------------
+# Review inputs for a local edition
+# ------------------------------------------------------------------------------
+
+
+def default_run_dir(source: Path) -> Path:
+    from src.runtime.files import digest
+    from src.runtime.paths import work_root
+
+    return work_root() / "generated" / "ingest" / digest(source.read_bytes())[:16]
+
+
+def write_inventory(source: Path, directory: Path) -> Path:
+    """Inventory an EPUB's spine and navigation for an exhaustive range review."""
+    from src.inputs.epub import inventory_epub
+    from src.runtime.files import digest, write_json
+
+    inventory = inventory_epub(source)
+    inventory.pop("files")
+    inventory["sha256"] = digest(source.read_bytes())
+    path = directory / "inventory.json"
+    write_json(path, inventory)
+    return path
+
+
+def write_quote_candidates(
+    source: Path,
+    directory: Path,
+    *,
+    title: str = "",
+    author: str = "",
+    review: dict | None = None,
+) -> Path:
+    """Write the quotation candidates that need a semantic review."""
+    from src.content.quote_review import find_quote_candidates
+    from src.inputs.load import read_input
+    from src.runtime.files import write_json
+
+    edition = read_input(source, title=title, author=author, review=review)
+    path = directory / "quote-candidates.json"
+    write_json(path, find_quote_candidates(edition.source, edition.evidence))
+    return path

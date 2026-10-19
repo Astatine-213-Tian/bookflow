@@ -12,9 +12,9 @@ For working files and task completion, follow [storage and cleanup](../../../doc
 ## Choose the Task
 
 - **Import a local EPUB/TXT edition:** follow
-  [local-editions.md](../../../docs/local-editions.md). Use `book-prepare` for
-  preparation and `book-notion upload`/`verify` for the reviewed source,
-  or `book-ingest FILE` for the combined workflow. Keep book-specific decisions
+  [local-editions.md](../../../docs/local-editions.md). Use `book prepare` for
+  preparation and `book notion upload`/`verify` for the reviewed source,
+  or `book ingest FILE` for the combined workflow. Keep book-specific decisions
   in reviewed JSON; extend the owning module when a reusable stage is missing.
 - **Compare local editions when the user requests it:** use the independent
   [comparison tool](../../../docs/local-editions.md#compare-editions-only-when-requested).
@@ -27,7 +27,7 @@ For working files and task completion, follow [storage and cleanup](../../../doc
 - **Source unsupported, incomplete or broken:** read [providers.md](references/providers.md),
   implement or repair the provider, then resume acquisition if a book output was requested.
   A provider-development-only task ends with its fixture and CLI checks.
-- **Append images or correct part of a chapter:** follow [content-json.md](../../../docs/content-json.md). Read current content, transcribe into the shared schema, then apply an explicit change task with `book-update` or `book-notion update`.
+- **Append images or correct part of a chapter:** follow [content-json.md](../../../docs/content-json.md). Read current content, transcribe into the shared schema, then apply an explicit change task with `book update` or `book notion update`.
 - **Upload or recover a Notion cover:** use the native API and byte readback in
   [notion-books.md](../../../docs/notion-books.md#封面). For a pending browser task
   or an explicit browser upload, follow [notion-cover.md](references/notion-cover.md).
@@ -41,14 +41,14 @@ For working files and task completion, follow [storage and cleanup](../../../doc
   title-only filenames; do not move them into the repository by default.
   Keep this agent-led review within this skill.
 - **Proofread an existing edition against Jinjiang:** follow
-  [Jinjiang proofreading](../../../docs/jinjiang-proofread.md) for `book-proofread`,
+  [Jinjiang proofreading](../../../docs/jinjiang-proofread.md) for `book proofread`,
   including missing blank lines, suspect-text evidence and plain-text author notes.
   Preserve the selected edition and use the existing destination named by the user.
 - **Export an existing book for training:** use the targeted dataset command below.
   Training output uses the same collection pipeline when a fresh source is needed.
 
 For bilingual books such as Eternal Gate, follow “Bilingual Books” in `AGENTS.md`:
-`book-bilingual update <book>` writes the output named in the book spec.
+`book bilingual update <book>` writes the output named in the book spec.
 
 ## Acquire a Book
 
@@ -59,10 +59,10 @@ For bilingual books such as Eternal Gate, follow “Bilingual Books” in `AGENT
    A supplied EPUB/TXT path or “add to the training dataset” already specifies
    that destination. Ask only about unresolved choices; source research can
    continue while awaiting the answer.
-2. Find or verify the source and completeness. Use `book-ingest --search` for
+2. Find or verify the source and completeness. Use `book ingest --search` for
    supported sites, then compare previews before choosing a version. If the
    source needs development, follow the provider reference above.
-3. Invoke `book-ingest` with each selected `--mode`. Crawl once; shared source
+3. Invoke `book ingest` with each selected `--mode`. Crawl once; shared source
    preparation handles wording, structure and formatting before Notion/EPUB output.
    All selected destinations must finish before reporting the book complete.
 4. Verify the selected outputs: EPUB check printed by the write (ZIP, chapter
@@ -72,14 +72,14 @@ For bilingual books such as Eternal Gate, follow “Bilingual Books” in `AGENT
    distinguished from completed outputs.
 
 ```bash
-uv run book-ingest "<url>" --mode epub
-uv run book-ingest "<url>" --mode notion
-uv run book-ingest "<url>" --mode txt
-uv run book-ingest "<url>" --mode epub --mode notion --mode txt
-uv run book-ingest --search "<title>" --mode epub --mode txt
+uv run book ingest "<url>" --mode epub
+uv run book ingest "<url>" --mode notion
+uv run book ingest "<url>" --mode txt
+uv run book ingest "<url>" --mode epub --mode notion --mode txt
+uv run book ingest --search "<title>" --mode epub --mode txt
 ```
 
-`book-ingest` is the single combined entry point. Use `book-crawl` to persist
+`book ingest` is the single combined entry point. Use `book crawl` to persist
 source JSON for later translation/preparation. The CLI requires a destination,
 or infers EPUB/TXT from explicit output paths.
 
@@ -104,8 +104,8 @@ Training is a purpose for TXT output, not a separate crawler. Use targeted
 exports and manifest updates:
 
 ```bash
-uv run book-dataset export-txt --epub books/<author>/<title>.epub
-uv run book-dataset upsert --txt research/datasets/raw/<author>/<title>.txt
+uv run book dataset export-txt --epub books/<author>/<title>.epub
+uv run book dataset upsert --txt research/datasets/raw/<author>/<title>.txt
 ```
 
 Respect the requested dataset path. Classification uses maintained Jinjiang

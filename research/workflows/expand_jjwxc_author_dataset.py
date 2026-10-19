@@ -605,7 +605,8 @@ def ingest_one(book: AuthorBook, args: argparse.Namespace, index: int, total: in
         cmd = [
             "uv",
             "run",
-            "book-ingest",
+            "book",
+            "ingest",
             source_url,
             "--parser",
             source_parser,
@@ -647,11 +648,11 @@ def ingest_one(book: AuthorBook, args: argparse.Namespace, index: int, total: in
             )
         if result.returncode != 0:
             entry.status = "failed_ingest"
-            entry.error = f"book-ingest exited {result.returncode}; see {log_path.relative_to(REPO_ROOT)}"
+            entry.error = f"book ingest exited {result.returncode}; see {log_path.relative_to(REPO_ROOT)}"
             return entry
         if not epub_path.exists() or not txt_path.exists():
             entry.status = "failed_missing_output"
-            entry.error = "book-ingest exited successfully but requested outputs are missing"
+            entry.error = "book ingest exited successfully but requested outputs are missing"
             return entry
         entry.status = "downloaded"
         return entry

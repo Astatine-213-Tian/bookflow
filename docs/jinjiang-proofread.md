@@ -1,16 +1,16 @@
 # 用晋江校对已有版本
 
-`book-proofread` 以已有版本为准，利用已登录晋江账号能读取的章节补空行、
+`book proofread` 以已有版本为准，利用已登录晋江账号能读取的章节补空行、
 核验疑似坏字、补齐缺失作话。Notion 作品页、EPUB 和共享 `source.json` 都可作为原书。
 版本不同、匹配含糊或锁章时保留原书并记录原因。
 
 ## 使用
 
 ```bash
-uv run book-proofread plan --notion '<作品页 URL>' --jinjiang '<晋江 URL 或 novelid>' \
+uv run book proofread plan --notion '<作品页 URL>' --jinjiang '<晋江 URL 或 novelid>' \
   --run-dir generated/proofread/BOOK_DATE
-uv run book-proofread review --run-dir generated/proofread/BOOK_DATE
-uv run book-proofread apply --run-dir generated/proofread/BOOK_DATE
+uv run book proofread review --run-dir generated/proofread/BOOK_DATE
+uv run book proofread apply --run-dir generated/proofread/BOOK_DATE
 ```
 
 Notion 正文需要进程环境中的 `NOTION_API_TOKEN`，目录使用项目已有 MCP 登录。

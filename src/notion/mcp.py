@@ -37,7 +37,7 @@ AUTH_FILE = (
 
 class LoginRequired(ValueError):
     def __init__(self) -> None:
-        super().__init__("Notion authorization required. Run: uv run book-notion login")
+        super().__init__("Notion authorization required. Run: uv run book notion login")
 
 
 @contextmanager
@@ -188,7 +188,7 @@ class CallbackServer:
 
     async def callback(self) -> tuple[str, str | None]:
         if not await asyncio.to_thread(self.done.wait, 600):
-            raise ValueError("Notion login timed out; run book-notion login again")
+            raise ValueError("Notion login timed out; run book notion login again")
         if self.error or not self.result:
             raise ValueError("Notion authorization was not granted")
         return self.result
@@ -346,5 +346,5 @@ def error_message(error: BaseException) -> str:
 
     return (
         known(error)
-        or "Notion sync failed; check connectivity and retry. Run book-notion login if authorization expired."
+        or "Notion sync failed; check connectivity and retry. Run book notion login if authorization expired."
     )

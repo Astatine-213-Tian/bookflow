@@ -494,5 +494,5 @@ def seed_baseline(
         "baseline_run": _relative(run),
         "seeded": seeded,
         "to_translate": unmatched,
-        "next": f"book-bilingual update {slug}",
+        "next": f"book bilingual update {slug}",
     }

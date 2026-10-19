@@ -17,14 +17,14 @@ A bilingual book is one spec, `book_specs/<book>/config.json`: its `source`,
 “update eternal gate” / “更新永恒之门” (`eternal_gate`), run:
 
 ```bash
-uv run book-bilingual update eternal_gate --headless
+uv run book bilingual update eternal_gate --headless
 ```
 
 It collects a fresh dated snapshot, reuses the last successful build as the
 baseline, translates with the spec's method, validates, writes the spec's output
 and records the new baseline in `bilingual/<book>/state.json`; snapshots and runs
 live beside it. Rerunning resumes the pending run. With no baseline but an earlier
-bilingual EPUB, first run `uv run book-bilingual seed <book> --from-epub PATH`:
+bilingual EPUB, first run `uv run book bilingual seed <book> --from-epub PATH`:
 it crawls, recovers each chapter whose English is unchanged, and `update` then
 translates only the rest. Act on the `status` in its final JSON line:
 
@@ -50,9 +50,10 @@ upload in `src/notion/`, and translation/QA in `src/translation/`.
 `src/workflows/ingest.py` chooses outputs after shared preparation; `src/cli/` handles
 arguments. Agents run stages in any order and retry them, so put each guarantee
 in the stage that produces or consumes its artifact; every entry point then
-enforces it. Every `book-*` command ends with one JSON result line on stdout and
-logs to stderr; `src/cli/output.py` defines its statuses and exit codes. Read
-that line, not the log text. `tests/test_architecture.py` checks dependency direction and the
+enforces it. Every task is a subcommand of one `book` command (`uv run book`
+lists them). Each ends with one JSON result line on stdout and logs to stderr;
+`src/cli/output.py` defines its statuses and exit codes. Read that line, not the
+log text. `tests/test_architecture.py` checks dependency direction and the
 separation of cleanup from rendering.
 
 For adding, updating or repairing books, use the single
@@ -88,36 +89,36 @@ Use `mise exec -- uv sync --locked` for subsequent dependency syncs.
 Run the unified entry point:
 
 ```bash
-uv run book-ingest "https://www.mangguoshufang.com/1/2574/info.html" --mode epub -o books/book.epub
-uv run book-ingest "http://jrkywsy.blog.fc2.com/blog-entry-938.html" --mode epub -o books/book.epub
-uv run book-ingest 2574 --parser mgsf --mode epub -o books/book.epub
+uv run book ingest "https://www.mangguoshufang.com/1/2574/info.html" --mode epub -o books/book.epub
+uv run book ingest "http://jrkywsy.blog.fc2.com/blog-entry-938.html" --mode epub -o books/book.epub
+uv run book ingest 2574 --parser mgsf --mode epub -o books/book.epub
 ```
 
 Run the search-and-preview pipeline:
 
 ```bash
-uv run book-ingest --search "全球高考" --mode epub
-uv run book-ingest --search "斗破苍穹" --parser quanben --mode epub
-uv run book-ingest --search "全球高考" --first --mode epub -o books/book.epub
+uv run book ingest --search "全球高考" --mode epub
+uv run book ingest --search "斗破苍穹" --parser quanben --mode epub
+uv run book ingest --search "全球高考" --first --mode epub -o books/book.epub
 ```
 
-Use `uv run book-ingest --list-parsers` to inspect supported sites. Browser-backed providers such as xfxs and pili45 use `src.crawler.fetch.browser.resolve_browser_executable()` to find a Chromium-compatible browser. Set `BOOKLIB_BROWSER_PATH` to force a specific executable; otherwise discovery checks Playwright-managed Chromium, common executables on `PATH`, and common macOS app bundle paths.
+Use `uv run book ingest --list-parsers` to inspect supported sites. Browser-backed providers such as xfxs and pili45 use `src.crawler.fetch.browser.resolve_browser_executable()` to find a Chromium-compatible browser. Set `BOOKLIB_BROWSER_PATH` to force a specific executable; otherwise discovery checks Playwright-managed Chromium, common executables on `PATH`, and common macOS app bundle paths.
 
 Run bilingual stages separately when debugging one of them; `update` chains the
-same functions. `book-bilingual methods` lists translation methods.
+same functions. `book bilingual methods` lists translation methods.
 
 ```bash
-uv run book-crawl --config book_specs/eternal_gate/config.json \
+uv run book crawl --config book_specs/eternal_gate/config.json \
   --output bilingual/eternal_gate/snapshots/DATE --headless
-uv run book-bilingual translate bilingual/eternal_gate/snapshots/DATE \
+uv run book bilingual translate bilingual/eternal_gate/snapshots/DATE \
   --book eternal_gate --run-dir bilingual/eternal_gate/runs/DATE
-uv run book-bilingual validate bilingual/eternal_gate/runs/DATE --book eternal_gate
-uv run book-bilingual build bilingual/eternal_gate/snapshots/DATE \
+uv run book bilingual validate bilingual/eternal_gate/runs/DATE --book eternal_gate
+uv run book bilingual build bilingual/eternal_gate/snapshots/DATE \
   --book eternal_gate --run-dir bilingual/eternal_gate/runs/DATE
 ```
 
 Dataset TXT output and manifests live under `research/datasets/`. The production
-`book-ingest --dataset-root research/datasets` and `book-dataset` write there so crawling and
+`book ingest --dataset-root research/datasets` and `book dataset` write there so crawling and
 EPUB generation remain centralized while research owns the resulting corpus.
 Run author-style experiments from `research/` with its own environment:
 
@@ -158,14 +159,14 @@ Focused production contract tests live under `tests/` and run with
 `uv run python -m unittest discover -s tests -p 'test_*.py'`. For parser
 changes, also validate manually with a small known book or saved HTML fixture
 when possible. For search changes, verify
-`uv run book-ingest --search "known title" --parser <provider> --mode epub`
+`uv run book ingest --search "known title" --parser <provider> --mode epub`
 shows sensible previews without immediately
 downloading the whole book. For EPUB output, open the generated file and confirm
 metadata, table of contents, chapter order, and cover handling.
 
-For translation-pipeline changes, at minimum run `uv run python -m py_compile ...`, `uv run book-crawl --help`, `uv run book-bilingual --help`, the focused production unit tests, and a small fixture through `book-bilingual translate --no-codex`, `validate` and `build`.
+For translation-pipeline changes, at minimum run `uv run python -m py_compile ...`, `uv run book crawl --help`, `uv run book bilingual --help`, the focused production unit tests, and a small fixture through `book bilingual translate --no-codex`, `validate` and `build`.
 
-For generated bilingual EPUBs, the main Codex run retries failed chunks with narrower context and paragraph fallbacks. Empty `zh` values are allowed only after retry when a paragraph still cannot be translated and must produce no placeholder/refusal text. In that case validate the run with `book-bilingual validate --allow-missing --book ...`, then scan the final EPUB for placeholder strings and confirm only the intended paragraphs are English-only.
+For generated bilingual EPUBs, the main Codex run retries failed chunks with narrower context and paragraph fallbacks. Empty `zh` values are allowed only after retry when a paragraph still cannot be translated and must produce no placeholder/refusal text. In that case validate the run with `book bilingual validate --allow-missing --book ...`, then scan the final EPUB for placeholder strings and confirm only the intended paragraphs are English-only.
 
 ## Commit & Pull Request Guidelines
 

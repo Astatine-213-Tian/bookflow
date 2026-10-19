@@ -335,7 +335,7 @@ class LocalImportTests(unittest.TestCase):
             path = Path(temporary) / "source.json"
             path.write_text(json.dumps(source()))
             with patch(
-                "src.cli.notion_book.upload_source",
+                "src.notion.upload.upload_source",
                 return_value=Path("checkpoint.json"),
             ) as upload:
                 notion_main(

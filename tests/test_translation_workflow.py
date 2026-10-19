@@ -51,7 +51,7 @@ class TranslationWorkflowTests(unittest.TestCase):
 
             def cli(*args: str) -> dict:
                 result = subprocess.run(
-                    ["uv", "run", "book-bilingual", *map(str, args)],
+                    ["uv", "run", "book", "bilingual", *map(str, args)],
                     capture_output=True,
                     text=True,
                 )

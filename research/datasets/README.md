@@ -2,7 +2,7 @@
 
 This directory is local and ignored by Git because it contains copyrighted book
 text. It is owned by the research project even though the parent production
-`book-ingest` and `book-dataset` commands write new entries here.
+`book ingest` and `book dataset` commands write new entries here.
 
 ```text
 dataset_manifest.json   book metadata and corpus membership

@@ -1,4 +1,4 @@
-"""Resume, reuse and gate behavior of ``book-bilingual update`` without model calls."""
+"""Resume, reuse and gate behavior of ``book bilingual update`` without model calls."""
 
 from __future__ import annotations
 
@@ -123,7 +123,7 @@ class BilingualUpdateTests(unittest.TestCase):
         code, stopped = self.update()
         self.assertEqual((code, stopped["status"]), (2, "review_required"))
         self.assertEqual(stopped["review"]["kind"], "fake_review")
-        self.assertEqual(stopped["resume"], "book-bilingual update fake_book")
+        self.assertEqual(stopped["resume"], "book bilingual update fake_book")
         pending = self.state()["pending"]
 
         self.fake.gate = False

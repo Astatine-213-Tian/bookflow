@@ -129,7 +129,7 @@ async def finish_cover(book: dict, state: Path, *, tools) -> None:
         book["cover_browser_task"] = str(task)
         write_json(state, book)
         raise ValueError(
-            f"Content uploaded; native cover awaits browser upload. Follow .agents/skills/book-management/references/notion-cover.md using {task}, then book-notion verify-cover --state {state}"
+            f"Content uploaded; native cover awaits browser upload. Follow .agents/skills/book-management/references/notion-cover.md using {task}, then book notion verify-cover --state {state}"
         )
     elif book.get("cover_url"):
         from src.notion.presentation import attach_public_cover

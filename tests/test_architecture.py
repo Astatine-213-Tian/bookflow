@@ -114,15 +114,15 @@ class CommandResultTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             missing = str(Path(root) / "missing")
             commands = {
-                "book-crawl": (crawl.main, ["--output", missing]),
-                "book-prepare": (prepare_book.main, [missing]),
-                "book-update": (
+                "book crawl": (crawl.main, ["--output", missing]),
+                "book prepare": (prepare_book.main, [missing]),
+                "book update": (
                     update_book.main,
                     [missing, "--change", missing, "--run-dir", missing],
                 ),
-                "book-compare": (compare_editions.main, [missing, missing]),
-                "book-validate-epub": (validate_epub_chapters.main, [root]),
-                "book-bilingual": (bilingual.main, ["update", missing]),
+                "book compare": (compare_editions.main, [missing, missing]),
+                "book validate-epub": (validate_epub_chapters.main, [root]),
+                "book bilingual": (bilingual.main, ["update", missing]),
             }
             for name, (main, argv) in commands.items():
                 with self.subTest(command=name):
@@ -135,3 +135,31 @@ class CommandResultTests(unittest.TestCase):
                     result = json.loads(stdout.getvalue().splitlines()[-1])
                     self.assertEqual((code, result["status"]), (1, "failed"))
                     self.assertTrue(result["error"])
+
+    def test_book_dispatches_every_command_the_docs_name(self):
+        import contextlib
+        import importlib
+        import io
+        import json
+        import re
+
+        from src.cli.main import COMMANDS, main
+
+        for module, _ in COMMANDS.values():
+            self.assertTrue(callable(importlib.import_module(module).main))
+        stdout = io.StringIO()
+        with (
+            contextlib.redirect_stdout(stdout),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            self.assertEqual(main([]), 0)
+            self.assertEqual(main(["not-a-command"]), 1)
+        listed = json.loads(stdout.getvalue().splitlines()[0])["commands"]
+        self.assertEqual(set(listed), set(COMMANDS))
+
+        documents = [ROOT / "AGENTS.md", ROOT / "README.md"]
+        documents += [*(ROOT / "docs").rglob("*.md"), *(ROOT / ".agents").rglob("*.md")]
+        for document in documents:
+            for name in re.findall(r"uv run book ([a-z][a-z-]*)", document.read_text()):
+                with self.subTest(document=document.name, command=name):
+                    self.assertIn(name, COMMANDS)

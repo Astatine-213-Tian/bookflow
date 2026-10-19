@@ -218,7 +218,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     configure_progress(debug=args.verbose)
     progress = ProgressLogger()
-    resume = f"book-bilingual update {args.book}" if args.command == "update" else None
+    resume = f"book bilingual update {args.book}" if args.command == "update" else None
     return run_command(lambda: run(args, progress), resume=resume)
 
 

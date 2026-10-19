@@ -51,7 +51,7 @@ A run contains `source.json`, an optional relative cover asset, and separate
 `report.json` / `evidence.json` files. Platform responses, comments, normalization
 findings and Notion transport IDs are not added to the public content contract.
 Notion's durable checkpoint under `state/notion/` stores its own page IDs and
-progress alongside a copy of the content; `book-notion export` strips that state.
+progress alongside a copy of the content; `book notion export` strips that state.
 Reusable local style bundles live in `assets/author_styles/`. Working runs and
 their retention are defined in [storage and cleanup](storage.md).
 
@@ -76,7 +76,7 @@ Local file preparation first scans quotation candidates in `content/quote_review
 Only approved block types change. Source CSS and locations stay in evidence;
 the runtime transport does not decide whether a paragraph is a quotation.
 Direct crawler ingestion uses provider-declared structure; save its JSON and
-run `book-prepare` when a separate semantic quotation review is needed.
+run `book prepare` when a separate semantic quotation review is needed.
 
 `inputs/references.py` resolves source destinations into portable anchors before
 preparation. `content/references.py` prepares canonical notes; `notion-books` validates their
@@ -89,7 +89,7 @@ to explicit archive maintenance without making XML processing part of content.
 Search and collection are independent capabilities. `ParserSpec.searchable`
 controls discovery; known source URLs/IDs go straight to collection. Previews
 must not fetch the full book. Patreon has collection support and no search.
-Both `book-crawl` and `book-ingest` call the same registered collector.
+Both `book crawl` and `book ingest` call the same registered collector.
 
 Patreon owns authentication/profile handling, platform APIs, post parsing and
 comment pagination/deduplication. It returns platform metadata, stable post IDs,
@@ -143,7 +143,7 @@ rich formatting and language annotations. Writers never run source cleanup.
 EPUB creation validates ZIP/XML/navigation before atomic installation. Every
 `write_book` EPUB is then checked in place: a corrupt ZIP fails the write, and
 chapter-numbering or nav/NCX issues are reported on the result
-(`book-ingest --strict-epub-validation` makes them fatal). Native
+(`book ingest --strict-epub-validation` makes them fatal). Native
 covers are thumbnails, with no separate reading page.
 
 `notion-books` owns typed validation, the REST block reader and resumable writer,
@@ -180,15 +180,15 @@ Cover recovery is separate from content progress, so retries preserve chapters.
 
 | Intent | Command |
 | --- | --- |
-| Search or acquire, then output | `book-ingest --search TITLE --mode epub` / `book-ingest URL --mode txt` |
-| Collect once for later tasks | `book-crawl URL --provider patreon --output generated/crawls/run` |
-| Prepare files/agent JSON | `book-prepare FILE --run-dir generated/ingest/run` |
-| Inspect ambiguous EPUB | `book-prepare FILE --inventory --run-dir generated/ingest/review` |
-| Apply local explicit changes | `book-update source.json --change change.json --run-dir generated/updates/run` |
-| Read/edit existing Notion content | `book-notion export` / `book-notion update` |
-| Make or update a bilingual book | `book-bilingual update BOOK`; stages `translate`, `validate`, `build` |
-| Repair an existing archive explicitly | `book-normalize`, `book-enrich-metadata` |
-| Check EPUB chapter numbering and navigation | `book-validate-epub FILE_OR_DIR` |
+| Search or acquire, then output | `book ingest --search TITLE --mode epub` / `book ingest URL --mode txt` |
+| Collect once for later tasks | `book crawl URL --provider patreon --output generated/crawls/run` |
+| Prepare files/agent JSON | `book prepare FILE --run-dir generated/ingest/run` |
+| Inspect ambiguous EPUB | `book prepare FILE --inventory --run-dir generated/ingest/review` |
+| Apply local explicit changes | `book update source.json --change change.json --run-dir generated/updates/run` |
+| Read/edit existing Notion content | `book notion export` / `book notion update` |
+| Make or update a bilingual book | `book bilingual update BOOK`; stages `translate`, `validate`, `build` |
+| Repair an existing archive explicitly | `book normalize`, `book enrich-metadata` |
+| Check EPUB chapter numbering and navigation | `book validate-epub FILE_OR_DIR` |
 
 Translation baselines use shared source JSON with matching chapter identities
 and paragraph coverage.
@@ -197,7 +197,7 @@ and paragraph coverage.
 
 `book_specs/<book>/config.json` names a source, a translation method, a glossary
 and outputs. `workflows/bilingual.py` runs collect → translate → validate →
-build; each stage is also a `book-bilingual` subcommand. Methods register in
+build; each stage is also a `book bilingual` subcommand. Methods register in
 `translation/methods.py` behind one interface: `translate` produces outputs,
 `validate` runs the method's review gates (semantic QA for style transfer), and
 `ready` re-checks a finished run without model calls before anything is written.

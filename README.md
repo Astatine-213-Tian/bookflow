@@ -21,13 +21,13 @@ actual crawl failure before opening an interactive browser for recovery.
 ## Find, acquire or import
 
 ```bash
-uv run book-ingest --list-parsers
-uv run book-ingest --search "全球高考" --mode epub
-uv run book-ingest --search "全球高考" --parser mgsf --first --mode epub
-uv run book-ingest "https://www.mangguoshufang.com/1/2574/info.html" --mode epub
-uv run book-ingest 2574 --parser mgsf --mode epub --mode txt
-uv run book-ingest original.epub --mode notion --run-dir generated/ingest/reviewed
-uv run book-ingest original.txt --title 书名 --author 作者 --mode txt --txt-output books/作者/书名.txt
+uv run book ingest --list-parsers
+uv run book ingest --search "全球高考" --mode epub
+uv run book ingest --search "全球高考" --parser mgsf --first --mode epub
+uv run book ingest "https://www.mangguoshufang.com/1/2574/info.html" --mode epub
+uv run book ingest 2574 --parser mgsf --mode epub --mode txt
+uv run book ingest original.epub --mode notion --run-dir generated/ingest/reviewed
+uv run book ingest original.txt --title 书名 --author 作者 --mode txt --txt-output books/作者/书名.txt
 ```
 
 Search creates lightweight previews before collection. Known URLs skip search.
@@ -38,9 +38,9 @@ Destinations must be explicit; `-o` or `--txt-output` can select a local format.
 Preparation can be run separately for review and reuse:
 
 ```bash
-uv run book-prepare original.epub --run-dir generated/ingest/reviewed
-uv run book-prepare irregular.epub --inventory --run-dir generated/ingest/inventory
-uv run book-prepare agent-content.json --run-dir generated/ingest/transcribed
+uv run book prepare original.epub --run-dir generated/ingest/reviewed
+uv run book prepare irregular.epub --inventory --run-dir generated/ingest/inventory
+uv run book prepare agent-content.json --run-dir generated/ingest/transcribed
 ```
 
 See [local editions](docs/local-editions.md) for EPUB range review and comparison.
@@ -55,17 +55,17 @@ Metadata enrichment is optional (`--enrich-metadata`) and preserves explicit
 values. Working reports and cover assets stay beside prepared JSON in the run
 directory; [storage and cleanup](docs/storage.md) defines what survives completion.
 Local preparation scans possible quotations and uses authenticated `codex exec`
-only when candidates need judgment. Use `book-prepare --scan-quotes` to inspect
+only when candidates need judgment. Use `book prepare --scan-quotes` to inspect
 them first, or `--quote-review` for saved session decisions; see
 [quotation review](docs/local-editions.md#review-possible-quotations).
 
 ## Update an existing book
 
 ```bash
-uv run book-update current.json --change change.json --run-dir generated/updates/run \
+uv run book update current.json --change change.json --run-dir generated/updates/run \
   --mode epub -o books/作者/修订版.epub
-uv run book-notion export --state state/notion/RUN/import.json --report current.json
-uv run book-notion update --state state/notion/RUN/import.json --change change.json
+uv run book notion export --state state/notion/RUN/import.json --report current.json
+uv run book notion update --state state/notion/RUN/import.json --change change.json
 ```
 
 [Change requests](docs/content-json.md#a-partial-correction-or-new-extra) identify
@@ -74,17 +74,17 @@ reviewed complete replacement chapter. Other content remains untouched. Notion
 updates resume from journals and stop on conflicting editor changes.
 
 For reference-based whitespace checks, suspect-text verification and missing author
-notes, use [`book-proofread`](docs/jinjiang-proofread.md) against readable Jinjiang
+notes, use [`book proofread`](docs/jinjiang-proofread.md) against readable Jinjiang
 chapters. It supports existing Notion works or local EPUB/source JSON and preserves
 edition differences.
 
 ## Notion
 
 ```bash
-uv run book-notion login
-uv run book-notion upload --source generated/ingest/reviewed/source.json
-uv run book-notion resume --state state/notion/RUN/import.json
-uv run book-notion verify --state state/notion/RUN/import.json
+uv run book notion login
+uv run book notion upload --source generated/ingest/reviewed/source.json
+uv run book notion resume --state state/notion/RUN/import.json
+uv run book notion verify --state state/notion/RUN/import.json
 ```
 
 Official MCP handles catalogs, creation/templates, linked views and manual chapter
@@ -97,14 +97,14 @@ EPUB retains quotes, links and notes; TXT projects them to readable text.
 ## Bilingual books
 
 ```bash
-uv run book-bilingual update eternal_gate --headless
-uv run book-bilingual --help
+uv run book bilingual update eternal_gate --headless
+uv run book bilingual --help
 ```
 
 A bilingual book is one spec under `book_specs/<book>/`: source, translation
 method and glossary, and output. `update` collects, translates, validates and
 writes it, resumes a paused run, and reuses the last successful build as its
-baseline. `book-crawl` runs collection on its own.
+baseline. `book crawl` runs collection on its own.
 
 Collection saves the public `source.json` and separate comments/platform evidence.
 Patreon collection membership is explicit; supplementary post IDs are book
@@ -113,7 +113,7 @@ provider with different titles, authors and languages.
 
 Translation currently targets English → Simplified Chinese. The spec's
 `translation.method` selects neutral, neutral with author style transfer, or
-direct positive scenes (`book-bilingual methods`); each keeps its own QA and
+direct positive scenes (`book bilingual methods`); each keeps its own QA and
 reuse checks, and all write structured bilingual content through the ordinary
 EPUB writer. See [Bilingual Books](AGENTS.md#bilingual-books).
 
@@ -131,9 +131,9 @@ explicitly in the request. Existing translation baselines are still reused.
 TXT output is independent of research. Request dataset bookkeeping explicitly:
 
 ```bash
-uv run book-ingest "<url>" --mode txt --dataset-root research/datasets
-uv run book-dataset export-txt --epub books/作者/书名.epub
-uv run book-dataset upsert --txt research/datasets/raw/作者/书名.txt
+uv run book ingest "<url>" --mode txt --dataset-root research/datasets
+uv run book dataset export-txt --epub books/作者/书名.epub
+uv run book dataset upsert --txt research/datasets/raw/作者/书名.txt
 ```
 
 Only the selected book's manifest entry is changed. Dataset classification can
@@ -152,8 +152,8 @@ finishes; successful runs do not require keeping every intermediate file.
 
 ```bash
 uv run python -m unittest discover -s tests -p 'test_*.py'
-uv run book-crawl --help
-uv run book-bilingual --help
+uv run book crawl --help
+uv run book bilingual --help
 ```
 
 Tests use synthetic content and substitute external transports. Live Notion

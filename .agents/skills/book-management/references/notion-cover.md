@@ -24,9 +24,9 @@ for a code-only refactor or fixture test.
    visible cover and run the independent readback:
 
    ```bash
-   uv run book-notion verify-cover --state state/notion/RUN/import.json
-   uv run book-notion resume --state state/notion/RUN/import.json
-   uv run book-notion verify --state state/notion/RUN/import.json
+   uv run book notion verify-cover --state state/notion/RUN/import.json
+   uv run book notion resume --state state/notion/RUN/import.json
+   uv run book notion verify --state state/notion/RUN/import.json
    ```
 
 `verify-cover` uses `NOTION_API_TOKEN` to read current native-cover metadata

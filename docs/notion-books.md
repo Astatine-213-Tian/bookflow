@@ -19,7 +19,7 @@ gh auth setup-git
 mise trust
 mise install
 mise exec -- uv sync --locked
-mise exec -- uv run --locked book-notion --help
+mise exec -- uv run --locked book notion --help
 ```
 
 最后一条命令显示帮助即表示依赖安装和 CLI 加载成功，不会连接 Notion。
@@ -39,16 +39,16 @@ mise exec -- uv run --no-cache --with /absolute/path/to/notion-books python -m u
 ## 使用
 
 ```bash
-uv run book-notion login
-uv run book-notion upload --source generated/ingest/reviewed/source.json
+uv run book notion login
+uv run book notion upload --source generated/ingest/reviewed/source.json
 # Optional later audit; upload already checks each body by live readback.
-uv run book-notion verify --state state/notion/HASH/import.json
-uv run book-ingest "作品URL" --mode notion
-uv run book-ingest "作品URL" --mode epub -o books/作者/书名.epub
-uv run book-ingest "作品URL" --mode epub --mode notion --mode txt
+uv run book notion verify --state state/notion/HASH/import.json
+uv run book ingest "作品URL" --mode notion
+uv run book ingest "作品URL" --mode epub -o books/作者/书名.epub
+uv run book ingest "作品URL" --mode epub --mode notion --mode txt
 ```
 
-`book-ingest --mode` 可重复指定 EPUB、Notion、TXT。未指定模式时，
+`book ingest --mode` 可重复指定 EPUB、Notion、TXT。未指定模式时，
 `-o` 选择 EPUB，`--txt-output` 选择 TXT；都未指定时 CLI 报错。
 训练导出另加 `--dataset-root research/datasets`，普通 TXT 不触发分类。
 组合输出逐项执行，失败时核对已有文件及检查点，再恢复未完成的输出。
@@ -58,7 +58,7 @@ uv run book-ingest "作品URL" --mode epub --mode notion --mode txt
 作者信息、封面元数据及正文通过官方 REST API 读写。OAuth 凭据保存在私有状态目录，
 可刷新。REST 操作需要进程环境中的 `NOTION_API_TOKEN`；集成须能访问目标库并有读取、插入及更新内容权限。
 凭据由进程环境提供，不写入检查点。脚注的实际 block ID 由 REST 获取，无需浏览器绑定。
-`book-notion logout` 删除本地 MCP token；重新授权使用 `book-notion login`。
+`book notion logout` 删除本地 MCP token；重新授权使用 `book notion login`。
 
 上传先按倒序串行创建页面以保留手动顺序，再并行写入最多 8 页正文；MCP 和 REST
 分别共享各自凭据的限速器。新正文每批最多 100 个顶层块，并受 450 KB / 1000 个嵌套块限制。
@@ -75,7 +75,7 @@ uv run book-ingest "作品URL" --mode epub --mode notion --mode txt
 
 封面使用官方 File Upload API，复用正文所需的 `NOTION_API_TOKEN`。
 已有 `cover-browser.json` 待办可按[封面流程](../.agents/skills/book-management/references/notion-cover.md)
-处理，再运行 `book-notion verify-cover --state ...`，通过 REST 回读验证（需要 token）。
+处理，再运行 `book notion verify-cover --state ...`，通过 REST 回读验证（需要 token）。
 封面恢复与正文分开，不重建正文。
 
 PNG/JPEG 最大 10 MiB、2500 万像素。封面不可读取或回读字节不一致时保留
@@ -107,7 +107,7 @@ PNG/JPEG 最大 10 MiB、2500 万像素。封面不可读取或回读字节不�
 保存每次创建返回的 ID，回读正文和属性后标记已验证；上传完成后以 Notion 中的编辑为准。
 
 ```bash
-uv run book-notion resume --state state/notion/<来源摘要>/import.json
+uv run book notion resume --state state/notion/<来源摘要>/import.json
 ```
 
 - 创建请求结果不确定：根据页面内容核对对应 ID，再修复检查点；不要盲目重建。
@@ -116,18 +116,18 @@ uv run book-notion resume --state state/notion/<来源摘要>/import.json
 - 疑似重复番外：上传前暂停，在检查点同目录生成 `extra-review.md`。按报告选择
   复用已有正文或新建，再续传；操作与判定范围见[共享番外](fanwai-notion.md)。
 - 实际顺序不同：在对应手动视图整理为源目录顺序，再续传；不会添加数字排序列。
-- `cover_pending` 表示封面附加结果不确定。运行 `book-notion verify-cover --state ...`
+- `cover_pending` 表示封面附加结果不确定。运行 `book notion verify-cover --state ...`
   核对当前原生图片字节后完成恢复；不要手工把 `cover_uploaded` 改成 true。
 
 不同目标库之间不能复用导入检查点。
 
 本地 EPUB/TXT 的内容准备、卷标签颜色、公开 URL 封面和
-模板恢复可用 `book-notion recover-template --state ...`，然后 resume 原检查点。
+模板恢复可用 `book notion recover-template --state ...`，然后 resume 原检查点。
 新建作品时已提交默认模板请求；Notion 返回成功后，模板内容仍可能延迟出现。
 上传器等待原请求的数据库和视图可读，最长约十分钟（另加读取耗时），才开始上传正文。
 空白页面不代表请求失败；`recover-template` 只继续发现原请求的结果，不重复应用模板。
 超时后继续 resume 同一检查点，不手动重新套模板或复制数据库，否则迟到的请求会产生重复库。
-`book-notion upload` 接收已审查的共享 source.json；无需每次编写上传脚本。
+`book notion upload` 接收已审查的共享 source.json；无需每次编写上传脚本。
 新建作者时，通过晋江作者检索查找唯一匹配的主页；找到后在同一次创建中
 填写「晋江主页」URL，并回读验证。检索失败会中止创建，明确无匹配才留空。
 已存在的作者直接复用；导入检查点保留新建作者的主页，供恢复和验证使用。

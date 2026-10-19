@@ -59,7 +59,7 @@ not universal regex rules that delete paragraphs from every book.
 ## A partial correction or new extra
 
 1. Read the current book JSON. For Notion use
-   `book-notion export --state IMPORT --report current.json`; chapter text is
+   `book notion export --state IMPORT --report current.json`; chapter text is
    freshly read, while book metadata/outline come from the import checkpoint.
 2. Read supplied images using the image transcription workflow. Reconcile the
    affected region with current content and review a complete replacement
@@ -67,8 +67,8 @@ not universal regex rules that delete paragraphs from every book.
 3. Compute `content_hash(current["chapters"][chapter_id])` using
    `src.content.changes`. Save the explicit task below; do not hash transport
    checkpoint fields or a differently formatted string.
-4. Run `book-update current.json --change change.json --run-dir generated/updates/run`
-   for local content, or `book-notion update --state IMPORT --change change.json`.
+4. Run `book update current.json --change change.json --run-dir generated/updates/run`
+   for local content, or `book notion update --state IMPORT --change change.json`.
    Repeat the same task ID to resume an interrupted Notion write.
 
 ```json

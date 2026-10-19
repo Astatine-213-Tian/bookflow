@@ -19,9 +19,9 @@
 使用[现有 EPUB 维护](local-editions.md#existing-epub-maintenance)的只读检查：
 
 ```bash
-uv run book-normalize "INPUT.epub" --check --no-metadata --no-codex-review \
+uv run book normalize "INPUT.epub" --check --no-metadata --no-codex-review \
   --report /private/tmp/bookflow-proofreading-normalization.json
-uv run book-validate-epub "INPUT.epub"
+uv run book validate-epub "INPUT.epub"
 ```
 
 `--check` 必须保留。第一条只提出共享规则的变化，不能把修复计数解释成已修复或已批准。

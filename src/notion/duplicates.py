@@ -165,7 +165,7 @@ def review_report(book: dict, state: Path, documents: dict) -> Path:
         "比较忽略繁简、标点、空白、大小写和排版；差异摘要保留原文。",
         "",
     ]
-    command = "uv run book-notion resolve-extra --state " + shlex.quote(str(state))
+    command = "uv run book notion resolve-extra --state " + shlex.quote(str(state))
     for index, item in enumerate(book["extras"], 1):
         review = item.get("duplicate_review")
         if not review or item.get("page_id"):
@@ -244,7 +244,7 @@ def review_report(book: dict, state: Path, documents: dict) -> Path:
             "选择完成后续传：",
             "",
             "```bash",
-            f"uv run book-notion resume --state {shlex.quote(str(state))}",
+            f"uv run book notion resume --state {shlex.quote(str(state))}",
             "```",
             "",
         ]
@@ -273,7 +273,7 @@ def resolve_extra(state: Path, index: int, *, use_existing: str | None = None) -
     review["decision"] = decision
     write_json(state, book)
     print(
-        f"Saved extra {index}: {decision['action']}; run book-notion resume to recheck and upload"
+        f"Saved extra {index}: {decision['action']}; run book notion resume to recheck and upload"
     )
 
 

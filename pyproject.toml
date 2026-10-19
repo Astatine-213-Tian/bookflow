@@ -27,18 +27,7 @@ dependencies = [
 ]
 
 [project.scripts]
-book-ingest = "src.cli.ingest:main"
-book-prepare = "src.cli.prepare_book:main"
-book-update = "src.cli.update_book:main"
-book-compare = "src.cli.compare_editions:main"
-book-proofread = "src.cli.proofread:main"
-book-crawl = "src.cli.crawl:main"
-book-bilingual = "src.cli.bilingual:main"
-book-dataset = "src.cli.dataset:main"
-book-normalize = "src.cli.normalize_epub:main"
-book-enrich-metadata = "src.cli.enrich_epub_metadata:main"
-book-notion = "src.cli.notion_book:main"
-book-validate-epub = "src.cli.validate_epub_chapters:main"
+book = "src.cli.main:main"
 
 [tool.setuptools.packages.find]
 include = ["src*"]

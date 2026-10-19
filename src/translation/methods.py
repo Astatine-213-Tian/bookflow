@@ -362,7 +362,7 @@ def _style_ready(
     ):
         raise ValueError(
             "styled output has no current semantic QA summary; run "
-            "`book-bilingual validate` before building"
+            "`book bilingual validate` before building"
         )
     return summary
 

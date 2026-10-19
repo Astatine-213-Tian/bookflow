@@ -10,8 +10,8 @@ Paths below are relative to the checkout. Run maintained commands from its root.
 | `state/notion/<source-id>/` | Import identities, write journals, recovery state and covers | Keep for future updates and recovery, including after successful upload. |
 | `state/notion/shared-extras/<data-source-id>/comparison.json` | Shared-extra comparison snapshots with observed revisions | Retain across books and resumes; a fresh complete inventory validates reuse. Safe to remove to force a full scan. |
 | `generated/ingest/`, `generated/updates/` | Working content JSON and preparation/review results | Keep unfinished work and the only reviewed copy; retire intermediates after destination verification. |
-| `bilingual/<book>/state.json` | A bilingual book's pending run and last successful build | Keep; `book-bilingual update` reads it to resume and to reuse the baseline. |
-| `bilingual/<book>/snapshots/<date>/`, `bilingual/<book>/runs/<date>/` | Collected sources, translations and QA evidence | Keep the baseline named in `state.json` with its matching snapshot and one rollback pair. A lost baseline can be recovered with `book-bilingual seed` from the last bilingual EPUB. |
+| `bilingual/<book>/state.json` | A bilingual book's pending run and last successful build | Keep; `book bilingual update` reads it to resume and to reuse the baseline. |
+| `bilingual/<book>/snapshots/<date>/`, `bilingual/<book>/runs/<date>/` | Collected sources, translations and QA evidence | Keep the baseline named in `state.json` with its matching snapshot and one rollback pair. A lost baseline can be recovered with `book bilingual seed` from the last bilingual EPUB. |
 | `books/<author>/` | Final reader outputs | Keep until explicitly replaced or removed. |
 | System temporary directory, e.g. `/private/tmp/bookflow-<task>/` | One-off scripts, API probes, screenshots, crops and preview builds | Remove when the task is verified. |
 

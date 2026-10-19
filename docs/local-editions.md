@@ -5,14 +5,14 @@ the original input. Content selection belongs in reviewed data;
 reusable extraction fixes belong in `src/inputs/`.
 
 ```bash
-uv run book-prepare original.epub --run-dir generated/ingest/reviewed
-uv run book-ingest generated/ingest/reviewed/source.json --mode epub --mode notion \
+uv run book prepare original.epub --run-dir generated/ingest/reviewed
+uv run book ingest generated/ingest/reviewed/source.json --mode epub --mode notion \
   --run-dir generated/ingest/final -o books/作者/书名.epub
-uv run book-ingest original.txt --title 书名 --author 作者 --mode txt \
+uv run book ingest original.txt --title 书名 --author 作者 --mode txt \
   --txt-output books/作者/书名.txt
 ```
 
-`book-prepare` saves schema-validated `source.json`, optional cover bytes and
+`book prepare` saves schema-validated `source.json`, optional cover bytes and
 `report.json`. Inspect normalization findings before upload. Enrichment is
 explicit: add `--enrich-metadata` to fill missing values; add `--official-outline`
 to use a reviewed official directory. `--chapter-aliases` can resolve known title
@@ -38,7 +38,7 @@ are handled by one extractor. Missing or contradictory coverage and body images
 require an explicit decision. First inventory the EPUB:
 
 ```bash
-uv run book-prepare original.epub --inventory --run-dir generated/ingest/inventory
+uv run book prepare original.epub --inventory --run-dir generated/ingest/inventory
 ```
 
 `inventory.json` lists every spine page's blocks, anchors and TOC, plus the input
@@ -68,7 +68,7 @@ could be misread as volume 10000. Once the source confirms volume 1, supply
 `卷一 万物复苏` or `第一卷万物复苏`; shared normalization produces `卷一·万物复苏`.
 
 ```bash
-uv run book-prepare original.epub --review reviewed-ranges.json \
+uv run book prepare original.epub --review reviewed-ranges.json \
   --run-dir generated/ingest/prepared
 ```
 
@@ -79,7 +79,7 @@ options require a fresh run directory. Local output cannot replace its input.
 ## Compare editions only when requested
 
 ```bash
-uv run book-compare first.epub second.txt --report /private/tmp/bookflow-edition-comparison.json
+uv run book compare first.epub second.txt --report /private/tmp/bookflow-edition-comparison.json
 ```
 
 Comparison evaluates ordered chapter bodies and meaningful repeats. It is an
@@ -95,7 +95,7 @@ high-confidence `quote` changes a paragraph's type. Other judgments preserve
 text and formatting, with uncertainty recorded in `quote-review.json`.
 No arbitrary `.center` or small-font class is treated as a quotation by itself.
 
-`book-prepare FILE --scan-quotes --review ranges.json --run-dir generated/ingest/review`
+`book prepare FILE --scan-quotes --review ranges.json --run-dir generated/ingest/review`
 writes `quote-candidates.json` without calling a model. An agent session can
 supply exact, fingerprint-bound decisions with `--quote-review decisions.json`.
 The default workflow uses the locally authenticated `codex exec`, caches validated
@@ -104,8 +104,8 @@ an API token. The model can classify only: missing/duplicate IDs, rewrites and
 stale decisions are rejected.
 
 Use a fresh run directory when changing candidate decisions; the prepared cache
-also binds those decisions. `--quote-review` is available on `book-ingest` for
-local files. For direct crawls, save `source.json` first and run `book-prepare`
+also binds those decisions. `--quote-review` is available on `book ingest` for
+local files. For direct crawls, save `source.json` first and run `book prepare`
 on that file when a semantic quotation review is needed.
 
 EPUB 2/3 links and declared footnotes are extracted before normalization.
@@ -123,14 +123,14 @@ For visual proofreading, cover cleanup or downloaded filenames/metadata, use
 changes, then apply the confirmed scope. Its reviewed role-specific alignment
 and numbering choices override the generic preparation defaults below.
 
-`book-normalize FILE --check` audits an existing archive; omit `--check` only for
+`book normalize FILE --check` audits an existing archive; omit `--check` only for
 an explicitly requested repair. This maintenance command optionally enriches
 metadata, applies shared [text and volume-label rules](normalization.md) and
 supported XML repairs, reviews remaining findings with read-only Codex, then
 validates again. Block classification (numbered subheadings, lists and quotation
-review) runs through `book-prepare`. `--no-metadata` and
+review) runs through `book prepare`. `--no-metadata` and
 `--no-codex-review` disable those optional stages. Ordinary ingestion uses
-`book-prepare` and never repairs its source archive in place.
+`book prepare` and never repairs its source archive in place.
 
 ### Reviewed structure
 
@@ -157,7 +157,7 @@ actual chapter identities before any rename. Preserve uncertain content.
 
 Normal preparation with `--enrich-metadata` fills missing fields and preserves
 source/user values. Explicit archive metadata repair has a different policy:
-`book-enrich-metadata FILE --check --report PATH` proposes authoritative updates.
+`book enrich-metadata FILE --check --report PATH` proposes authoritative updates.
 Inspect `dc:date` as publication date and `dcterms:modified` as edit timestamp.
 A verified exact Jinjiang title/author match is primary; KadoKado is a fallback
 only after a completed lookup has no defensible match, not after a network error.
@@ -193,6 +193,6 @@ Metadata-only repair changes the OPF and edit timestamp, not chapter bodies.
   thumbnail asset without a separate reading page. Visible chapter/prologue
   headings are centered; numbered subheadings follow the shared content rules.
 - Validate ZIP/XML, spine/navigation targets and chapter ordering with
-  `uv run book-validate-epub FILE`. Verify a second pass is
+  `uv run book validate-epub FILE`. Verify a second pass is
   unchanged. Reports under `reports/normalization/` record fixes, review decisions
   and unresolved findings; source defects must be inspected before dismissal.

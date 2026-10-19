@@ -239,5 +239,5 @@ async def ensure_views(book: dict, path: Path, config: dict, *, tools) -> None:
     raise ValueError(
         "Book template is still pending; a blank page does not prove it failed. "
         "Do not reapply or copy the template: the original request can finish later. "
-        f"Resume the same checkpoint: uv run book-notion resume --state {path}"
+        f"Resume the same checkpoint: uv run book notion resume --state {path}"
     )
