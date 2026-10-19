@@ -75,8 +75,8 @@
 
 ### 章节标题与番外标题
 
-- 主章节编号统一使用普通中文数字：`第12章 标题` → `第十二章 标题`，
-  `第１回` → `第一回`，不用“壹、贰、叁”。编号与非空标题间一个普通空格。
+- 主章节编号统一使用半角阿拉伯数字：`第十二章 标题` → `第12章 标题`，
+  `第１回` → `第1回`，`第〇〇一章` → `第1章`。编号与非空标题间一个普通空格。
   只转换开头明确的 `第N章` / `第N回` / `第N节`；保留原章号、缺号和编号范围，
   不重排、不补号，不改标题中的年份、Part 数字及正文数字。
 - 标题中的分隔句点用 `·`，英文逗号按中文标题语境改为 `，`；保护小数、扩展名和省略号。
@@ -92,7 +92,7 @@
 
 - 已确定的章内小标题使用 H3（EPUB 为 `1.1em`），大小与对齐独立。
   编号小标题居中，编号统一为普通中文数字：`（1）` → `（一）`、`2、标题` → `二、标题`、
-  H3 中的 `第1章` → `第一章`（目录章号同样使用中文数字）；
+  H3 中的 `第一章` → `第1章`（与目录章号同样使用阿拉伯数字）；
   保留括号、标题措辞和标题中其他数字，不改成“壹、贰、叁”。无编号小标题保留明确对齐。
 - 纯数字正文段落只有形成从一开始的连续序列、至少两节且每节有正文，才推断为小标题。
   孤立数字、相邻数字列表、缺号序列、引文、右对齐日期和双语对齐块不能据此推断。
@@ -139,9 +139,9 @@
 ```normalization-examples
 [
   {"input":"他说ＭＳＮ，ＱＱ都是１００分。","expected":"他说 MSN，QQ 都是 100 分。"},
-  {"input":"第94-95章 2008年的故事","expected":"第九十四-九十五章 2008 年的故事","title":true},
-  {"input":"第１章","expected":"第一章","title":true},
-  {"input":"第12章 番外卷·旅途","expected":"第十二章 番外卷·旅途","title":true},
+  {"input":"第94-95章 2008年的故事","expected":"第94-95章 2008 年的故事","title":true},
+  {"input":"第一章","expected":"第1章","title":true},
+  {"input":"第12章 番外卷·旅途","expected":"第12章 番外卷·旅途","title":true},
   {"input":"中文English１２３测试。","expected":"中文 English123 测试。"},
   {"input":"A sentence, with words.","expected":"A sentence, with words."},
   {"input":"“ＮＩＣＥ　ＤＯＧＳ！”","expected":"“NICE DOGS！”"},
@@ -164,8 +164,8 @@
     "expected": [{"kind":"heading","level":3,"alignment":"center","runs":[{"text":"（一）开场","styles":[]}]}]
   },
   {
-    "input": [{"kind":"heading","level":3,"runs":[{"text":"第1章 Part 1","styles":[]}]}],
-    "expected": [{"kind":"heading","level":3,"alignment":"center","runs":[{"text":"第一章 Part 1","styles":[]}]}]
+    "input": [{"kind":"heading","level":3,"runs":[{"text":"第一章 Part 1","styles":[]}]}],
+    "expected": [{"kind":"heading","level":3,"alignment":"center","runs":[{"text":"第1章 Part 1","styles":[]}]}]
   },
   {
     "input": [{"kind":"paragraph","runs":[{"text":"一","styles":[]}]},{"kind":"paragraph","runs":[{"text":"起。","styles":[]}]},{"kind":"paragraph","runs":[{"text":"二","styles":[]}]},{"kind":"paragraph","runs":[{"text":"承。","styles":[]}]}],

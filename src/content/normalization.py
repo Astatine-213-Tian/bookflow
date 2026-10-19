@@ -60,8 +60,9 @@ CJK_SPACE_BEFORE_OPEN_RE = re.compile(
 )
 
 
+ORDINAL_NUMBER = r"(?:\d+|[零〇一二三四五六七八九十百千万两]+)"
 ORDINAL_RE = re.compile(
-    r"第\s*(?:\d+|[零〇一二三四五六七八九十百千万两]+)\s*[章回节卷部]"
+    rf"第\s*{ORDINAL_NUMBER}(?:\s*[-—–至]\s*{ORDINAL_NUMBER})?\s*[章回节卷部]"
 )
 
 CHAPTER_ORDINAL_NUMBER = r"(?:[0-9]+|[零〇一二两三四五六七八九十百千万]+)"
@@ -73,17 +74,17 @@ CHAPTER_ORDINAL_RE = re.compile(
 
 
 def normalize_chapter_ordinal(text: str) -> str:
-    """Convert an explicit chapter prefix, preserving its number and subtitle."""
+    """Convert an explicit chapter prefix to Arabic digits, keeping its subtitle."""
     text = normalize_alphanumeric_width(text)
     match = CHAPTER_ORDINAL_RE.match(text)
     if not match:
         return text
-    number = format_chinese_numeral(parse_number(match["number"]))
+    number = str(parse_number(match["number"]))
     if match["range"]:
         separator, end = re.fullmatch(
             r"\s*([-—–至])\s*(.+)", match["range"]
         ).groups()
-        number += separator + format_chinese_numeral(parse_number(end))
+        number += separator + str(parse_number(end))
     suffix = text[match.end():].strip()
     return f"第{number}{match['unit']}" + (" " + suffix if suffix else "")
 

@@ -22,16 +22,17 @@ from tests.fixtures import paragraph, write_source
 
 
 class NormalizationRulesTests(unittest.TestCase):
-    def test_chapter_ordinals_use_chinese_without_renumbering(self):
+    def test_chapter_ordinals_use_arabic_without_renumbering(self):
         cases = {
-            "第 ００１ 章 标题2012": "第一章 标题 2012",
-            "第0回": "第零回",
-            "第85章": "第八十五章",
-            "第94-95章": "第九十四-九十五章",
-            "第102节 Part 2": "第一百零二节 Part 2",
-            "第10001章": "第一万零一章",
-            "第１回 路西斐尔书（一）": "第一回 路西斐尔书（一）",
-            "第一〇二章": "第一百零二章",
+            "第 ００１ 章 标题2012": "第1章 标题 2012",
+            "第零回": "第0回",
+            "第八十五章": "第85章",
+            "第94-95章": "第94-95章",
+            "第九十四至九十五章": "第94至95章",
+            "第一百零二节 Part 2": "第102节 Part 2",
+            "第一万零一章": "第10001章",
+            "第１回 路西斐尔书（一）": "第1回 路西斐尔书（一）",
+            "第一〇二章": "第102章",
             "Part 1": "Part 1",
             "我读过第1章": "我读过第1章",
             "第1章 番外1 旅途": "番外一·旅途",
@@ -54,7 +55,7 @@ class NormalizationRulesTests(unittest.TestCase):
         )
         root = ET.fromstring(result)
         heading = root.find("body/h2")
-        self.assertEqual("".join(heading.itertext()), "第十二章 标题 2012")
+        self.assertEqual("".join(heading.itertext()), "第12章 标题 2012")
         self.assertEqual(heading.attrib["id"], "chapter")
         self.assertIsNotNone(heading.find("b"))
         self.assertEqual(root.findtext("body/p"), "第12章")
@@ -210,7 +211,7 @@ class NormalizationRulesTests(unittest.TestCase):
     def test_shared_volume_labels_preserve_identity_body_and_color(self):
         with tempfile.TemporaryDirectory() as d:
             source = write_source(
-                Path(d), ["我读过第一卷。"], chapter_title="第一章 初识"
+                Path(d), ["我读过第一卷。"], chapter_title="第1章 初识"
             )
             source["sections"] = [
                 {

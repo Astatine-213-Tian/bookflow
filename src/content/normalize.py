@@ -20,13 +20,14 @@ from src.content.normalization import (
     _normalize_plain_text,
     is_separator_marker,
     normalize_alphanumeric_width,
+    normalize_chapter_ordinal,
     normalized_end_marker,
     scan_content_issues,
 )
 from src.content.numerals import format_chinese_numeral
 from src.content.titles import normalize_outline, normalize_volume_colors
 
-RULES_SHA256 = "0dd16923c4f82adda7084343585af7d3b21ab413a7167413ba9ee0f456d60602"
+RULES_SHA256 = "770e9e38201147fe8e4a916b25705a4190d2e2fc0b3383aa75b2909fdfa34fa0"
 
 SECTION_NUMBER = r"(?:[0-9０-９]{1,3}|[一二三四五六七八九十百零〇]+)"
 SECTION_LABEL_RE = re.compile(
@@ -116,11 +117,16 @@ def normalize_subheadings(
             or block["kind"] == "heading"
             and (SECTION_LABEL_RE.fullmatch(text) or NUMBERED_HEADING_RE.match(text))
         ):
-            normalized = re.sub(
-                r"^([（(第]?)([0-9０-９]+)",
-                lambda match: match[1] + format_chinese_numeral(int(match[2])),
-                text,
-                count=1,
+            # Chapter ordinals use Arabic digits; section labels use Chinese.
+            normalized = (
+                normalize_chapter_ordinal(text)
+                if text.startswith("第")
+                else re.sub(
+                    r"^([（(]?)([0-9０-９]+)",
+                    lambda match: match[1] + format_chinese_numeral(int(match[2])),
+                    text,
+                    count=1,
+                )
             )
             changed = (block["kind"], block.get("level"), block.get("alignment")) != (
                 "heading",
