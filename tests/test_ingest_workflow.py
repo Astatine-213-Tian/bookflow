@@ -15,6 +15,7 @@ from src.crawler.registry import ParserSpec
 from src.dataset.library import export_txt_dataset, load_manifest
 from src.epub.validate import EpubCheck
 from src.workflows.ingest import (
+    DatasetOptions,
     IngestResult,
     OutputOptions,
     ingest,
@@ -64,25 +65,20 @@ class IngestWorkflowTests(unittest.TestCase):
                     "第二段。", archive.read("EPUB/chapter_0001.xhtml").decode()
                 )
 
-    def test_strict_validation_fails_on_reported_epub_issues(self):
-        epub = Path("book.epub")
-        for issues, expected in [((), 0), (("number gap",), 1)]:
-            result = IngestResult(
-                epub_path=epub, epub_check=EpubCheck(epub, 1, issues)
-            )
+    def test_cli_passes_strict_validation_to_the_write_step(self):
+        for flag, expected in (([], False), (["--strict-epub-validation"], True)):
             with (
-                self.subTest(issues=issues),
-                patch("src.cli.ingest.ingest", return_value=result),
-                patch(
-                    "src.cli.ingest.extract_epub_text",
-                    return_value=("书", "作者", ""),
-                ),
+                self.subTest(strict=expected),
+                patch("src.cli.ingest.ingest", return_value=IngestResult()) as run,
             ):
                 code = ingest_main(
                     ["https://example.org/book", "--parser", "mgsf", "--mode", "epub"]
-                    + ["--strict-epub-validation"]
+                    + flag
                 )
-                self.assertEqual(code, expected)
+                self.assertEqual(code, 0)
+                self.assertEqual(
+                    run.call_args.kwargs["output_options"].strict_epub, expected
+                )
 
     def test_ingest_applies_collection_overrides_like_book_crawl(self):
         parser = ParserSpec(
@@ -217,13 +213,58 @@ class IngestWorkflowTests(unittest.TestCase):
                 book(),
                 OutputOptions(
                     txt_output=target,
-                    dataset_root=root / "dataset",
+                    dataset=DatasetOptions(
+                        root / "dataset", fetch_jjwxc=False, codex_classify=False
+                    ),
                     output_formats=("txt",),
                 ),
             )
             self.assertEqual(result.txt_path, target)
             self.assertIn("内容。", target.read_text())
-            self.assertFalse((root / "dataset").exists())
+            self.assertFalse((root / "dataset" / "raw").exists())
+            self.assertEqual(len(load_manifest(root / "dataset")), 1)
+
+    def test_dataset_entry_is_written_with_its_txt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset = DatasetOptions(
+                root / "dataset", fetch_jjwxc=False, codex_classify=False
+            )
+            with self.assertRaisesRegex(ValueError, "requires the txt format"):
+                write_outputs(
+                    book(),
+                    OutputOptions(
+                        output=root / "book.epub",
+                        output_formats=("epub",),
+                        dataset=dataset,
+                    ),
+                )
+            result = write_outputs(
+                book(), OutputOptions(output_formats=("txt",), dataset=dataset)
+            )
+            rows = load_manifest(root / "dataset")
+            self.assertEqual([row["title"] for row in rows], ["书"])
+            self.assertEqual(result.dataset_entry.title, "书")
+            self.assertTrue(result.txt_path.is_relative_to(root / "dataset" / "raw"))
+
+    def test_strict_epub_validation_stops_before_later_outputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            issues = EpubCheck(root / "book.epub", 1, ("number gap",))
+            with (
+                patch("src.workflows.ingest.check_written_epub", return_value=issues),
+                self.assertRaisesRegex(ValueError, "later outputs were not written"),
+            ):
+                write_outputs(
+                    book(),
+                    OutputOptions(
+                        output=root / "book.epub",
+                        txt_output=root / "book.txt",
+                        output_formats=("epub", "txt"),
+                        strict_epub=True,
+                    ),
+                )
+            self.assertFalse((root / "book.txt").exists())
 
     def test_cli_requires_choice_and_paths_can_express_it(self):
         for entry, module in [(crawl_main, "ingest"), (ingest_main, "ingest")]:

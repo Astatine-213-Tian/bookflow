@@ -9,11 +9,15 @@ from pathlib import Path
 from src.crawler.models import CrawlOptions
 from src.crawler.registry import PARSERS, find_parser
 from src.crawler.search import build_previews, choose_preview, search_all
-from src.dataset.library import extract_epub_text, upsert_txt_dataset_entry
 from src.metadata.jjwxc import GENRES, TIME_AREAS
 from src.runtime.paths import repo_root
 from src.runtime.progress import ProgressLogger, configure_progress
-from src.workflows.ingest import OutputOptions, ingest, requested_formats
+from src.workflows.ingest import (
+    DatasetOptions,
+    OutputOptions,
+    ingest,
+    requested_formats,
+)
 
 
 def select_search_target(
@@ -203,7 +207,18 @@ def main(argv: list[str] | None = None) -> int:
         output=args.output,
         txt_output=args.txt_output,
         output_formats=tuple(args.mode or ()),
-        dataset_root=args.dataset_root if not args.txt_output else None,
+        dataset=DatasetOptions(
+            root=args.dataset_root,
+            jjwxc_manifest=args.jjwxc_manifest,
+            jjwxc_top50=args.jjwxc_top50,
+            fetch_jjwxc=not args.no_fetch_jjwxc,
+            codex_classify=not args.no_codex_classify,
+            time_area=args.time_area,
+            genre=args.genre,
+        )
+        if args.dataset_root
+        else None,
+        strict_epub=args.strict_epub_validation,
         prevent_overwrite=not args.overwrite,
         enrich_metadata=args.enrich_metadata,
     )
@@ -268,32 +283,6 @@ def main(argv: list[str] | None = None) -> int:
                     concurrency=args.concurrency,
                 ),
             )
-
-        epub_path = result.epub_path
-        title: str | None = None
-        author: str | None = None
-        if epub_path:
-            title, author, _ = extract_epub_text(epub_path)
-            check = result.epub_check
-            if args.strict_epub_validation and check and check.issues:
-                return 1
-
-        if result.txt_path and args.dataset_root:
-            entry = upsert_txt_dataset_entry(
-                txt_path=result.txt_path,
-                output_root=args.dataset_root,
-                jjwxc_manifest=args.jjwxc_manifest,
-                jjwxc_top50=args.jjwxc_top50,
-                fetch_jjwxc=not args.no_fetch_jjwxc,
-                codex_classify=not args.no_codex_classify,
-                title=title,
-                author=author,
-                source_epub=epub_path,
-                time_area=args.time_area,
-                genre=args.genre,
-            )
-            progress.info(f"dataset upserted: {entry.author}::{entry.title}")
-            progress.info(f"txt: {entry.txt_path}")
 
         for label, path in (
             ("Content JSON and reports", result.source_path),

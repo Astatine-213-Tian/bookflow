@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any
 
 from src.crawler.models import CrawledBook, CrawlOptions, DownloadedEdition
 from src.crawler.registry import ParserSpec
@@ -23,13 +24,27 @@ from src.runtime.files import digest
 
 
 @dataclass(frozen=True)
+class DatasetOptions:
+    """A training-dataset TXT: written under ``root`` and listed in its manifest."""
+
+    root: Path
+    jjwxc_manifest: Path | None = None
+    jjwxc_top50: Path | None = None
+    fetch_jjwxc: bool = True
+    codex_classify: bool = True
+    time_area: str | None = None
+    genre: str | None = None
+
+
+@dataclass(frozen=True)
 class OutputOptions:
     output: Path | None = None
     txt_output: Path | None = None
     output_formats: tuple[str, ...] = ()
-    dataset_root: Path | None = None
+    dataset: DatasetOptions | None = None
     prevent_overwrite: bool = True
     enrich_metadata: bool = False
+    strict_epub: bool = False
 
 
 @dataclass(frozen=True)
@@ -39,6 +54,7 @@ class IngestResult:
     notion_state: Path | None = None
     source_path: Path | None = None
     epub_check: EpubCheck | None = None
+    dataset_entry: Any = None
 
 
 def requested_formats(options: OutputOptions) -> tuple[str, ...]:
@@ -68,6 +84,8 @@ def requested_formats(options: OutputOptions) -> tuple[str, ...]:
         raise ValueError("--output requires the epub format")
     if options.txt_output is not None and "txt" not in formats:
         raise ValueError("--txt-output requires the txt format")
+    if options.dataset is not None and "txt" not in formats:
+        raise ValueError("--dataset-root requires the txt format")
     return tuple(formats)
 
 
@@ -79,9 +97,9 @@ def resolve_requested_txt_output(
 ) -> Path:
     if options.txt_output is not None:
         return resolve_txt_output_path(options.txt_output, title, author)
-    if options.dataset_root:
+    if options.dataset:
         return dataset_txt_output_path(
-            options.dataset_root,
+            options.dataset.root,
             title=title,
             author=author,
             time_area="",
@@ -139,8 +157,18 @@ def write_book(
         progress = ProgressLogger()
         for line in epub_check.report_lines():
             (progress.warning if epub_check.issues else progress.info)(line)
+        if options.strict_epub and epub_check.issues:
+            raise ValueError(
+                f"{epub_path} has {len(epub_check.issues)} chapter-numbering or "
+                "navigation issue(s); later outputs were not written"
+            )
+    dataset_entry = None
     if txt_path:
         write_prepared_txt(book, txt_path)
+        if options.dataset:
+            dataset_entry = write_dataset_entry(
+                options.dataset, txt_path, metadata, source_epub=epub_path
+            )
     notion_state = None
     if "notion" in formats:
         from src.notion.upload import upload_source
@@ -149,8 +177,39 @@ def write_book(
             book, cover_bytes=cover if not cover_url else None, cover_url=cover_url
         )
     return IngestResult(
-        epub_path, txt_path, notion_state, epub_check=epub_check
+        epub_path,
+        txt_path,
+        notion_state,
+        epub_check=epub_check,
+        dataset_entry=dataset_entry,
     )
+
+
+def write_dataset_entry(
+    dataset: DatasetOptions,
+    txt_path: Path,
+    metadata: dict,
+    *,
+    source_epub: Path | None = None,
+):
+    """List a just-written TXT in its dataset manifest, replacing any old entry."""
+    from src.dataset.library import upsert_txt_dataset_entry
+
+    entry = upsert_txt_dataset_entry(
+        txt_path=txt_path,
+        output_root=dataset.root,
+        jjwxc_manifest=dataset.jjwxc_manifest,
+        jjwxc_top50=dataset.jjwxc_top50,
+        fetch_jjwxc=dataset.fetch_jjwxc,
+        codex_classify=dataset.codex_classify,
+        title=metadata["title"],
+        author=metadata["creator"],
+        source_epub=source_epub,
+        time_area=dataset.time_area,
+        genre=dataset.genre,
+    )
+    ProgressLogger().info(f"dataset upserted: {entry.author}::{entry.title}")
+    return entry
 
 
 def write_outputs(
