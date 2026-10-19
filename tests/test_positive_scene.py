@@ -141,6 +141,56 @@ class PositiveSceneTests(unittest.TestCase):
         for config in ({}, {"translation": {"method": "unknown"}}):
             with self.assertRaisesRegex(ValueError, "translation.method"):
                 method_for(config)
+    def test_unchanged_chapters_reuse_the_baseline_without_model_calls(self) -> None:
+        import hashlib
+        import json
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        from src.runtime.files import write_json
+        from src.translation.positive_scene import run_positive_scenes
+        from tests.fixtures import write_source
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_source(root / "snapshot", ["The door opened.", "He smiled."])
+            groups = [
+                {"english_indices": [0], "paragraphs": ["门开了。"]},
+                {"english_indices": [1], "paragraphs": ["他笑了。"]},
+            ]
+            write_json(
+                root / "baseline/translations/01.json",
+                {"chapter_id": "01", "groups": groups},
+            )
+            write_json(root / "glossary.json", {"terms": {}})
+            settings = {"target_words": 230, "context_paragraphs": 2}
+            for key in ("asset", "prompt"):
+                path = root / f"{key}.json"
+                path.write_text("{}")
+                settings[f"{key}_path"] = str(path)
+                settings[f"{key}_file_sha256"] = hashlib.sha256(b"{}").hexdigest()
+            config = {
+                "title": "门",
+                "glossary_path": str(root / "glossary.json"),
+                "scene_positive": settings,
+            }
+            with patch(
+                "src.translation.positive_scene.invoke",
+                side_effect=AssertionError("an unchanged chapter was translated"),
+            ):
+                summary = run_positive_scenes(
+                    snapshot_dir=root / "snapshot",
+                    run_dir=root / "run",
+                    config=config,
+                    baseline_snapshot=root / "snapshot",
+                    baseline_run=root / "baseline",
+                )
+            self.assertEqual(summary["chunks"], [])
+            self.assertEqual(summary["reused_chapters"], 1)
+            reused = json.loads((root / "run/translations/01.json").read_text())
+            self.assertEqual(reused["groups"], groups)
+
 
 if __name__ == "__main__":
     unittest.main()

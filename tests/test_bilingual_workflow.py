@@ -207,6 +207,49 @@ class BilingualUpdateTests(unittest.TestCase):
         self.assertEqual(seeded["seeded"], [])
         self.assertEqual(seeded["to_translate"], {"01": "English differs"})
 
+    def test_spec_edition_survives_every_rebuild(self):
+        from src.content.edition_outline import apply_edition
+
+        spec = self.root / "book_specs/fake_book/config.json"
+        config = json.loads(spec.read_text())
+        edition = {"identifier": "kept-reader-identity", "extras": {"01": "番外·门"}}
+        write_json(spec, {**config, "edition": edition})
+        for _ in range(2):
+            code, result = self.update("--recrawl")
+            self.assertEqual(code, 0, result.get("error"))
+            with ZipFile(self.root / result["outputs"]["epub"]) as archive:
+                opf = archive.read("EPUB/content.opf").decode()
+                nav = archive.read("EPUB/nav.xhtml").decode()
+            self.assertIn("kept-reader-identity", opf)
+            self.assertIn("番外·门", nav)
+
+        book = {
+            "identifier": "x",
+            "sections": [{"id": "volume-1", "title": "Old", "children": []}],
+            "chapters": {},
+            "extras": [],
+        }
+        intro = {"title": "简介", "role": "intro", "blocks": []}
+        named = {
+            **json.loads(json.dumps(book)),
+            "chapters": {"intro": intro},
+        }
+        apply_edition(
+            named, {"intro": ["第一卷：门"], "section_titles": {"volume-1": "卷一"}}
+        )
+        self.assertEqual(named["sections"][0]["title"], "卷一")
+        self.assertEqual(
+            named["chapters"]["intro"]["blocks"][0]["runs"][0]["text"], "第一卷：门"
+        )
+        for bad in (
+            {"section_titles": {"volume-9": "卷九"}},
+            {"extras": {"missing": "番外"}},
+            {"intro": ["简介"]},
+            {"unknown": True},
+        ):
+            with self.subTest(edition=bad), self.assertRaises(ValueError):
+                apply_edition(json.loads(json.dumps(book)), bad)
+
     def test_run_directory_is_bound_to_one_method(self):
         self.update()
         run = self.root / self.state()["baseline"]["run"]

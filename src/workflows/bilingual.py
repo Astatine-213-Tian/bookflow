@@ -202,6 +202,7 @@ def build_book(
         output_options(config, output),
         title=str(config.get("title") or "") or None,
         author=str(config.get("author") or "") or None,
+        edition=config.get("edition"),
     )
 
 
@@ -212,14 +213,19 @@ def write_bilingual(
     *,
     title: str | None = None,
     author: str | None = None,
+    edition: dict | None = None,
 ) -> IngestResult:
-    """Join translations to the snapshot, prepare once, then write the outputs."""
+    """Join translations to the snapshot, apply the spec's edition choices,
+    prepare once, then write the outputs."""
+    from src.content.edition_outline import apply_edition
     from src.translation.output import translated_source
     from src.workflows.prepare import prepare_book, save_prepared
 
     book, cover, mime = translated_source(
         snapshot_dir, translations_dir, title=title, author=author
     )
+    if edition:
+        apply_edition(book, edition)
     book, reports = prepare_book(book)
     save_prepared(book, translations_dir.parent / "prepared", reports, cover, mime)
     return write_book(book, outputs, cover=cover, cover_mime=mime)
@@ -246,14 +252,22 @@ def load_state(slug: str) -> dict[str, Any]:
     return json.loads(path.read_text())
 
 
-def _stamp() -> str:
-    return datetime.now().strftime("%Y%m%d-%H%M%S")
+def _stamp(slug: str | None = None) -> str:
+    """A run timestamp; a suffix keeps two runs in the same second apart."""
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    if slug is None:
+        return stamp
+    root, candidate, number = book_root(slug), stamp, 1
+    while any((root / folder / candidate).exists() for folder in ("snapshots", "runs")):
+        number += 1
+        candidate = f"{stamp}-{number}"
+    return candidate
 
 
 def _start_pending(
     state: dict[str, Any], slug: str, *, restart: bool, recrawl: bool
 ) -> dict[str, Any]:
-    stamp = _stamp()
+    stamp = _stamp(slug)
     pending = state.get("pending")
     if recrawl or not pending:
         pending = {

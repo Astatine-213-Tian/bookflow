@@ -173,3 +173,61 @@ def apply_jjwxc_outline(
         "moved_trailing_volume_markers": moved,
         "aligned_main_chapters": len(numbers),
     }
+
+
+EDITION_KEYS = {"identifier", "intro", "section_titles", "extras"}
+
+
+def _drop_member(sections: list[dict], member: str) -> list[dict]:
+    result = []
+    for section in sections:
+        if section.get("member") == member:
+            continue
+        if "children" in section:
+            children = _drop_member(section["children"], member)
+            section = {**section, "children": children}
+        result.append(section)
+    return result
+
+
+def apply_edition(book: dict, edition: dict) -> None:
+    """Apply a book spec's reviewed edition choices to its joined book JSON.
+
+    ``identifier`` keeps the EPUB identity readers already have; ``intro``
+    replaces the intro paragraphs; ``section_titles`` renames sections by ID;
+    ``extras`` moves chapters, by ID and with a new title, into the 番外 section
+    at the end. Every reference must exist, so a changed source stops the build
+    instead of losing a decision.
+    """
+    unknown = set(edition) - EDITION_KEYS
+    if unknown:
+        raise ValueError(f"Unknown edition settings: {sorted(unknown)}")
+    if "identifier" in edition:
+        book["identifier"] = edition["identifier"]
+    if "intro" in edition:
+        intro = book["chapters"].get("intro")
+        if not intro or intro.get("role") != "intro":
+            raise ValueError("Edition intro needs an intro in the source")
+        intro["blocks"] = [
+            {"kind": "paragraph", "runs": [{"text": text, "styles": []}]}
+            for text in edition["intro"]
+        ]
+    titles = dict(edition.get("section_titles") or {})
+
+    def rename(sections: list[dict]) -> None:
+        for section in sections:
+            if section.get("id") in titles:
+                section["title"] = titles.pop(section["id"])
+            rename(section.get("children", []))
+
+    rename(book["sections"])
+    if titles:
+        raise ValueError(f"Edition section IDs not in the source: {sorted(titles)}")
+    for member, title in (edition.get("extras") or {}).items():
+        chapter = book["chapters"].pop(member, None)
+        if chapter is None:
+            raise ValueError(f"Edition extra not in the source: {member}")
+        book["sections"] = _drop_member(book["sections"], member)
+        book["extras"].append(
+            {**chapter, "id": member, "title": title, "role": "extra"}
+        )
