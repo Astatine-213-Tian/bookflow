@@ -11,6 +11,7 @@ from src.dataset.text import write_prepared_txt
 from src.epub.validate import EpubCheck, check_written_epub
 from src.runtime.progress import ProgressLogger
 from src.runtime.paths import (
+    work_root,
     dataset_txt_output_path,
     resolve_output_path,
     resolve_txt_output_path,
@@ -188,7 +189,7 @@ def prepare_and_write(
             "cover": digest(cover) if cover else None,
         }
     )
-    directory = Path("generated/ingest") / fingerprint[:16]
+    directory = work_root() / "generated" / "ingest" / fingerprint[:16]
     source_path = save_prepared(
         prepared, directory, reports, cover, cover_mime, evidence=evidence
     )
@@ -215,7 +216,9 @@ def ingest_local(
     from src.runtime.files import digest
 
     requested_formats(options)
-    directory = run_dir or Path("generated/ingest") / digest(path.read_bytes())[:16]
+    directory = run_dir or (
+        work_root() / "generated" / "ingest" / digest(path.read_bytes())[:16]
+    )
     book, cover, mime = prepare_file(
         path,
         directory,

@@ -24,6 +24,7 @@ from src.content.quote_review import review_fingerprint
 from src.crawler.providers.jjwxc.reference import collect_reference, reference_url
 from src.runtime.codex_review import extract_review_payload, run_review_prompt
 from src.runtime.files import write_json
+from src.runtime.paths import work_root
 
 
 def load(path: Path) -> dict:
@@ -182,8 +183,9 @@ def review_proofread(run_dir: Path, *, runner=None) -> dict:
 
 
 def apply_proofread(
-    run_dir: Path, *, state_root: Path = Path("state/notion/proofread")
+    run_dir: Path, *, state_root: Path | None = None
 ) -> dict:
+    state_root = state_root or work_root() / "state" / "notion" / "proofread"
     original, cover, cover_mime = load_prepared_source(run_dir / "original/source.json")
     reference = load(run_dir / "reference/source.json")
     plan = load(run_dir / "plan.json")

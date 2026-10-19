@@ -31,6 +31,7 @@ from src.notion.mcp import (
     exclusive_lock,
 )
 from src.runtime.files import digest, write_json
+from src.runtime.paths import work_root
 
 UPLOAD_CONCURRENCY = 8
 
@@ -302,7 +303,7 @@ def upload_source(
     config = json.loads(config_path.read_text())
     catalog = config["databases"]["works"]["data_source_id"]
     key = digest((catalog + source["identifier"]).encode())[:16]
-    directory = Path("state/notion") / key
+    directory = work_root() / "state" / "notion" / key
     state = directory / "import.json"
     with exclusive_lock(directory / "import.lock"):
         fingerprint = source_digest(source)

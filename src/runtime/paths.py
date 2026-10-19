@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -13,12 +14,25 @@ def safe_path_name(value: str, fallback: str) -> str:
     return cleaned or fallback
 
 
+WORK_ROOT_ENV = "BOOKFLOW_WORK_ROOT"
+
+
 def repo_root() -> Path:
+    """The checkout: code, book specs, docs, assets and research."""
     return Path(__file__).resolve().parents[2]
 
 
+def work_root() -> Path:
+    """Where working data lives (books/, generated/, state/, bilingual/).
+
+    The checkout, whatever the current directory, unless BOOKFLOW_WORK_ROOT is set.
+    """
+    raw = os.environ.get(WORK_ROOT_ENV)
+    return Path(raw).expanduser().resolve() if raw else repo_root()
+
+
 def default_output_path(title: str, author: str = "", *, suffix: str = ".epub") -> Path:
-    out_dir = repo_root() / "books"
+    out_dir = work_root() / "books"
     if author.strip():
         out_dir = out_dir / safe_path_name(author, "Unknown Author")
     out_dir.mkdir(parents=True, exist_ok=True)

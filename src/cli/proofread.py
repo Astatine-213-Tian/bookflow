@@ -40,7 +40,10 @@ def main(argv: list[str] | None = None) -> None:
         help="Apply formatting and high-confidence reviewed repairs, then read back",
     )
     apply.add_argument(
-        "--state-root", type=Path, default=Path("state/notion/proofread")
+        "--state-root",
+        type=Path,
+        default=None,
+        help="Default: state/notion/proofread under the work root",
     )
     for command in (plan, review, apply):
         command.add_argument("--run-dir", type=Path, required=True)

@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from src.epub.validate import validate_epub
+from src.runtime.paths import work_root
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -15,7 +16,7 @@ def main(argv: list[str] | None = None) -> int:
         "paths",
         nargs="*",
         type=Path,
-        default=[Path("books")],
+        default=[work_root() / "books"],
         help="EPUB files or directories containing EPUB files",
     )
     args = parser.parse_args(argv)

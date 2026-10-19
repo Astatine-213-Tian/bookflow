@@ -1,19 +1,23 @@
 """Synthetic shared content for public pipeline tests."""
 
+import os
 from contextlib import chdir
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
+from unittest.mock import patch
 
 from src.content.contract import metadata_defaults
 from src.content.prepared import save_source
 from src.inputs.crawl import extract_crawl
+from src.runtime.paths import WORK_ROOT_ENV
 from src.workflows.prepare import prepare_book
 
 
 def isolated_workdir(test: TestCase) -> Path:
     directory = Path(test.enterContext(TemporaryDirectory()))
     test.enterContext(chdir(directory))
+    test.enterContext(patch.dict(os.environ, {WORK_ROOT_ENV: str(directory)}))
     return directory
 
 

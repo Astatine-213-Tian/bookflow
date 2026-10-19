@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,6 +12,7 @@ from zipfile import ZipFile
 
 from src.cli.bilingual import main as bilingual_main
 from src.runtime.files import write_json
+from src.runtime.paths import WORK_ROOT_ENV
 from src.translation.gates import ReviewRequired
 from src.translation.methods import METHODS, TranslationMethod
 from tests.fixtures import write_source
@@ -75,7 +77,7 @@ class BilingualUpdateTests(unittest.TestCase):
             return output / "source.json"
 
         for target in (
-            patch("src.workflows.bilingual.repo_root", return_value=self.root),
+            patch.dict(os.environ, {WORK_ROOT_ENV: str(self.root)}),
             patch("src.translation.config.repo_root", return_value=self.root),
             patch("src.workflows.bilingual.collect_snapshot", side_effect=collect),
             patch.dict(METHODS, {"fake": self.fake.method()}),

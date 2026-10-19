@@ -11,6 +11,7 @@ from src.dataset.library import (
     upsert_txt_dataset_entry,
 )
 from src.metadata.jjwxc import GENRES, TIME_AREAS
+from src.runtime.paths import repo_root
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -31,17 +32,17 @@ def main(argv: list[str] | None = None) -> int:
         "--books-root", type=Path, help="Explicit EPUB directory for a bulk export"
     )
     export_parser.add_argument(
-        "--output-root", type=Path, default=Path("research/datasets")
+        "--output-root", type=Path, default=repo_root() / "research" / "datasets"
     )
     export_parser.add_argument(
         "--jjwxc-manifest",
         type=Path,
-        default=Path("research/generated/corpus_acquisition/ranking/manifest.json"),
+        default=repo_root() / "research/generated/corpus_acquisition/ranking/manifest.json",
     )
     export_parser.add_argument(
         "--jjwxc-top50",
         type=Path,
-        default=Path("research/generated/corpus_acquisition/ranking/top50.json"),
+        default=repo_root() / "research/generated/corpus_acquisition/ranking/top50.json",
     )
     export_parser.add_argument("--overwrite", action="store_true")
     export_parser.add_argument("--no-fetch-jjwxc", action="store_true")
@@ -69,17 +70,17 @@ def main(argv: list[str] | None = None) -> int:
     upsert_parser.add_argument("--author")
     upsert_parser.add_argument("--source-epub", type=Path)
     upsert_parser.add_argument(
-        "--output-root", type=Path, default=Path("research/datasets")
+        "--output-root", type=Path, default=repo_root() / "research" / "datasets"
     )
     upsert_parser.add_argument(
         "--jjwxc-manifest",
         type=Path,
-        default=Path("research/generated/corpus_acquisition/ranking/manifest.json"),
+        default=repo_root() / "research/generated/corpus_acquisition/ranking/manifest.json",
     )
     upsert_parser.add_argument(
         "--jjwxc-top50",
         type=Path,
-        default=Path("research/generated/corpus_acquisition/ranking/top50.json"),
+        default=repo_root() / "research/generated/corpus_acquisition/ranking/top50.json",
     )
     upsert_parser.add_argument("--time-area", choices=TIME_AREAS)
     upsert_parser.add_argument("--genre", choices=GENRES)

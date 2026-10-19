@@ -11,6 +11,7 @@ from src.crawler.registry import PARSERS, find_parser
 from src.crawler.search import build_previews, choose_preview, search_all
 from src.dataset.library import extract_epub_text, upsert_txt_dataset_entry
 from src.metadata.jjwxc import GENRES, TIME_AREAS
+from src.runtime.paths import repo_root
 from src.runtime.progress import ProgressLogger, configure_progress
 from src.workflows.ingest import OutputOptions, ingest, requested_formats
 
@@ -164,12 +165,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--jjwxc-manifest",
         type=Path,
-        default=Path("research/generated/corpus_acquisition/ranking/manifest.json"),
+        default=repo_root() / "research/generated/corpus_acquisition/ranking/manifest.json",
     )
     parser.add_argument(
         "--jjwxc-top50",
         type=Path,
-        default=Path("research/generated/corpus_acquisition/ranking/top50.json"),
+        default=repo_root() / "research/generated/corpus_acquisition/ranking/top50.json",
     )
     parser.add_argument(
         "--time-area", choices=TIME_AREAS, help="Manual dataset time-area override"

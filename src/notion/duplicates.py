@@ -23,6 +23,7 @@ from opencc import OpenCC
 
 from src.content.blocks import content_signature
 from src.runtime.files import digest, write_json
+from src.runtime.paths import work_root
 
 SIMILARITY_THRESHOLD = 0.70
 CONTAINMENT_THRESHOLD = 0.60
@@ -30,7 +31,8 @@ MIN_FUZZY_LENGTH = 80
 OVERLAP_WINDOW = 20
 MIN_LOCAL_OVERLAP = 60
 SIMPLIFIED = OpenCC("t2s")
-SHARED_EXTRA_CACHE = Path("state/notion/shared-extras")
+# Tests point this at a temporary directory; otherwise it lives in the work root.
+SHARED_EXTRA_CACHE: Path | None = None
 COMPARISON_CACHE_VERSION = 1
 
 
@@ -306,7 +308,8 @@ async def comparison_documents(
     rows: list[dict], data_source: str, reader: NotionBooks
 ) -> dict:
     """Reuse complete old observations only after a fresh full-library inventory."""
-    path = SHARED_EXTRA_CACHE / notion_id(data_source) / "comparison.json"
+    cache = SHARED_EXTRA_CACHE or work_root() / "state" / "notion" / "shared-extras"
+    path = cache / notion_id(data_source) / "comparison.json"
     if not rows and not path.exists():
         return {}
     try:

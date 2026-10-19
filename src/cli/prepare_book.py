@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from src.runtime.files import digest, write_json
+from src.runtime.paths import work_root
 from src.workflows.prepare import prepare_file
 
 
@@ -42,7 +43,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         directory = (
             args.run_dir
-            or Path("generated/ingest") / digest(args.source.read_bytes())[:16]
+            or work_root() / "generated" / "ingest" / digest(args.source.read_bytes())[:16]
         )
         if args.inventory:
             from src.inputs.epub import inventory_epub

@@ -13,7 +13,7 @@ from typing import Any
 
 from src.crawler.models import CrawlOptions
 from src.runtime.files import write_json
-from src.runtime.paths import repo_root
+from src.runtime.paths import work_root
 from src.runtime.progress import ProgressLogger
 from src.translation.config import book_slug, load_config
 from src.translation.methods import (
@@ -32,14 +32,14 @@ COMMENT_EVIDENCE = "glossary_comment_evidence.json"
 def _relative(path: Path) -> str:
     path = path.expanduser().resolve()
     try:
-        return str(path.relative_to(repo_root()))
+        return str(path.relative_to(work_root()))
     except ValueError:
         return str(path)
 
 
 def _absolute(raw: str) -> Path:
     path = Path(raw).expanduser()
-    return path if path.is_absolute() else repo_root() / path
+    return path if path.is_absolute() else work_root() / path
 
 
 # ------------------------------------------------------------------------------
@@ -232,7 +232,7 @@ def write_bilingual(
 
 def book_root(slug: str) -> Path:
     """``bilingual/<book>/`` holds the book's snapshots, runs and state."""
-    return repo_root() / "bilingual" / slug
+    return work_root() / "bilingual" / slug
 
 
 def state_path(slug: str) -> Path:
