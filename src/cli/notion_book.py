@@ -42,9 +42,14 @@ def run(argv: list[str] | None = None) -> dict:
     covers.add_argument(
         "--cover",
         type=Path,
-        help="PNG/JPEG; API token or maintained browser cover procedure",
+        help="User-approved 2:3 PNG/JPEG replacing the prepared cover",
     )
     covers.add_argument("--cover-url", help="Public PNG/JPEG URL; attaches through MCP")
+    covers.add_argument(
+        "--keep-original-cover",
+        action="store_true",
+        help="Skip cover normalization for an art book or approved exception",
+    )
     parser.add_argument("--report", type=Path, help="Fresh verification report")
     parser.add_argument(
         "--extra", type=int, help="1-based extra index in extra-review.md"
@@ -86,10 +91,11 @@ def run(argv: list[str] | None = None) -> dict:
             args.source,
             cover=args.cover,
             cover_url=args.cover_url,
+            keep_original_cover=args.keep_original_cover,
             config_path=args.config,
         )
         return {"outputs": paths(state=state)}
-    if args.source or args.cover or args.cover_url:
+    if args.source or args.cover or args.cover_url or args.keep_original_cover:
         parser.error("--source and cover options require upload")
     if args.command in {"verify", "verify-cover", "recover-template", "resume"}:
         if args.state is None:

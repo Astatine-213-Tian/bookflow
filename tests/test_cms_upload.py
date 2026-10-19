@@ -79,7 +79,9 @@ class DestinationTests(unittest.TestCase):
                         cover_bytes=png(),
                         cover_mime="image/png",
                     ),
-                    OutputOptions(output_formats=("epub",), output=out),
+                    OutputOptions(
+                        output_formats=("epub",), output=out, keep_original_cover=True
+                    ),
                 )
             with zipfile.ZipFile(out) as z:
                 self.assertEqual(z.read("EPUB/cover.png"), png())

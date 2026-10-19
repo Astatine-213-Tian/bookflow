@@ -74,6 +74,8 @@ uv run book ingest "作品URL" --mode epub --mode notion --mode txt
 ### 封面
 
 封面使用官方 File Upload API，复用正文所需的 `NOTION_API_TOKEN`。
+上传前封面先按[封面规范化](../.agents/skills/book-management/references/cover-normalization.md)
+统一为 2:3、不超过 1,000,000 字节；需要修复时上传暂停，审核通过后用 `--cover` 续传。
 已有 `cover-browser.json` 待办可按[封面流程](../.agents/skills/book-management/references/notion-cover.md)
 处理，再运行 `book notion verify-cover --state ...`，通过 REST 回读验证（需要 token）。
 封面恢复与正文分开，不重建正文。

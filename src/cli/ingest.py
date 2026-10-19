@@ -121,6 +121,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--cover-url", help="Public PNG/JPEG cover URL for a local Notion import"
     )
+    covers = parser.add_mutually_exclusive_group()
+    covers.add_argument(
+        "--cover",
+        type=Path,
+        help="User-approved restored 2:3 cover replacing the source cover",
+    )
+    covers.add_argument(
+        "--keep-original-cover",
+        action="store_true",
+        help="Skip cover normalization for an art book or approved exception",
+    )
     parser.add_argument(
         "--limit", type=int, default=10, help="Maximum search results/previews to show"
     )
@@ -236,6 +247,8 @@ def main(argv: list[str] | None = None) -> int:
         strict_epub=args.strict_epub_validation,
         prevent_overwrite=not args.overwrite,
         enrich=enrich,
+        cover=args.cover,
+        keep_original_cover=args.keep_original_cover,
     )
     try:
         requested_formats(output_options)
@@ -315,6 +328,7 @@ def run(
         ),
         "epub_check": list(check.issues) if check else None,
         "dataset": f"{entry.author}::{entry.title}" if entry else None,
+        "cover": result.cover,
     }
 
 

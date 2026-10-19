@@ -22,6 +22,7 @@ COMMANDS: dict[str, tuple[str, str]] = {
     "dataset": ("src.cli.dataset", "Export TXT and maintain a training dataset"),
     "normalize": ("src.cli.normalize_epub", "Normalize and review an existing EPUB"),
     "enrich-metadata": ("src.cli.enrich_epub_metadata", "Fill missing EPUB metadata"),
+    "cover": ("src.cli.cover", "Check, normalize and review 2:3 covers"),
     "notion": ("src.cli.notion_book", "Upload, verify, export or edit Notion drafts"),
     "validate-epub": (
         "src.cli.validate_epub_chapters",

@@ -28,6 +28,9 @@ For working files and task completion, follow [storage and cleanup](../../../doc
   implement or repair the provider, then resume acquisition if a book output was requested.
   A provider-development-only task ends with its fixture and CLI checks.
 - **Append images or correct part of a chapter:** follow [content-json.md](../../../docs/content-json.md). Read current content, transcribe into the shared schema, then apply an explicit change task with `book update` or `book notion update`.
+- **Normalize, restore or review a cover:** follow
+  [cover normalization](references/cover-normalization.md); `book cover` checks,
+  crops, compresses and builds the review page.
 - **Upload or recover a Notion cover:** use the native API and byte readback in
   [notion-books.md](../../../docs/notion-books.md#封面). For a pending browser task
   or an explicit browser upload, follow [notion-cover.md](references/notion-cover.md).
@@ -65,8 +68,13 @@ For bilingual books such as Eternal Gate, follow “Bilingual Books” in `AGENT
 3. Invoke `book ingest` with each selected `--mode`. Crawl once; shared source
    preparation handles wording, structure and formatting before Notion/EPUB output.
    All selected destinations must finish before reporting the book complete.
+   The cover is normalized to 2:3 first; a `review_required` result with
+   `kind: cover` means it needs restoration, so follow
+   [cover normalization](references/cover-normalization.md) and rerun with the
+   approved `--cover`.
 4. Verify the selected outputs: EPUB check printed by the write (ZIP, chapter
-   numbering, nav/NCX), then title/order and thumbnail;
+   numbering, nav/NCX), then title/order and the delivered cover at full size and
+   as a thumbnail;
    Notion's verified upload checkpoint; TXT content and its targeted dataset
    manifest entry. Report every actual path or Notion destination, with failures
    distinguished from completed outputs.

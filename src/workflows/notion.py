@@ -48,16 +48,25 @@ def upload(
     *,
     cover: Path | None = None,
     cover_url: str | None = None,
+    keep_original_cover: bool = False,
     config_path: Path = CONFIG,
 ) -> Path:
     """Upload a prepared source as a draft; returns its import checkpoint."""
     from src.content.prepared import load_prepared_source
     from src.notion.upload import upload_source
+    from src.workflows.cover import deliver_cover
 
-    source, prepared_cover, _ = load_prepared_source(source_path)
-    cover_bytes = cover.read_bytes() if cover else None
-    if cover_bytes is None and not cover_url:
-        cover_bytes = prepared_cover
+    source, prepared_cover, prepared_mime = load_prepared_source(source_path)
+    cover_bytes = None
+    if not cover_url:
+        cover_bytes, _, _ = deliver_cover(
+            prepared_cover,
+            prepared_mime or "image/jpeg",
+            source_path.parent,
+            source=source_path,
+            replacement=cover,
+            keep_original=keep_original_cover,
+        )
     return upload_source(
         source, cover_bytes=cover_bytes, cover_url=cover_url, config_path=config_path
     )

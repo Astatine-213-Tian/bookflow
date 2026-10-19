@@ -26,6 +26,7 @@ from src.workflows.prepare import (
 )
 from src.content.changes import content_hash
 from src.runtime.files import digest
+from src.workflows.cover import deliver_cover
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,10 @@ class OutputOptions:
     prevent_overwrite: bool = True
     enrich: frozenset[str] = frozenset()
     strict_epub: bool = False
+    # An approved replacement cover, or keep the source cover untouched (art books
+    # and approved exceptions).
+    cover: Path | None = None
+    keep_original_cover: bool = False
 
 
 @dataclass(frozen=True)
@@ -60,6 +65,7 @@ class IngestResult:
     source_path: Path | None = None
     epub_check: EpubCheck | None = None
     dataset_entry: Any = None
+    cover: dict | None = None
 
 
 def requested_formats(options: OutputOptions) -> tuple[str, ...]:
@@ -111,6 +117,12 @@ def resolve_requested_txt_output(
             genre="",
         )
     return resolve_txt_output_path(options.txt_output, title, author)
+
+
+def uses_cover(options: OutputOptions, *, cover_url: str | None = None) -> bool:
+    """Whether an output carries the source cover; a cover URL replaces Notion's."""
+    formats = set(requested_formats(options))
+    return "epub" in formats or ("notion" in formats and not cover_url)
 
 
 def write_book(
@@ -257,9 +269,18 @@ def prepare_and_write(
     source_path = save_prepared(
         prepared, directory, reports, cover, cover_mime, evidence=evidence
     )
+    cover, cover_mime, cover_report = deliver_cover(
+        cover,
+        cover_mime,
+        directory,
+        source=source_path,
+        replacement=options.cover,
+        keep_original=options.keep_original_cover or not uses_cover(options),
+    )
     return replace(
         write_book(prepared, options, cover=cover, cover_mime=cover_mime),
         source_path=source_path,
+        cover=cover_report,
     )
 
 
@@ -289,6 +310,15 @@ def ingest_local(
         chapter_layout=chapter_layout,
         enrich=options.enrich,
     )
+    cover, mime, cover_report = deliver_cover(
+        cover,
+        mime,
+        directory,
+        source=path,
+        replacement=options.cover,
+        keep_original=options.keep_original_cover
+        or not uses_cover(options, cover_url=cover_url),
+    )
     return replace(
         write_book(
             book,
@@ -299,6 +329,7 @@ def ingest_local(
             input_path=path,
         ),
         source_path=directory / "source.json",
+        cover=cover_report,
     )
 
 

@@ -36,6 +36,7 @@ Translation keeps method-specific QA artifacts alongside the shared content JSON
 | Sources | `crawler/`, `inputs/` | `ParserSpec.crawl`, optional search/preview, `read_input` |
 | Processing | `content/`, `translation/` | `normalize_book`, `apply_changes`, `translated_source` |
 | Metadata | `metadata/` | `enrich_source`, authoritative lookup/classification |
+| Covers | `content/cover.py`, `workflows/cover.py` | `deliver_cover`: keep or crop to 2:3, at most 1,000,000 bytes; restoration pauses for review |
 | Destinations | `epub/`, `notion/`, `dataset/text.py` | EPUB/TXT renderers; Notion upload, current-content export, update/readback |
 | Contracts | `content/book.schema.json`, `content/contract.py` | Strict book and change validation; book/change schema composed with the shared notion-books block schema |
 
