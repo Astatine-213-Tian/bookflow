@@ -236,8 +236,9 @@ at the end of a chapter stays.
 
 Normalization adds a divider before the label when all of these are true:
 
-- The paragraph starts with the label. The colon is optional, for example
-  `作者有话说谢谢`.
+- The paragraph starts with the label. A colon, a space or the end of the
+  paragraph comes after the label, for example `作者有话说：谢谢` or
+  `作者有话说 谢谢`. `作者有话说谢谢` does not get a divider.
 - A body paragraph comes before the label. Empty paragraphs between them are
   permitted.
 - The note has text, on the label line or in the next paragraph.
@@ -247,7 +248,8 @@ Notion and EPUB then show the text from the label to the end of the chapter as a
 author's note. Normalization does not add a divider before a note at the start
 of a chapter, a bilingual paragraph, or a paragraph with an anchor or footnote.
 In an EPUB archive, the label paragraph and the body paragraph must be adjacent
-`<p>` elements. Its text gets the same character, space,
+`<p>` elements. Normalization keeps the space after a label at the start of a
+paragraph, because the space marks the label. Its text gets the same character, space,
 punctuation and name rules as the main text.
 
 ### 9.5 Scene markers, dividers and end markers

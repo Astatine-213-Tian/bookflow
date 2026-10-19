@@ -134,11 +134,6 @@ AUTHOR_NOTE_HEADING_RE = re.compile(r"作者有话(?:要)?说(?=\s*[:：])")
 AUTHOR_NOTE_PARAGRAPH_RE = re.compile(r"^\s*作者有话(?:要)?说(?:\s*[:：]|\s+|$)")
 
 
-# A paragraph that opens with the label, with or without a colon; normalization
-# removes the space between the label and Han note text.
-AUTHOR_NOTE_LABEL_RE = re.compile(r"^\s*作者有话(?:要)?说\s*[:：]?")
-
-
 AUTHOR_NOTE_SIGNAL_RE = re.compile(
     r"(?:感谢大家.{0,20}(?:陪伴|支持)|"
     r"本书连载期间|个人志|预售|下本(?:书)?见|晋江同步连载)"
@@ -1381,6 +1376,16 @@ def _normalize_han_internal_spacing(
     member: str,
     report: NormalizationReport,
 ) -> str:
+    # The space after a leading author-note label marks it as a label.
+    label = AUTHOR_NOTE_PARAGRAPH_RE.match(text)
+    if label and label[0][-1].isspace():
+        return text[: label.end()] + _normalize_han_internal_spacing(
+            text[label.end() :],
+            preserve_ordinals=preserve_ordinals,
+            remove_han_spaces=remove_han_spaces,
+            member=member,
+            report=report,
+        )
     known_split = any(
         re.search(
             re.escape(word[0]) + r"[\t \u00a0\u3000]+" + re.escape(word[1]),

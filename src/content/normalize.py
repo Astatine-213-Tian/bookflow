@@ -15,7 +15,6 @@ from src.content.blocks import (
 from src.content.english_terms import code_term_ranges
 from src.content.normalization import (
     AUTHOR_NOTE_HEADING_RE,
-    AUTHOR_NOTE_LABEL_RE,
     AUTHOR_NOTE_PARAGRAPH_RE,
     NormalizationReport,
     _normalize_plain_text,
@@ -28,7 +27,7 @@ from src.content.normalization import (
 from src.content.numerals import format_chinese_numeral
 from src.content.titles import normalize_outline, normalize_volume_colors
 
-RULES_SHA256 = "9c5375403a4794020cadfe21ca84e7757327f544eeaff0ff43cbfc6a9bf5e1bb"
+RULES_SHA256 = "8ba3d039cfd703f71d7c617d525457cb4f1f9c9a85d4bff824393827a08005d2"
 
 SECTION_NUMBER = r"(?:[0-9０-９]{1,3}|[一二三四五六七八九十百零〇]+)"
 SECTION_LABEL_RE = re.compile(
@@ -197,7 +196,7 @@ def missing_note_dividers(blocks: list[dict]) -> list[int]:
         ):
             continue
         text = block_text(block).strip()
-        marker = AUTHOR_NOTE_LABEL_RE.match(text)
+        marker = AUTHOR_NOTE_PARAGRAPH_RE.match(text)
         if not marker:
             continue
         # An empty existing heading is not grounds to create an empty section.
@@ -207,7 +206,7 @@ def missing_note_dividers(blocks: list[dict]) -> list[int]:
             if (
                 following["kind"] == "divider"
                 or following["kind"].startswith("heading")
-                or AUTHOR_NOTE_LABEL_RE.match(value)
+                or AUTHOR_NOTE_PARAGRAPH_RE.match(value)
             ):
                 break
             if value:

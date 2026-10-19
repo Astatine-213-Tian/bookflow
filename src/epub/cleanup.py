@@ -13,7 +13,6 @@ from src.content.blocks import replace_run_text
 from src.content.english_terms import normalize_english_terms
 from src.content.normalization import (
     AUTHOR_NOTE_HEADING_RE,
-    AUTHOR_NOTE_LABEL_RE,
     AUTHOR_NOTE_PARAGRAPH_RE,
     CHAPTER_LIKE_TITLE_RE,
     CHAPTER_NUMBER_PREFIX_RE,
@@ -431,7 +430,7 @@ def _insert_author_note_rules(
 
     rules = []
     for index, paragraph in enumerate(paragraphs):
-        marker = AUTHOR_NOTE_LABEL_RE.match(visible[index])
+        marker = AUTHOR_NOTE_PARAGRAPH_RE.match(visible[index])
         if marker is None or STRUCTURAL_IDENTITY_RE.search(paragraph[0]):
             continue
         # An empty heading followed by no note text is not grounds for a section.
