@@ -6,6 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
+from src.cli.output import paths, run_command
 from src.runtime.files import digest, write_json
 from src.runtime.paths import work_root
 from src.workflows.prepare import prepare_file
@@ -40,57 +41,60 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--chapter-aliases", type=Path)
     parser.add_argument("--official-outline", action="store_true")
     args = parser.parse_args(argv)
-    try:
-        directory = (
-            args.run_dir
-            or work_root() / "generated" / "ingest" / digest(args.source.read_bytes())[:16]
-        )
-        if args.inventory:
-            from src.inputs.epub import inventory_epub
+    return run_command(lambda: prepare(args))
 
-            inventory = inventory_epub(args.source)
-            inventory.pop("files")
-            inventory["sha256"] = digest(args.source.read_bytes())
-            write_json(directory / "inventory.json", inventory)
-            print(directory / "inventory.json")
-            return 0
-        review = json.loads(args.review.read_text()) if args.review else None
-        if args.scan_quotes:
-            from src.inputs.load import read_input
-            from src.content.quote_review import find_quote_candidates
 
-            edition = read_input(
-                args.source, title=args.title, author=args.author, review=review
-            )
-            write_json(
-                directory / "quote-candidates.json",
-                find_quote_candidates(edition.source, edition.evidence),
-            )
-            print(directory / "quote-candidates.json")
-            return 0
-        prepare_file(
-            args.source,
-            directory,
-            title=args.title,
-            author=args.author,
-            review=review,
-            quote_decisions=json.loads(args.quote_review.read_text())
-            if args.quote_review
-            else None,
-            chapter_layout=json.loads(args.chapter_layout.read_text())
-            if args.chapter_layout
-            else None,
-            chapter_aliases=json.loads(args.chapter_aliases.read_text())
-            if args.chapter_aliases
-            else None,
-            use_jjwxc_outline=args.official_outline,
-            enrich=args.enrich_metadata,
+def prepare(args: argparse.Namespace) -> dict:
+    directory = (
+        args.run_dir
+        or work_root() / "generated" / "ingest" / digest(args.source.read_bytes())[:16]
+    )
+    if args.inventory:
+        from src.inputs.epub import inventory_epub
+
+        inventory = inventory_epub(args.source)
+        inventory.pop("files")
+        inventory["sha256"] = digest(args.source.read_bytes())
+        write_json(directory / "inventory.json", inventory)
+        return {"outputs": paths(inventory=directory / "inventory.json")}
+    review = json.loads(args.review.read_text()) if args.review else None
+    if args.scan_quotes:
+        from src.inputs.load import read_input
+        from src.content.quote_review import find_quote_candidates
+
+        edition = read_input(
+            args.source, title=args.title, author=args.author, review=review
         )
-        print(directory / "source.json")
-        return 0
-    except (OSError, ValueError) as error:
-        print(error)
-        return 1
+        write_json(
+            directory / "quote-candidates.json",
+            find_quote_candidates(edition.source, edition.evidence),
+        )
+        return {
+            "outputs": paths(quote_candidates=directory / "quote-candidates.json")
+        }
+    prepare_file(
+        args.source,
+        directory,
+        title=args.title,
+        author=args.author,
+        review=review,
+        quote_decisions=json.loads(args.quote_review.read_text())
+        if args.quote_review
+        else None,
+        chapter_layout=json.loads(args.chapter_layout.read_text())
+        if args.chapter_layout
+        else None,
+        chapter_aliases=json.loads(args.chapter_aliases.read_text())
+        if args.chapter_aliases
+        else None,
+        use_jjwxc_outline=args.official_outline,
+        enrich=args.enrich_metadata,
+    )
+    return {
+        "outputs": paths(
+            source=directory / "source.json", report=directory / "report.json"
+        )
+    }
 
 
 if __name__ == "__main__":

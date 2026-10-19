@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 
+from src.cli.output import log, run_command
 from src.epub.validate import validate_epub
 from src.runtime.paths import work_root
 
@@ -20,32 +20,36 @@ def main(argv: list[str] | None = None) -> int:
         help="EPUB files or directories containing EPUB files",
     )
     args = parser.parse_args(argv)
+    return run_command(lambda: validate(args.paths))
 
+
+def validate(targets: list[Path]) -> dict:
     epub_paths: list[Path] = []
-    for path in args.paths:
+    for path in targets:
         if path.is_dir():
             epub_paths.extend(sorted(path.glob("*.epub")))
         else:
             epub_paths.append(path)
-
     if not epub_paths:
-        print("No EPUB files found.", file=sys.stderr)
-        return 2
+        raise ValueError("No EPUB files found")
 
-    failed = 0
+    books = {}
     for path in epub_paths:
         issues, chapter_count = validate_epub(path)
-        if issues:
-            failed += 1
-            print(f"FAIL {path} ({chapter_count} numbered chapter entries)")
-            for issue in issues:
-                print(f"  - {issue}")
-        else:
-            print(f"OK   {path} ({chapter_count} numbered chapter entries)")
-
-    print(f"\nValidated {len(epub_paths)} EPUB file(s); {failed} file(s) with issues.")
-    return 1 if failed else 0
-
+        log(
+            f"{'FAIL' if issues else 'OK  '} {path} "
+            f"({chapter_count} numbered chapter entries)"
+        )
+        for issue in issues:
+            log(f"  - {issue}")
+        books[str(path)] = {"chapters": chapter_count, "issues": issues}
+    failed = sum(1 for book in books.values() if book["issues"])
+    return {
+        "status": "issues_found" if failed else "complete",
+        "checked": len(books),
+        "with_issues": failed,
+        "books": books,
+    }
 
 if __name__ == "__main__":
     raise SystemExit(main())

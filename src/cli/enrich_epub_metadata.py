@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
+from src.cli.output import log, run_command
 from src.epub.metadata import enrich_epub_metadata
 from src.metadata.catalog import (
     DEFAULT_PRIMARY_SUBJECT,
@@ -119,15 +120,16 @@ def write_report(
     )
 
 
-def main() -> None:
-    args = build_parser().parse_args()
-    try:
-        paths = _epub_paths(args.paths)
-        author_ids = _author_ids(args.jjwxc_author_id)
-    except ValueError as error:
-        raise SystemExit(str(error)) from error
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    return run_command(lambda: enrich(args))
+
+
+def enrich(args: argparse.Namespace) -> dict:
+    paths = _epub_paths(args.paths)
+    author_ids = _author_ids(args.jjwxc_author_id)
     if not paths:
-        raise SystemExit("No EPUB files found")
+        raise ValueError("No EPUB files found")
 
     lookup = MetadataLookup(
         author_ids=author_ids,
@@ -147,22 +149,24 @@ def main() -> None:
         for path in paths
     ]
     for report in reports:
-        print(report.format_text())
+        log(report.format_text())
     if args.report:
         write_report(args.report, reports)
-        print(f"Wrote metadata report: {args.report}")
-    print(
-        "SUMMARY "
-        f"books={len(reports)} "
-        f"changed={sum(report.changed for report in reports)} "
-        f"unmatched={sum(report.status == 'unmatched' for report in reports)} "
-        f"errors={sum(report.status == 'error' for report in reports)}"
-    )
-    if args.fail_on_unmatched and any(
-        report.status in {"unmatched", "error"} for report in reports
-    ):
-        raise SystemExit(1)
+    unmatched = sum(report.status == "unmatched" for report in reports)
+    errors = sum(report.status == "error" for report in reports)
+    return {
+        "status": (
+            "issues_found"
+            if args.fail_on_unmatched and (unmatched or errors)
+            else "complete"
+        ),
+        "books": len(reports),
+        "changed": sum(report.changed for report in reports),
+        "unmatched": unmatched,
+        "errors": errors,
+        "outputs": {"report": str(args.report)} if args.report else {},
+    }
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

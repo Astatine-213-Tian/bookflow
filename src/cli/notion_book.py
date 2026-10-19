@@ -7,6 +7,7 @@ import asyncio
 import json
 from pathlib import Path
 
+from src.cli.output import paths, run_command
 from src.content.prepared import load_prepared_source
 from src.notion.cms import CONFIG
 from src.notion.duplicates import resolve_extra
@@ -22,7 +23,7 @@ from src.notion.upload import upload_draft, upload_source
 from src.runtime.files import write_json
 
 
-async def resume(state: Path, config_path: Path) -> None:
+async def resume(state: Path, config_path: Path) -> dict:
     from src.notion.api import api_token
 
     api_token()
@@ -33,12 +34,16 @@ async def resume(state: Path, config_path: Path) -> None:
         with store.locked():
             async with connect(store) as tools:
                 await upload_draft(book, state, config, tools=tools)
-        print("CMS draft verified: https://www.notion.so/" + book["work_id"])
+        return {
+            "verified": True,
+            "notion_url": "https://www.notion.so/" + book["work_id"],
+            "outputs": paths(state=state),
+        }
 
 
 async def inspect_state(
     command: str, state: Path, config_path: Path, report: Path | None
-) -> None:
+) -> dict:
     from src.notion.recovery import recover_template
     from src.notion.verification import verify_draft
 
@@ -52,18 +57,20 @@ async def inspect_state(
                     from src.notion.cover import verify_cover
 
                     await verify_cover(book, state, tools=tools)
-                    print("Native cover bytes verified")
-                elif command == "recover-template":
+                    return {"cover_verified": True}
+                if command == "recover-template":
                     await recover_template(book, state, config, tools=tools)
-                    print("Template ready; resume the existing checkpoint")
-                else:
-                    result = await verify_draft(book, config, tools=tools)
-                    if report:
-                        write_json(report, result)
-                    print(json.dumps(result, ensure_ascii=False, indent=2))
+                    return {
+                        "template_ready": True,
+                        "next": f"book-notion resume --state {state}",
+                    }
+                result = await verify_draft(book, config, tools=tools)
+                if report:
+                    write_json(report, result)
+                return {"verification": result, "outputs": paths(report=report)}
 
 
-def run(argv: list[str] | None = None) -> None:
+def run(argv: list[str] | None = None) -> dict:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "command",
@@ -140,11 +147,10 @@ def run(argv: list[str] | None = None) -> None:
                         )
                 if args.report:
                     write_json(args.report, result)
-                else:
-                    print(json.dumps(result, ensure_ascii=False, indent=2))
+                    return {"outputs": paths(report=args.report)}
+                return {"result": result}
 
-        asyncio.run(edit())
-        return
+        return asyncio.run(edit())
     if args.command != "resolve-extra" and (
         args.extra is not None or args.use_existing or args.create_new
     ):
@@ -165,15 +171,15 @@ def run(argv: list[str] | None = None) -> None:
             cover_url=args.cover_url,
             config_path=args.config,
         )
-        print(f"Import checkpoint: {state}")
-        return
+        return {"outputs": paths(state=state)}
     if args.source or args.cover or args.cover_url:
         parser.error("--source and cover options require upload")
     if args.command in {"verify", "verify-cover", "recover-template"}:
         if args.state is None:
             parser.error(f"{args.command} requires --state")
-        asyncio.run(inspect_state(args.command, args.state, args.config, args.report))
-        return
+        return asyncio.run(
+            inspect_state(args.command, args.state, args.config, args.report)
+        )
     if args.command == "resolve-extra":
         if (
             args.state is None
@@ -185,31 +191,33 @@ def run(argv: list[str] | None = None) -> None:
             )
         with exclusive_lock(args.state.parent / "import.lock"):
             resolve_extra(args.state, args.extra, use_existing=args.use_existing)
-        return
+        return {
+            "resolved_extra": args.extra,
+            "next": f"book-notion resume --state {args.state}",
+        }
     if args.extra is not None or args.use_existing or args.create_new:
         parser.error("Duplicate-review options require resolve-extra")
     if args.command == "resume":
         if args.state is None:
             parser.error("resume requires --state")
-        asyncio.run(resume(args.state, args.config))
-        return
+        return asyncio.run(resume(args.state, args.config))
     store = TokenStore(AUTH_FILE)
     with store.locked():
         if args.command == "login":
             asyncio.run(login(store))
-        else:
-            store.clear_tokens()
-            print("Local Notion MCP tokens removed")
+            return {"logged_in": True}
+        store.clear_tokens()
+        return {"tokens_removed": True}
 
 
-def main(argv: list[str] | None = None) -> None:
-    try:
-        run(argv)
-    except KeyboardInterrupt:
-        raise SystemExit("Interrupted; resume the saved draft checkpoint") from None
-    except Exception as error:  # noqa: BLE001 - sanitize SDK errors at the CLI boundary
-        raise SystemExit(error_message(error)) from None
+def main(argv: list[str] | None = None) -> int:
+    # error_message sanitizes SDK errors at the CLI boundary.
+    return run_command(
+        lambda: run(argv),
+        describe=error_message,
+        interrupted="Interrupted; resume the saved draft checkpoint",
+    )
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

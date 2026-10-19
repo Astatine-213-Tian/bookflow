@@ -21,7 +21,7 @@ from src.metadata.classifier import (
     metadata_to_cache,
 )
 from src.metadata.jjwxc import JjwxcTypeMetadata, classify_from_text, fetch_jjwxc_type
-from src.runtime.paths import dataset_txt_output_path
+from src.runtime.paths import dataset_txt_output_path, repo_root
 
 CONTAINER_NS = {"container": "urn:oasis:names:tc:opendocument:xmlns:container"}
 
@@ -31,6 +31,12 @@ OPF_NS = {
     "dc": "http://purl.org/dc/elements/1.1/",
 }
 
+
+RESEARCH_ROOT = repo_root() / "research"
+DEFAULT_DATASET_ROOT = RESEARCH_ROOT / "datasets"
+JJWXC_RANKING = RESEARCH_ROOT / "generated/corpus_acquisition/ranking"
+DEFAULT_JJWXC_MANIFEST = JJWXC_RANKING / "manifest.json"
+DEFAULT_JJWXC_TOP50 = JJWXC_RANKING / "top50.json"
 
 @dataclass
 class ExportEntry:

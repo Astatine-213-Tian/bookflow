@@ -187,6 +187,7 @@ Cover recovery is separate from content progress, so retries preserve chapters.
 | Read/edit existing Notion content | `book-notion export` / `book-notion update` |
 | Make or update a bilingual book | `book-bilingual update BOOK`; stages `translate`, `validate`, `build` |
 | Repair an existing archive explicitly | `book-normalize`, `book-enrich-metadata` |
+| Check EPUB chapter numbering and navigation | `book-validate-epub FILE_OR_DIR` |
 
 Translation baselines use shared source JSON with matching chapter identities
 and paragraph coverage.

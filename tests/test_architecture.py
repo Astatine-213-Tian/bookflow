@@ -80,3 +80,58 @@ class ArchitectureTests(unittest.TestCase):
                         if m.startswith(forbidden)
                     }
                 )
+
+
+class CommandResultTests(unittest.TestCase):
+    def test_commands_print_only_through_the_shared_result_line(self):
+        for path in (SRC / "cli").glob("*.py"):
+            if path.name == "output.py":
+                continue
+            with self.subTest(module=path.name):
+                calls = [
+                    node
+                    for node in ast.walk(ast.parse(path.read_text()))
+                    if isinstance(node, ast.Call)
+                    and getattr(node.func, "id", None) == "print"
+                ]
+                self.assertEqual(calls, [])
+
+    def test_failures_end_with_a_json_result_line(self):
+        import contextlib
+        import io
+        import json
+        import tempfile
+
+        from src.cli import (
+            bilingual,
+            compare_editions,
+            crawl,
+            prepare_book,
+            update_book,
+            validate_epub_chapters,
+        )
+
+        with tempfile.TemporaryDirectory() as root:
+            missing = str(Path(root) / "missing")
+            commands = {
+                "book-crawl": (crawl.main, ["--output", missing]),
+                "book-prepare": (prepare_book.main, [missing]),
+                "book-update": (
+                    update_book.main,
+                    [missing, "--change", missing, "--run-dir", missing],
+                ),
+                "book-compare": (compare_editions.main, [missing, missing]),
+                "book-validate-epub": (validate_epub_chapters.main, [root]),
+                "book-bilingual": (bilingual.main, ["update", missing]),
+            }
+            for name, (main, argv) in commands.items():
+                with self.subTest(command=name):
+                    stdout = io.StringIO()
+                    with (
+                        contextlib.redirect_stdout(stdout),
+                        contextlib.redirect_stderr(io.StringIO()),
+                    ):
+                        code = main(argv)
+                    result = json.loads(stdout.getvalue().splitlines()[-1])
+                    self.assertEqual((code, result["status"]), (1, "failed"))
+                    self.assertTrue(result["error"])

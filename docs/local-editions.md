@@ -193,6 +193,6 @@ Metadata-only repair changes the OPF and edit timestamp, not chapter bodies.
   thumbnail asset without a separate reading page. Visible chapter/prologue
   headings are centered; numbered subheadings follow the shared content rules.
 - Validate ZIP/XML, spine/navigation targets and chapter ordering with
-  `uv run python src/cli/validate_epub_chapters.py FILE`. Verify a second pass is
+  `uv run book-validate-epub FILE`. Verify a second pass is
   unchanged. Reports under `reports/normalization/` record fixes, review decisions
   and unresolved findings; source defects must be inspected before dismissal.

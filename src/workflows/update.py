@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from src.content.changes import apply_changes, content_hash
 from src.content.prepared import load_prepared_source
 from src.runtime.files import write_json
-from src.workflows.ingest import OutputOptions, write_book
+from src.workflows.ingest import IngestResult, OutputOptions, write_book
 from src.workflows.prepare import preparation_fingerprint, save_prepared
 
 
@@ -18,7 +19,8 @@ def update_book(
     run_dir: Path,
     *,
     outputs: OutputOptions | None = None,
-) -> Path:
+) -> IngestResult:
+    """Apply ``change_path`` in a fresh ``run_dir``; ``source_path`` is the result."""
     candidate = run_dir / "source.json"
     if source.resolve() == candidate.resolve():
         raise ValueError("Use a fresh run directory; input is preserved")
@@ -41,6 +43,9 @@ def update_book(
         result, report = apply_changes(current, change)
         write_json(stamp, signature)
         save_prepared(result, run_dir, {"normalization": report}, cover, mime)
+    written = IngestResult()
     if outputs is not None:
-        write_book(result, outputs, cover=cover, cover_mime=mime, input_path=source)
-    return candidate
+        written = write_book(
+            result, outputs, cover=cover, cover_mime=mime, input_path=source
+        )
+    return replace(written, source_path=candidate)

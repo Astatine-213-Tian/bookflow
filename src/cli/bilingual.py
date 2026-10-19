@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
 """Make a bilingual book from its spec: collect, translate, validate, write.
 
-Progress goes to stderr; the last stdout line is a JSON result whose status is
-``complete``, ``review_required`` (exit 2) or ``failed`` (exit 1).
+Progress goes to stderr; the last stdout line is the JSON result described in
+``src/cli/output.py``.
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 from typing import Any
 
+from src.cli.output import run_command
 from src.runtime.progress import ProgressLogger, configure_progress
 from src.translation.config import book_slug, load_config
-from src.translation.gates import ReviewRequired
 from src.translation.methods import METHODS, Baseline, TranslateOptions
 from src.workflows.bilingual import (
     build_book,
@@ -58,10 +57,6 @@ def _options(args: argparse.Namespace, progress: ProgressLogger) -> TranslateOpt
         allow_missing=getattr(args, "allow_missing", False),
         progress=progress,
     )
-
-
-def _emit(result: dict[str, Any]) -> None:
-    print(json.dumps(result, ensure_ascii=False, default=str))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -223,20 +218,8 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     configure_progress(debug=args.verbose)
     progress = ProgressLogger()
-    try:
-        _emit(run(args, progress))
-        return 0
-    except ReviewRequired as review:
-        progress.warning(str(review))
-        result = {"status": "review_required", "review": review.as_dict()}
-        if args.command == "update":
-            result["resume"] = f"book-bilingual update {args.book}"
-        _emit(result)
-        return 2
-    except Exception as exc:  # noqa: BLE001
-        progress.warning(str(exc))
-        _emit({"status": "failed", "error": str(exc)})
-        return 1
+    resume = f"book-bilingual update {args.book}" if args.command == "update" else None
+    return run_command(lambda: run(args, progress), resume=resume)
 
 
 if __name__ == "__main__":

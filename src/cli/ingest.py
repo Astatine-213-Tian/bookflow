@@ -6,11 +6,12 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from src.cli.output import paths, run_command
 from src.crawler.models import CrawlOptions
 from src.crawler.registry import PARSERS, find_parser
 from src.crawler.search import build_previews, choose_preview, search_all
+from src.dataset.library import DEFAULT_JJWXC_MANIFEST, DEFAULT_JJWXC_TOP50
 from src.metadata.jjwxc import GENRES, TIME_AREAS
-from src.runtime.paths import repo_root
 from src.runtime.progress import ProgressLogger, configure_progress
 from src.workflows.ingest import (
     DatasetOptions,
@@ -169,12 +170,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--jjwxc-manifest",
         type=Path,
-        default=repo_root() / "research/generated/corpus_acquisition/ranking/manifest.json",
+        default=DEFAULT_JJWXC_MANIFEST,
     )
     parser.add_argument(
         "--jjwxc-top50",
         type=Path,
-        default=repo_root() / "research/generated/corpus_acquisition/ranking/top50.json",
+        default=DEFAULT_JJWXC_TOP50,
     )
     parser.add_argument(
         "--time-area", choices=TIME_AREAS, help="Manual dataset time-area override"
@@ -195,11 +196,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     if args.list_parsers:
-        for provider in PARSERS:
-            print(
-                f"{provider.name}: {provider.description} (search: {provider.searchable})"
-            )
-        return 0
+        return run_command(
+            lambda: {
+                "parsers": {
+                    p.name: {"description": p.description, "search": p.searchable}
+                    for p in PARSERS
+                }
+            }
+        )
 
     configure_progress(debug=args.verbose)
     progress = ProgressLogger()
@@ -241,61 +245,69 @@ def main(argv: list[str] | None = None) -> int:
     ):
         parser.error("Local edition options require an existing local file")
 
-    try:
-        if local:
-            import json
+    return run_command(lambda: run(args, output_options, local, progress))
 
-            from src.workflows.ingest import ingest_local
 
-            result = ingest_local(
-                Path(args.target),
-                output_options,
-                run_dir=args.run_dir,
-                title=args.title or "",
-                author=args.author or "",
-                chapter_aliases=json.loads(args.chapter_aliases.read_text())
-                if args.chapter_aliases
-                else None,
-                chapter_layout=json.loads(args.chapter_layout.read_text())
-                if args.chapter_layout
-                else None,
-                use_jjwxc_outline=args.enrich_metadata and not args.keep_outline,
-                review=__import__("json").loads(args.review.read_text())
-                if args.review
-                else None,
-                cover_url=args.cover_url,
-                quote_decisions=json.loads(args.quote_review.read_text())
-                if args.quote_review
-                else None,
-            )
-        else:
-            target, parser_name = select_search_target(args, progress)
-            spec = find_parser(target, parser_name)
-            progress.info(f"using parser: {spec.name}")
-            result = ingest(
-                target,
-                parser=spec,
-                output_options=output_options,
-                crawl_options=CrawlOptions(
-                    delay=args.delay,
-                    request_interval=args.request_interval,
-                    headless=args.headless,
-                    concurrency=args.concurrency,
-                ),
-            )
+def run(
+    args: argparse.Namespace,
+    output_options: OutputOptions,
+    local: bool,
+    progress: ProgressLogger,
+) -> dict:
+    if local:
+        import json
 
-        for label, path in (
-            ("Content JSON and reports", result.source_path),
-            ("EPUB", result.epub_path),
-            ("TXT", result.txt_path),
-            ("Notion draft checkpoint", result.notion_state),
-        ):
-            if path:
-                progress.info(f"{label}: {path}")
-        return 0
-    except Exception as exc:
-        progress.warning(str(exc))
-        return 1
+        from src.workflows.ingest import ingest_local
+
+        result = ingest_local(
+            Path(args.target),
+            output_options,
+            run_dir=args.run_dir,
+            title=args.title or "",
+            author=args.author or "",
+            chapter_aliases=json.loads(args.chapter_aliases.read_text())
+            if args.chapter_aliases
+            else None,
+            chapter_layout=json.loads(args.chapter_layout.read_text())
+            if args.chapter_layout
+            else None,
+            use_jjwxc_outline=args.enrich_metadata and not args.keep_outline,
+            review=__import__("json").loads(args.review.read_text())
+            if args.review
+            else None,
+            cover_url=args.cover_url,
+            quote_decisions=json.loads(args.quote_review.read_text())
+            if args.quote_review
+            else None,
+        )
+    else:
+        target, parser_name = select_search_target(args, progress)
+        spec = find_parser(target, parser_name)
+        progress.info(f"using parser: {spec.name}")
+        result = ingest(
+            target,
+            parser=spec,
+            output_options=output_options,
+            crawl_options=CrawlOptions(
+                delay=args.delay,
+                request_interval=args.request_interval,
+                headless=args.headless,
+                concurrency=args.concurrency,
+            ),
+        )
+
+    check = result.epub_check
+    entry = result.dataset_entry
+    return {
+        "outputs": paths(
+            source=result.source_path,
+            epub=result.epub_path,
+            txt=result.txt_path,
+            notion_state=result.notion_state,
+        ),
+        "epub_check": list(check.issues) if check else None,
+        "dataset": f"{entry.author}::{entry.title}" if entry else None,
+    }
 
 
 if __name__ == "__main__":

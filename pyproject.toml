@@ -38,6 +38,7 @@ book-dataset = "src.cli.dataset:main"
 book-normalize = "src.cli.normalize_epub:main"
 book-enrich-metadata = "src.cli.enrich_epub_metadata:main"
 book-notion = "src.cli.notion_book:main"
+book-validate-epub = "src.cli.validate_epub_chapters:main"
 
 [tool.setuptools.packages.find]
 include = ["src*"]

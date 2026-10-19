@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from src.cli.output import log, run_command
 from src.content.normalization import NormalizationReport
 from src.epub.maintenance import attach_metadata_enrichment, normalize_and_review_epub
 from src.epub.metadata import enrich_epub_metadata
@@ -118,15 +119,16 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> None:
-    args = build_parser().parse_args()
-    try:
-        paths = _epub_paths(args.paths)
-        author_ids = _author_ids(args.jjwxc_author_id)
-    except ValueError as error:
-        raise SystemExit(str(error)) from error
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    return run_command(lambda: normalize(args))
+
+
+def normalize(args: argparse.Namespace) -> dict:
+    paths = _epub_paths(args.paths)
+    author_ids = _author_ids(args.jjwxc_author_id)
     if not paths:
-        raise SystemExit("No EPUB files found")
+        raise ValueError("No EPUB files found")
 
     metadata_lookup = None
     if not args.no_metadata:
@@ -162,41 +164,45 @@ def main() -> None:
         if metadata is not None:
             attach_metadata_enrichment(report, metadata)
         reports.append(report)
-        print(report.format_text(include_members=args.verbose))
+        log(report.format_text(include_members=args.verbose))
 
+    report_paths = []
     if args.report:
         write_reports(args.report, reports)
-        print(f"Wrote normalization report: {args.report}")
+        report_paths.append(str(args.report))
     else:
         for report in reports:
             report_path = automatic_report_path(report.path)
             write_reports(report_path, [report])
-            print(f"Wrote normalization report: {report_path}")
+            report_paths.append(str(report_path))
 
     metadata_reports = [
         report.metadata_enrichment
         for report in reports
         if report.metadata_enrichment is not None
     ]
-    print(
-        "SUMMARY "
-        f"books={len(reports)} "
-        f"fixes={sum(report.total_changes for report in reports)} "
-        f"changed_members={sum(report.changed_members for report in reports)} "
-        f"metadata_changed={sum(item.changed for item in metadata_reports)} "
-        f"metadata_unmatched={sum(item.status == 'unmatched' for item in metadata_reports)} "
-        f"metadata_errors={sum(item.status == 'error' for item in metadata_reports)} "
-        f"reported_issues={sum(len(report.issues) for report in reports)} "
-        f"pending_codex={sum(issue.requires_codex_review for report in reports for issue in report.issues)} "
-        f"needs_user={sum(issue.requires_user_review for report in reports for issue in report.issues)}"
-    )
-    if args.fail_on_issues and any(
-        issue.requires_codex_review or issue.requires_user_review
-        for report in reports
-        for issue in report.issues
-    ):
-        raise SystemExit(1)
-
+    issues = [issue for report in reports for issue in report.issues]
+    pending_codex = sum(issue.requires_codex_review for issue in issues)
+    needs_user = sum(issue.requires_user_review for issue in issues)
+    return {
+        "status": (
+            "issues_found"
+            if args.fail_on_issues and (pending_codex or needs_user)
+            else "complete"
+        ),
+        "books": len(reports),
+        "fixes": sum(report.total_changes for report in reports),
+        "changed_members": sum(report.changed_members for report in reports),
+        "metadata_changed": sum(item.changed for item in metadata_reports),
+        "metadata_unmatched": sum(
+            item.status == "unmatched" for item in metadata_reports
+        ),
+        "metadata_errors": sum(item.status == "error" for item in metadata_reports),
+        "reported_issues": len(issues),
+        "pending_codex": pending_codex,
+        "needs_user": needs_user,
+        "outputs": {"reports": report_paths},
+    }
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

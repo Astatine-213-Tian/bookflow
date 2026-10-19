@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from src.cli.output import paths, run_command
 from src.workflows.ingest import OutputOptions
 from src.workflows.update import update_book
 
@@ -19,23 +20,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--txt-output", type=Path)
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args(argv)
-    try:
-        outputs = (
-            OutputOptions(
-                output=args.output,
-                txt_output=args.txt_output,
-                output_formats=tuple(args.mode),
-                prevent_overwrite=not args.overwrite,
-            )
-            if args.mode or args.output or args.txt_output
-            else None
+    return run_command(lambda: update(args))
+
+
+def update(args: argparse.Namespace) -> dict:
+    outputs = (
+        OutputOptions(
+            output=args.output,
+            txt_output=args.txt_output,
+            output_formats=tuple(args.mode),
+            prevent_overwrite=not args.overwrite,
         )
-        candidate = update_book(args.source, args.change, args.run_dir, outputs=outputs)
-        print(candidate)
-        return 0
-    except (ValueError, OSError) as error:
-        print(error)
-        return 1
+        if args.mode or args.output or args.txt_output
+        else None
+    )
+    result = update_book(args.source, args.change, args.run_dir, outputs=outputs)
+    check = result.epub_check
+    return {
+        "outputs": paths(
+            source=result.source_path, epub=result.epub_path, txt=result.txt_path
+        ),
+        "epub_check": list(check.issues) if check else None,
+    }
 
 
 if __name__ == "__main__":

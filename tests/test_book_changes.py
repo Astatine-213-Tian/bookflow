@@ -85,9 +85,12 @@ class ChangesTests(unittest.TestCase):
             with patch(
                 "src.workflows.update.preparation_fingerprint", return_value="rules-1"
             ):
-                candidate = update_book(input_path, change_path, root / "result")
+                candidate = update_book(
+                    input_path, change_path, root / "result"
+                ).source_path
                 self.assertEqual(
-                    update_book(input_path, change_path, root / "result"), candidate
+                    update_book(input_path, change_path, root / "result").source_path,
+                    candidate,
                 )
             report = json.loads((candidate.parent / "report.json").read_text())
             self.assertGreater(report["normalization"]["total_changes"], 0)

@@ -6,6 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
+from src.cli.output import paths, run_command
 from src.crawler.registry import PARSERS
 from src.workflows.collect import collect_source, crawl_options
 
@@ -33,34 +34,33 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--concurrency", type=int, default=2)
     parser.add_argument("--headless", action="store_true")
     args = parser.parse_args(argv)
-    try:
-        config = json.loads(args.config.read_text()) if args.config else {}
-        source = config.get("source", {})
-        target = args.target or source.get("url")
-        if not target:
-            raise ValueError("Provide a target URL or --config with source.url")
-        options = crawl_options(
-            config,
-            delay=args.delay,
-            concurrency=args.concurrency,
-            headless=args.headless,
-            title=args.title,
-            author=args.author,
-            language=args.language,
-            include_comments=args.comments,
-            extra_post_ids=tuple(args.extra_post_id),
-        )
-        path = collect_source(
-            target,
-            args.output,
-            provider=args.provider or source.get("provider"),
-            options=options,
-        )
-        print(path)
-        return 0
-    except (OSError, ValueError, RuntimeError) as error:
-        print(error)
-        return 1
+    return run_command(lambda: collect(args))
+
+
+def collect(args: argparse.Namespace) -> dict:
+    config = json.loads(args.config.read_text()) if args.config else {}
+    source = config.get("source", {})
+    target = args.target or source.get("url")
+    if not target:
+        raise ValueError("Provide a target URL or --config with source.url")
+    options = crawl_options(
+        config,
+        delay=args.delay,
+        concurrency=args.concurrency,
+        headless=args.headless,
+        title=args.title,
+        author=args.author,
+        language=args.language,
+        include_comments=args.comments,
+        extra_post_ids=tuple(args.extra_post_id),
+    )
+    path = collect_source(
+        target,
+        args.output,
+        provider=args.provider or source.get("provider"),
+        options=options,
+    )
+    return {"outputs": paths(source=path, evidence=path.parent / "evidence.json")}
 
 
 if __name__ == "__main__":

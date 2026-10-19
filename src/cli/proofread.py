@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
+from src.cli.output import run_command
 from src.workflows.proofread import apply_proofread, prepare_proofread, review_proofread
 
 
-def main(argv: list[str] | None = None) -> None:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     plan = commands.add_parser(
@@ -48,6 +48,10 @@ def main(argv: list[str] | None = None) -> None:
     for command in (plan, review, apply):
         command.add_argument("--run-dir", type=Path, required=True)
     args = parser.parse_args(argv)
+    return run_command(lambda: proofread(args))
+
+
+def proofread(args: argparse.Namespace) -> dict:
     if args.command == "plan":
         result = prepare_proofread(
             args.run_dir,
@@ -65,8 +69,8 @@ def main(argv: list[str] | None = None) -> None:
         }
     else:
         result = apply_proofread(args.run_dir, state_root=args.state_root)
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return {"command": args.command, "result": result}
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -50,7 +50,9 @@ upload in `src/notion/`, and translation/QA in `src/translation/`.
 `src/workflows/ingest.py` chooses outputs after shared preparation; `src/cli/` handles
 arguments. Agents run stages in any order and retry them, so put each guarantee
 in the stage that produces or consumes its artifact; every entry point then
-enforces it. `tests/test_architecture.py` checks dependency direction and the
+enforces it. Every `book-*` command ends with one JSON result line on stdout and
+logs to stderr; `src/cli/output.py` defines its statuses and exit codes. Read
+that line, not the log text. `tests/test_architecture.py` checks dependency direction and the
 separation of cleanup from rendering.
 
 For adding, updating or repairing books, use the single
