@@ -10,33 +10,32 @@ for long-image crops, coverage tracking and discrepancy resolution. Keep the raw
 transcription, then apply the shared formatting rules before output and readback,
 including quote direction and Chinese/Latin/digit spacing.
 
-## Eternal Gate Updates
+## Bilingual Books
 
-For “update eternal gate” / “更新永恒之门”, use this workflow:
+A bilingual book is one spec, `book_specs/<book>/config.json`: its `source`,
+`translation.method` and glossary, and `output`. For “update <book>”, such as
+“update eternal gate” / “更新永恒之门” (`eternal_gate`), run:
 
-1. Identify the latest successful crawl and translation run under `generated/`
-   as the reuse baseline; preserve existing artifacts and glossary edits.
-2. Run the maintained `uv run book-crawl --config book_specs/eternal_gate/config.json` command below with `--headless` and a
-   fresh dated `--output` directory. The Patreon crawler manages its own browser
-   and saved login profile; running it requires no browser skill setup.
+```bash
+uv run book-bilingual update eternal_gate --headless
+```
 
-   - **Recovery:** inspect an actual crawler failure before loading Agent Browser
-     or BrowserAct. Use interactive browser tools only when the failure requires
-     login, verification, or browser inspection, then resume the crawler. For the
-     user's existing Arc session, use a verified `arc-cdp run <adapter>` adapter.
-   - `src/cli/crawl.py` and `src/crawler/providers/patreon/parser.py` own the maintained
-     crawling path.
+It collects a fresh dated snapshot, reuses the last successful build as the
+baseline, translates with the spec's method, validates, writes the spec's output
+and records the new baseline in `state/bilingual/<book>.json`. Rerunning resumes
+the pending run. Act on the `status` in its final JSON line:
 
-3. Compare chapter bodies and fresh comments with the baseline. Reuse exact
-   unchanged translation and style artifacts; translate and style only new or
-   changed content using `book_specs/eternal_gate/config.json`. Review glossary
-   changes against source evidence and preserve canonical names and protected
-   quotations.
-4. Run structural validation and semantic QA, then rebuild
-   `books/顾雪柔/永恒之门.method4.bilingual.epub`. Read the build's EPUB check
-   (ZIP, chapter numbering, nav/NCX), then verify chapter coverage, metadata,
-   protected quotations, and placeholder scans before reporting completion.
-   This update targets the bilingual EPUB; TXT export is a separate request.
+- `complete`: report `outputs` and any `epub_check` issues. Review
+  `comment_evidence` against the glossary, preserving canonical names and
+  protected quotations; after a reviewed glossary edit, run `update` again.
+  Spot-check metadata and scan for placeholder text. TXT is a separate request.
+- `review_required`: write the decisions `review` asks for under `review.path`,
+  then run `resume`.
+- `failed`: read `error`. After a glossary change on a pending run, use
+  `--restart`; for a bad snapshot, `--recrawl`. For a collection failure, inspect
+  the actual crawler error before loading Agent Browser or BrowserAct; use
+  interactive browser tools only for login, verification or browser inspection.
+  For the user's existing Arc session, use a verified `arc-cdp run <adapter>`.
 
 ## Project Structure & Module Organization
 
@@ -98,26 +97,17 @@ uv run book-ingest --search "全球高考" --first --mode epub -o books/book.epu
 
 Use `uv run book-ingest --list-parsers` to inspect supported sites. Browser-backed providers such as xfxs and pili45 use `src.crawler.fetch.browser.resolve_browser_executable()` to find a Chromium-compatible browser. Set `BOOKLIB_BROWSER_PATH` to force a specific executable; otherwise discovery checks Playwright-managed Chromium, common executables on `PATH`, and common macOS app bundle paths.
 
-Run the reusable crawl-then-translate stages as separate tasks. For Eternal Gate
-updates, apply the reuse workflow above and use fresh dated crawl/run paths:
+Run bilingual stages separately when debugging one of them; `update` chains the
+same functions. `book-bilingual methods` lists translation methods.
 
 ```bash
-uv run book-crawl "https://www.patreon.com/collection/2218551?view=condensed" \
-  --config book_specs/eternal_gate/config.json \
-  --output generated/crawls/eternal_gate \
-  --headless
-
-uv run book-translate scene-positive generated/crawls/eternal_gate \
-  --config book_specs/eternal_gate/config.json \
-  --run-dir generated/translation_runs/eternal_gate_NEW \
-  --baseline-snapshot generated/crawls/eternal_gate_BASELINE \
-  --baseline-run generated/translation_runs/eternal_gate_BASELINE
-uv run book-translate validate generated/translation_runs/eternal_gate_NEW \
-  --config book_specs/eternal_gate/config.json
-uv run book-translate build-epub generated/crawls/eternal_gate \
-  --run-dir generated/translation_runs/eternal_gate_NEW \
-  --config book_specs/eternal_gate/config.json \
-  -o books/顾雪柔/永恒之门.method4.bilingual.epub
+uv run book-crawl --config book_specs/eternal_gate/config.json \
+  --output generated/crawls/eternal_gate/DATE --headless
+uv run book-bilingual translate generated/crawls/eternal_gate/DATE \
+  --book eternal_gate --run-dir generated/translation_runs/eternal_gate/DATE
+uv run book-bilingual validate generated/translation_runs/eternal_gate/DATE --book eternal_gate
+uv run book-bilingual build generated/crawls/eternal_gate/DATE \
+  --book eternal_gate --run-dir generated/translation_runs/eternal_gate/DATE
 ```
 
 Dataset TXT output and manifests live under `research/datasets/`. The production
@@ -167,9 +157,9 @@ shows sensible previews without immediately
 downloading the whole book. For EPUB output, open the generated file and confirm
 metadata, table of contents, chapter order, and cover handling.
 
-For translation-pipeline changes, at minimum run `uv run python -m py_compile ...`, `uv run book-crawl --help`, `uv run book-translate --help`, the focused production unit tests, and a small fixture through `book-translate prepare`, `validate --config`, `transfer-style`, and `build-epub`.
+For translation-pipeline changes, at minimum run `uv run python -m py_compile ...`, `uv run book-crawl --help`, `uv run book-bilingual --help`, the focused production unit tests, and a small fixture through `book-bilingual translate --no-codex`, `validate` and `build`.
 
-For generated bilingual EPUBs, the main Codex run retries failed chunks with narrower context and paragraph fallbacks. Empty `zh` values are allowed only after retry when a paragraph still cannot be translated and must produce no placeholder/refusal text. In that case validate the run with `book-translate validate --allow-missing --config ...`, then scan the final EPUB for placeholder strings and confirm only the intended paragraphs are English-only.
+For generated bilingual EPUBs, the main Codex run retries failed chunks with narrower context and paragraph fallbacks. Empty `zh` values are allowed only after retry when a paragraph still cannot be translated and must produce no placeholder/refusal text. In that case validate the run with `book-bilingual validate --allow-missing --book ...`, then scan the final EPUB for placeholder strings and confirm only the intended paragraphs are English-only.
 
 ## Commit & Pull Request Guidelines
 

@@ -6,14 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.cli.translate import (
-    _validate_with_optional_semantic_qa,
-)
-from src.cli.translate import (
-    main as translate_main,
-)
 from src.runtime.files import write_json
-from src.runtime.progress import ProgressLogger
+from src.translation.methods import METHODS, TranslateOptions
 from src.translation.codex_cli import (
     ModelCapacityError,
     run_missing_prompts_with_model_fallback,
@@ -74,65 +68,45 @@ def successful_result(request: dict[str, object]) -> dict[str, object]:
 
 
 class ProductionStyleTransferTests(unittest.TestCase):
-    def test_style_validation_requires_auto_review_when_not_skipped(self) -> None:
-        with (
-            patch("src.cli.translate.is_author_style_transfer_run", return_value=True),
-            patch(
-                "src.cli.translate.validate_style_transfer_provenance",
-                return_value={"validated_chunk_count": 1},
-            ),
-            patch(
-                "src.cli.translate.validate_translation_run",
-                return_value={"chunks": [{}]},
-            ),
-        ):
-            with self.assertRaises(ValueError):
-                _validate_with_optional_semantic_qa(
+    def test_style_validation_requires_auto_review(self) -> None:
+        method = METHODS["neutral_style_transfer"]
+        for check in (method.validate, method.ready):
+            with self.subTest(check=check.__name__), self.assertRaises(ValueError):
+                check(
                     run_dir=Path("/tmp/style-run"),
                     config={"semantic_compression": {"auto_review": False}},
-                    allow_missing=False,
-                    models=None,
-                    codex_bin="codex",
-                    timeout_seconds=None,
-                    skip_semantic_qa=False,
-                    semantic_overwrite=False,
-                    progress=ProgressLogger(),
+                    options=TranslateOptions(),
                 )
 
-    def test_all_command_always_runs_semantic_qa(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            config_path = root / "config.json"
-            config_path.write_text("{}\n", encoding="utf-8")
-            neutral_run = root / "neutral"
-            style_run = root / "style"
-            output_path = root / "book.epub"
+    def test_style_validation_runs_semantic_qa_unless_current(self) -> None:
+        config = {"semantic_compression": {"auto_review": True}}
+        for current, expected_calls in ((False, 1), (True, 0)):
             with (
+                self.subTest(current=current),
                 patch(
-                    "src.cli.translate.prepare_translation_run",
-                    return_value=neutral_run,
+                    "src.translation.style_transfer.validate_style_transfer_provenance",
+                    return_value={"validated_chunk_count": 1},
                 ),
                 patch(
-                    "src.cli.translate.validate_translation_run",
-                    return_value={"glossary_candidate_count": 0},
+                    "src.translation.methods._neutral_validate",
+                    return_value={"chunks": [{}]},
                 ),
                 patch(
-                    "src.cli.translate.prepare_author_style_transfer_run",
-                    return_value=style_run,
+                    "src.translation.semantic_compression."
+                    "semantic_qa_summary_is_current",
+                    return_value=current,
                 ),
                 patch(
-                    "src.cli.translate._validate_with_optional_semantic_qa"
-                ) as validate_style,
-                patch(
-                    "src.cli.translate.build_epub_from_run",
-                    return_value=output_path,
-                ),
+                    "src.translation.methods.run_semantic_qa",
+                    return_value={"result_summary": {"applied_count": 0}},
+                ) as semantic_qa,
             ):
-                return_code = translate_main(
-                    ["all", str(root / "snapshot"), "--config", str(config_path)]
+                METHODS["neutral_style_transfer"].validate(
+                    run_dir=Path("/tmp/style-run"),
+                    config=config,
+                    options=TranslateOptions(),
                 )
-            self.assertEqual(return_code, 0)
-            self.assertFalse(validate_style.call_args.kwargs["skip_semantic_qa"])
+                self.assertEqual(semantic_qa.call_count, expected_calls)
 
     def test_default_model_order_prefers_all_local_56_variants(self) -> None:
         self.assertEqual(

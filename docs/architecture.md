@@ -32,7 +32,7 @@ Translation keeps method-specific QA artifacts alongside the shared content JSON
 
 | Responsibility | Modules under `src/` | Public seam |
 | --- | --- | --- |
-| Workflows | `workflows/` | `prepare_book`, `prepare_file`, `collect_source`, `update_book`, `write_book`, translation orchestration |
+| Workflows | `workflows/` | `prepare_book`, `prepare_file`, `collect_source`, `update_book`, `write_book`, bilingual stages and `bilingual.update_book` |
 | Sources | `crawler/`, `inputs/` | `ParserSpec.crawl`, optional search/preview, `read_input` |
 | Processing | `content/`, `translation/` | `normalize_book`, `apply_changes`, `translated_source` |
 | Metadata | `metadata/` | `enrich_source`, authoritative lookup/classification |
@@ -185,11 +185,25 @@ Cover recovery is separate from content progress, so retries preserve chapters.
 | Inspect ambiguous EPUB | `book-prepare FILE --inventory --run-dir generated/ingest/review` |
 | Apply local explicit changes | `book-update source.json --change change.json --run-dir generated/updates/run` |
 | Read/edit existing Notion content | `book-notion export` / `book-notion update` |
-| Translate and verify | `book-translate prepare`, `scene-positive`, `validate`, `transfer-style`, `build-epub` |
+| Make or update a bilingual book | `book-bilingual update BOOK`; stages `translate`, `validate`, `build` |
 | Repair an existing archive explicitly | `book-normalize`, `book-enrich-metadata` |
 
 Translation baselines use shared source JSON with matching chapter identities
 and paragraph coverage.
+
+## Bilingual books
+
+`book_specs/<book>/config.json` names a source, a translation method, a glossary
+and outputs. `workflows/bilingual.py` runs collect → translate → validate →
+build; each stage is also a `book-bilingual` subcommand. Methods register in
+`translation/methods.py` behind one interface: `translate` produces outputs,
+`validate` runs the method's review gates (semantic QA for style transfer), and
+`ready` re-checks a finished run without model calls before anything is written.
+A run directory records its method, snapshot and baseline in `bilingual_run.json`
+and refuses a different one. A stage that needs an agent decision raises
+`ReviewRequired` with the path to write it. `update` keeps the pending run and
+the last successful build in `state/bilingual/<book>.json`; the build becomes the
+next baseline only after its output is written.
 
 `tests/test_architecture.py` enforces dependency direction. Fixture tests cover
 collection/preparation/output, fragment EPUBs, rich text, normalization rules,

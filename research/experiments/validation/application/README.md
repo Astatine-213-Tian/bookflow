@@ -5,4 +5,4 @@ These modules record the one-time research application of
 fallback repair merging, run evaluation, and bilingual EPUB audit.
 
 They are retained to explain the evidence used for the production handoff. New
-translations belong to the parent project's `book-translate` pipeline.
+translations belong to the parent project's `book-bilingual` pipeline.

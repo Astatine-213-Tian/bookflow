@@ -10,7 +10,7 @@ from src.translation.positive_scene import (
     scene_windows,
 )
 from src.translation.style_transfer_assets import sha256_json
-from src.workflows.translation import prepare_translation_run
+from src.translation.methods import method_for
 
 
 class PositiveSceneTests(unittest.TestCase):
@@ -135,14 +135,12 @@ class PositiveSceneTests(unittest.TestCase):
             resolve_issues({"paragraphs": ["两把，两把。", "他笑了。"]}, qa, resolution)
 
     def test_selected_method_cannot_silently_fall_back_to_neutral(self) -> None:
-        from pathlib import Path
-
-        with self.assertRaisesRegex(ValueError, "scene-positive"):
-            prepare_translation_run(
-                snapshot_dir=Path("missing"),
-                config={"translation": {"method": "direct_scene_positive"}},
-            )
-
+        selected = {"translation": {"method": "direct_scene_positive"}}
+        self.assertEqual(method_for(selected).name, "direct_scene_positive")
+        self.assertTrue(method_for(selected).reuses_baseline)
+        for config in ({}, {"translation": {"method": "unknown"}}):
+            with self.assertRaisesRegex(ValueError, "translation.method"):
+                method_for(config)
 
 if __name__ == "__main__":
     unittest.main()

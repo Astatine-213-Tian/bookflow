@@ -5,6 +5,7 @@ from __future__ import annotations
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from src.content.contract import validate_book
 from src.content.prepared import save_source
@@ -63,6 +64,31 @@ def collect(
 ) -> Collected:
     options = options or CrawlOptions()
     return extract_collected(parser.crawl(target, options), options)
+
+
+def crawl_options(
+    config: dict[str, Any],
+    *,
+    delay: float = 0.4,
+    concurrency: int = 2,
+    headless: bool = False,
+    title: str = "",
+    author: str = "",
+    language: str = "",
+    include_comments: bool = False,
+    extra_post_ids: tuple[str, ...] = (),
+) -> CrawlOptions:
+    source = config.get("source") or {}
+    return CrawlOptions(
+        delay=delay,
+        concurrency=max(1, concurrency),
+        headless=headless,
+        title=title or config.get("title", ""),
+        author=author or config.get("author", ""),
+        language=language or source.get("language", ""),
+        include_comments=include_comments or bool(source.get("comments", False)),
+        extra_post_ids=extra_post_ids or tuple(source.get("extra_post_ids", [])),
+    )
 
 
 def collect_source(

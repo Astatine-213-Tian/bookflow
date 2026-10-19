@@ -6,9 +6,8 @@ import argparse
 import json
 from pathlib import Path
 
-from src.crawler.models import CrawlOptions
 from src.crawler.registry import PARSERS
-from src.workflows.collect import collect_source
+from src.workflows.collect import collect_source, crawl_options
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -40,17 +39,16 @@ def main(argv: list[str] | None = None) -> int:
         target = args.target or source.get("url")
         if not target:
             raise ValueError("Provide a target URL or --config with source.url")
-        options = CrawlOptions(
+        options = crawl_options(
+            config,
             delay=args.delay,
-            concurrency=max(1, args.concurrency),
+            concurrency=args.concurrency,
             headless=args.headless,
-            title=args.title or config.get("title", ""),
-            author=args.author or config.get("author", ""),
-            language=args.language or source.get("language", ""),
-            include_comments=args.comments or source.get("comments", False),
-            extra_post_ids=tuple(
-                args.extra_post_id or source.get("extra_post_ids", [])
-            ),
+            title=args.title,
+            author=args.author,
+            language=args.language,
+            include_comments=args.comments,
+            extra_post_ids=tuple(args.extra_post_id),
         )
         path = collect_source(
             target,

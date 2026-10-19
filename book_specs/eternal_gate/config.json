@@ -4,7 +4,6 @@
   "style_name": "非天夜翔/顾雪柔",
   "source_context": "English is semantic authority. Direct scene translation with the user-selected positive examples, followed by source-only semantic/glossary review and non-rewriting bilingual alignment.",
   "glossary_path": "book_specs/eternal_gate/glossary.json",
-  "run_dir": "generated/translation_runs/eternal_gate",
   "pipeline": {
     "passes": [
       "direct_scene_positive",
@@ -71,6 +70,9 @@
     "reasoning_effort": "high",
     "timeout_seconds": 900,
     "workers": 6
+  },
+  "output": {
+    "epub": "books/顾雪柔/永恒之门.method4.bilingual.epub"
   },
   "source": {
     "provider": "patreon",

@@ -99,16 +99,21 @@ class DestinationTests(unittest.TestCase):
                 self.assertIn("内容", z.read("EPUB/chapter_0002.xhtml").decode())
 
     def test_bilingual_builder_embeds_only_cover_image(self):
-        from src.workflows.translation import build_bilingual_epub
+        from src.workflows.bilingual import write_bilingual
+        from src.workflows.ingest import OutputOptions
         from tests.fixtures import write_source
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             write_source(root, ["Text."], cover=png())
-            build_bilingual_epub(
-                snapshot_dir=root,
-                translations_dir=root / "translations",
-                output=root / "bilingual.epub",
+            write_bilingual(
+                root,
+                root / "translations",
+                OutputOptions(
+                    output=root / "bilingual.epub",
+                    output_formats=("epub",),
+                    prevent_overwrite=False,
+                ),
             )
             with zipfile.ZipFile(root / "bilingual.epub") as z:
                 self.assertEqual(z.read("EPUB/cover.png"), png())

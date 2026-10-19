@@ -93,23 +93,28 @@ byte readback. Details: [storage/recovery](docs/notion-books.md),
 [shared extras](docs/fanwai-notion.md) and the [reference contract](docs/content-json.md#hyperlinks-and-footnotes).
 EPUB retains quotes, links and notes; TXT projects them to readable text.
 
-## Collect and translate
+## Bilingual books
 
 ```bash
-uv run book-crawl --config book_specs/eternal_gate/config.json \
-  --output generated/crawls/eternal_gate_NEW --headless
-uv run book-translate --help
+uv run book-bilingual update eternal_gate --headless
+uv run book-bilingual --help
 ```
+
+A bilingual book is one spec under `book_specs/<book>/`: source, translation
+method and glossary, and output. `update` collects, translates, validates and
+writes it, resumes a paused run, and reuses the last successful build as its
+baseline. `book-crawl` runs collection on its own.
 
 Collection saves the public `source.json` and separate comments/platform evidence.
 Patreon collection membership is explicit; supplementary post IDs are book
 configuration, never guessed from a creator feed. Other books can reuse the same
 provider with different titles, authors and languages.
 
-Translation currently targets English → Simplified Chinese. Neutral, author-style
-and direct positive-scene methods retain their existing QA/reuse checks and all
-write structured bilingual content through the ordinary EPUB writer. Follow the
-book configuration and [Eternal Gate workflow](AGENTS.md#eternal-gate-updates).
+Translation currently targets English → Simplified Chinese. The spec's
+`translation.method` selects neutral, neutral with author style transfer, or
+direct positive scenes (`book-bilingual methods`); each keeps its own QA and
+reuse checks, and all write structured bilingual content through the ordinary
+EPUB writer. See [Bilingual Books](AGENTS.md#bilingual-books).
 
 Direct scene generation, semantic review and bilingual alignment each start a
 fresh Codex session with memory use, memory generation and memory imports
@@ -147,7 +152,7 @@ finishes; successful runs do not require keeping every intermediate file.
 ```bash
 uv run python -m unittest discover -s tests -p 'test_*.py'
 uv run book-crawl --help
-uv run book-translate --help
+uv run book-bilingual --help
 ```
 
 Tests use synthetic content and substitute external transports. Live Notion

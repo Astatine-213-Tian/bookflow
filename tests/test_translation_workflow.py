@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -20,7 +21,7 @@ from tests.test_production_style_transfer import (
 
 
 class TranslationWorkflowTests(unittest.TestCase):
-    def test_shared_source_runs_prepare_validate_style_prepare_and_epub_cli(self):
+    def test_spec_selects_method_through_translate_validate_and_build_cli(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source, run = root / "input", root / "run"
@@ -36,28 +37,28 @@ class TranslationWorkflowTests(unittest.TestCase):
                 },
             )
             config = root / "config.json"
-            write_json(
-                config,
-                {
-                    "glossary_path": str(glossary),
-                    "style_transfer": {
-                        "asset_path": str(ASSET_PATH),
-                        "asset_file_sha256": ASSET_SHA256,
-                        "prompt_path": str(PROMPT_PATH),
-                        "schema_path": str(SCHEMA_PATH),
-                    },
+            spec = {
+                "glossary_path": str(glossary),
+                "translation": {"method": "neutral"},
+                "style_transfer": {
+                    "asset_path": str(ASSET_PATH),
+                    "asset_file_sha256": ASSET_SHA256,
+                    "prompt_path": str(PROMPT_PATH),
+                    "schema_path": str(SCHEMA_PATH),
                 },
-            )
+            }
+            write_json(config, spec)
 
-            def cli(*args: str) -> None:
+            def cli(*args: str) -> dict:
                 result = subprocess.run(
-                    ["uv", "run", "book-translate", *map(str, args)],
+                    ["uv", "run", "book-bilingual", *map(str, args)],
                     capture_output=True,
                     text=True,
                 )
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                return json.loads(result.stdout.splitlines()[-1])
 
-            cli("prepare", source, "--config", config, "--run-dir", run)
+            cli("translate", source, "--book", config, "--run-dir", run, "--no-codex")
             manifest = json.loads((run / "run_manifest.json").read_text())
             self.assertEqual(manifest["chunks"][0]["indexes"], [0, 1])
             for chunk in manifest["chunks"]:
@@ -70,17 +71,33 @@ class TranslationWorkflowTests(unittest.TestCase):
                         ]
                     },
                 )
-            cli("validate", run, "--config", config)
+            validated = cli("validate", run, "--book", config)
+            self.assertEqual(validated["status"], "complete")
             self.assertEqual(
                 json.loads((run / "translations/01.json").read_text())["translations"][
                     1
                 ]["zh"],
                 "守住这个承诺。",
             )
-            cli("transfer-style", run, "--config", config)
+            styled, styled_config = root / "styled", root / "styled.json"
+            shutil.copytree(run, styled)
+            (styled / "bilingual_run.json").unlink()
+            write_json(
+                styled_config,
+                {**spec, "translation": {"method": "neutral_style_transfer"}},
+            )
+            cli(
+                "translate",
+                source,
+                "--book",
+                styled_config,
+                "--run-dir",
+                styled,
+                "--no-codex",
+            )
             request = json.loads(
                 next(
-                    (run / "author_style_transfer/requests").glob("*.json")
+                    (styled / "author_style_transfer/requests").glob("*.json")
                 ).read_text()
             )
             self.assertEqual(
@@ -88,9 +105,10 @@ class TranslationWorkflowTests(unittest.TestCase):
                 ["门开了。", "守住这个承诺。"],
             )
             output = root / "book.epub"
-            cli(
-                "build-epub", source, "--run-dir", run, "--config", config, "-o", output
+            built = cli(
+                "build", source, "--run-dir", run, "--book", config, "-o", output
             )
+            self.assertEqual(built["epub_check"], [])
             with ZipFile(output) as archive:
                 body = archive.read("EPUB/chapter_0001.xhtml").decode()
                 for text in (

@@ -31,6 +31,6 @@ uv run python -m unittest \
 ```
 
 Rerunning model ratings requires the frozen inputs and model access documented
-by each preregistration snapshot. Use the parent `book-translate` CLI for new
+by each preregistration snapshot. Use the parent `book-bilingual` CLI for new
 Eternal Gate translations; this package preserves research procedures and
 evidence, not the maintained production path.

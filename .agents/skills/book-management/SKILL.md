@@ -47,8 +47,8 @@ For working files and task completion, follow [storage and cleanup](../../../doc
 - **Export an existing book for training:** use the targeted dataset command below.
   Training output uses the same collection pipeline when a fresh source is needed.
 
-For Eternal Gate updates, follow the dedicated reuse/glossary/translation workflow
-in `AGENTS.md`; preserve its established local bilingual output.
+For bilingual books such as Eternal Gate, follow “Bilingual Books” in `AGENTS.md`:
+`book-bilingual update <book>` writes the output named in the book spec.
 
 ## Acquire a Book
 

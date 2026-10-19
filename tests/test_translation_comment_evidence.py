@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.cli.translate import main as translate_main
+from src.cli.bilingual import main as bilingual_main
 from src.runtime.files import write_json
 from src.translation.comments import write_glossary_comment_evidence
 from src.translation.prompt_builder import prepare_prompts
@@ -141,7 +141,13 @@ class TranslationCommentEvidenceTests(unittest.TestCase):
             )
             before = glossary_path.read_text(encoding="utf-8")
             config_path = root / "config.json"
-            write_json(config_path, {"glossary_path": str(glossary_path)})
+            write_json(
+                config_path,
+                {
+                    "glossary_path": str(glossary_path),
+                    "translation": {"method": "neutral"},
+                },
+            )
             run_dir = root / "run"
             write_json(
                 run_dir / "run_manifest.json",
@@ -176,8 +182,8 @@ class TranslationCommentEvidenceTests(unittest.TestCase):
                 },
             )
 
-            return_code = translate_main(
-                ["validate", str(run_dir), "--config", str(config_path)]
+            return_code = bilingual_main(
+                ["validate", str(run_dir), "--book", str(config_path)]
             )
 
             self.assertEqual(return_code, 0)

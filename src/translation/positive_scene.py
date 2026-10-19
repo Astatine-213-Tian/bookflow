@@ -14,6 +14,7 @@ from typing import Any
 
 from src.runtime.files import write_json
 from src.runtime.paths import repo_root
+from src.translation.gates import ReviewRequired
 from src.translation.glossary import glossary_terms, matched_terms, normalize_lookup_key
 from src.translation.sentence_translations import (
     _find_occurrences,
@@ -263,8 +264,8 @@ def run_positive_scenes(
     snapshot_dir: Path,
     run_dir: Path,
     config: dict[str, Any],
-    baseline_snapshot: Path,
-    baseline_run: Path,
+    baseline_snapshot: Path | None = None,
+    baseline_run: Path | None = None,
 ) -> dict[str, Any]:
     run = run_dir.resolve()
     settings = config["scene_positive"]
@@ -289,8 +290,15 @@ def run_positive_scenes(
         ("align", ALIGN_SCHEMA),
     ):
         write_json(run / "schemas" / f"{name}.json", schema)
-    manifest, old_manifest = load_source(snapshot_dir), load_source(baseline_snapshot)
-    old = {x["source_id"]: x for x in source_entries(old_manifest)}
+    if (baseline_snapshot is None) != (baseline_run is None):
+        raise ValueError("A reuse baseline needs both its snapshot and its run")
+    manifest = load_source(snapshot_dir)
+    old_manifest = load_source(baseline_snapshot) if baseline_snapshot else None
+    old = (
+        {x["source_id"]: x for x in source_entries(old_manifest)}
+        if old_manifest
+        else {}
+    )
     asset, glossary = read(runtime / "asset.json"), inputs["glossary.json"]
     requests, reused, sources = [], [], {}
     for item in source_entries(manifest):
@@ -455,7 +463,13 @@ def run_positive_scenes(
         {"pending": pending, "scenes": len(requests), "reused": len(reused)},
     )
     if pending:
-        raise ValueError(f"Source review requires adjudication: {pending}")
+        raise ReviewRequired(
+            "scene_adjudication",
+            run / "resolutions",
+            f"Source review requires adjudication: {pending}; write "
+            "resolutions/<scene_id>.json for each pending scene, then resume",
+            pending,
+        )
     for cid in {x["chapter_id"] for x in requests}:
         groups = []
         for scene in (x for x in requests if x["chapter_id"] == cid):
