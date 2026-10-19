@@ -163,11 +163,29 @@ class NormalizationRulesTests(unittest.TestCase):
         )
         self.assertEqual(report.change_counts["author_note_divider_inserted"], 2)
         self.assertEqual(normalize_chapter(result), result)
+        for label in ("作者有话说 谢谢。", "作者有话要说谢谢。"):
+            with self.subTest(label=label):
+                chapter = normalize_chapter(
+                    {"title": "篇目", "blocks": [paragraph("正文。"), paragraph(label)]}
+                )
+                self.assertEqual(chapter["blocks"][1], divider)
+        chapter = normalize_chapter(
+            {
+                "title": "篇目",
+                "blocks": [
+                    paragraph("正文。"),
+                    paragraph("作者有话说"),
+                    paragraph("谢谢。"),
+                ],
+            }
+        )
+        self.assertEqual(chapter["blocks"][1], divider)
         for blocks in (
             [paragraph("正文。"), divider, paragraph("作者有话说：谢谢。")],
             [paragraph("正文。"), paragraph("作者有话说：")],
+            [paragraph("正文。"), paragraph("作者有话说")],
             [paragraph("作者有话说：今天两更。"), paragraph("正文。")],
-            [paragraph("正文。"), paragraph("作者有话说 4000。")],
+            [paragraph("正文。"), paragraph("正文提到作者有话说但不是标题。")],
             [paragraph("正文。"), {**paragraph("作者有话说：谢谢。"), "variant": "translation"}],
         ):
             with self.subTest(blocks=blocks):

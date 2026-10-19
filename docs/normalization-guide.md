@@ -236,6 +236,8 @@ at the end of a chapter stays.
 
 Normalization adds a divider before the label when all of these are true:
 
+- The paragraph starts with the label. The colon is optional, for example
+  `作者有话说谢谢`.
 - A body paragraph comes before the label. Empty paragraphs between them are
   permitted.
 - The note has text, on the label line or in the next paragraph.

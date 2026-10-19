@@ -424,9 +424,13 @@ class ProofreadTests(unittest.TestCase):
             (LEFT, "作者有话说："),
             ("作者有话说：整页都是作话",),
             (LEFT, "正文提到作者有话说：但不是标题"),
-            (LEFT, "作者有话说 4000"),
+            (LEFT, "正文提到作者有话说但不是标题"),
         ):
             self.assertFalse(
+                missing_note_dividers(book(*texts)["chapters"]["one"]["blocks"])
+            )
+        for texts in ((LEFT, "作者有话说 4000"), (LEFT, "作者有话要说", "谢谢")):
+            self.assertTrue(
                 missing_note_dividers(book(*texts)["chapters"]["one"]["blocks"])
             )
 

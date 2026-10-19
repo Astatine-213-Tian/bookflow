@@ -853,7 +853,10 @@ class EpubNormalizerTests(unittest.TestCase):
             "chapter-start": ("<p>作者有话说：今天两更。</p>\n<p>正文。</p>", 0),
             "nested": ("<p>正文。</p>\n<div><p>作者有话说：谢谢。</p></div>", 0),
             "anchored": ('<p>正文。</p>\n<p id="n">作者有话说：谢谢。</p>', 0),
-            "mention": ("<p>正文。</p>\n<p>作者有话说 4000。</p>", 0),
+            "mention": ("<p>正文。</p>\n<p>正文提到作者有话说但不是标题。</p>", 0),
+            "no-colon": ("<p>正文。</p>\n<p>作者有话要说 谢谢。</p>", 1),
+            "bare-label": ("<p>正文。</p>\n<p>作者有话说</p>\n<p>谢谢。</p>", 1),
+            "bare-empty": ("<p>正文。</p>\n<p>作者有话说</p>", 0),
         }
         for name, (body, expected) in cases.items():
             with self.subTest(name), tempfile.TemporaryDirectory() as temp:
@@ -868,7 +871,7 @@ class EpubNormalizerTests(unittest.TestCase):
                     report.change_counts["author_note_divider_inserted"], expected
                 )
                 self.assertEqual(chapter.count("<hr />"), body.count("<hr />") + expected)
-                if expected:
+                if name == "after-blank":
                     self.assertRegex(chapter, r"<p></p>\s*<hr />\s*<p>作者有话说：</p>")
                 self.assertEqual(normalize_epub(epub_path).total_changes, 0)
 

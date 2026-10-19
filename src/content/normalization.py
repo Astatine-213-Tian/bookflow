@@ -134,6 +134,11 @@ AUTHOR_NOTE_HEADING_RE = re.compile(r"作者有话(?:要)?说(?=\s*[:：])")
 AUTHOR_NOTE_PARAGRAPH_RE = re.compile(r"^\s*作者有话(?:要)?说(?:\s*[:：]|\s+|$)")
 
 
+# A paragraph that opens with the label, with or without a colon; normalization
+# removes the space between the label and Han note text.
+AUTHOR_NOTE_LABEL_RE = re.compile(r"^\s*作者有话(?:要)?说\s*[:：]?")
+
+
 AUTHOR_NOTE_SIGNAL_RE = re.compile(
     r"(?:感谢大家.{0,20}(?:陪伴|支持)|"
     r"本书连载期间|个人志|预售|下本(?:书)?见|晋江同步连载)"
