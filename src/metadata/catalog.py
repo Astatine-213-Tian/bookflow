@@ -49,6 +49,9 @@ MASKED_TITLE_RE = re.compile(r"[*＊]{2,}")
 
 
 JJWXC_BOOK_LINK_RE = re.compile(r"jump_book2\((\d+)")
+JJWXC_SOURCE_RE = re.compile(
+    r"^https?://(?:www|m|my)\.jjwxc\.net/(?:onebook\.php\?novelid=|book2/)(\d+)\b"
+)
 
 
 JJWXC_TITLE_RE = re.compile(r"《([^》]+)》")
@@ -417,10 +420,16 @@ class MetadataLookup:
         author_id = self._find_jjwxc_author_id(package.author)
         if not author_id:
             return None
+        # A recorded Jinjiang link identifies the work even after a local rename.
+        linked = JJWXC_SOURCE_RE.match(package.source or "")
         matches = [
             candidate
             for candidate in self._jjwxc_catalog(author_id)
-            if _title_matches(candidate.title, package.title)
+            if (
+                candidate.novel_id == linked[1]
+                if linked
+                else _title_matches(candidate.title, package.title)
+            )
         ]
         if len(matches) != 1:
             return None
@@ -461,7 +470,7 @@ class MetadataLookup:
             subjects = tuple(subject for subject in subjects if subject != "爱情")
         return SourceMetadata(
             provider="jinjiang",
-            title=(package.title if candidate.locked else candidate.title),
+            title=(package.title if candidate.locked or linked else candidate.title),
             author=package.author,
             language="zh-CN",
             date=candidate.date,

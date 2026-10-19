@@ -192,6 +192,19 @@ class JinjiangContentsTests(unittest.TestCase):
             lookup(Session(description=without)).find(current).description, "原有简介"
         )
 
+    def test_recorded_link_identifies_a_renamed_work(self):
+        renamed = PackageMetadata(
+            "改名后的书", "作者", "zh-CN", "",
+            "https://www.jjwxc.net/onebook.php?novelid=123", "", (), None, None,
+        )
+        result = lookup(Session()).find(renamed)
+        self.assertEqual(result.title, "改名后的书")
+        self.assertEqual(result.description, "面瘫攻脱线受手拉手盗墓")
+        other = PackageMetadata(
+            "样本", "作者", "zh-CN", "", "https://m.jjwxc.net/book2/999", "", (), None, None
+        )
+        self.assertIsNone(lookup(Session()).find(other))
+
     def test_enrichment_fills_only_selected_fields(self):
         def book():
             return {

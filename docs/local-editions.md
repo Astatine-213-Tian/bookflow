@@ -166,7 +166,9 @@ limited by `--fields` (default `all`).
 The Jinjiang description is the text of its 一句话简介 without the label, not the
 full 文案; without one, the existing description is kept.
 Inspect `dc:date` as publication date and `dcterms:modified` as edit timestamp.
-A verified exact Jinjiang title/author match is primary; KadoKado is a fallback
+A recorded Jinjiang source link identifies the work under its verified author,
+keeping a locally renamed title; without one, an exact title/author match is
+primary. KadoKado is a fallback
 only after a completed lookup has no defensible match, not after a network error.
 A locked row needs a unique masked-title match under the verified author; retain
 hidden description/subjects and report ambiguity. Explicit user values prevail.
