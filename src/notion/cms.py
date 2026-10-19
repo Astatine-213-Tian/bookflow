@@ -93,9 +93,13 @@ async def ensure_work(book: dict, path: Path, config: dict, *, tools) -> None:
         "language": book["metadata"].get("language") or "zh-CN"
     }
     work_properties(metadata, [])  # Validate before any remote writes.
+    # Default templates are identified by page ID, so editors may rename them.
     template = states["works"].get("default_template")
     if not template:
         raise ValueError("CMS Works requires its default book template")
+    author_template = states["authors"].get("default_template")
+    if not author_template:
+        raise ValueError("CMS Authors requires its default author template")
     authors = await reader.rows(databases["authors"]["view_id"], authors_ds, "authors")
     works = await reader.rows(databases["works"]["view_id"], works_ds, "works")
     # Refuse ambiguous identity rather than creating or overwriting another edition.
@@ -140,7 +144,9 @@ async def ensure_work(book: dict, path: Path, config: dict, *, tools) -> None:
             properties["homepage"] = homepage
         book["pending_author"] = name
         write_json(path, book)
-        id = await reader.create_page(authors_ds, "authors", properties)
+        id = await reader.create_page(
+            authors_ds, "authors", properties, template=author_template
+        )
         if homepage:
             await verify_author_homepage(reader, id, name, homepage, authors_ds)
         ids.append(id)

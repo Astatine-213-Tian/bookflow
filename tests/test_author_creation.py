@@ -16,6 +16,7 @@ WORK = "22222222-2222-2222-2222-222222222222"
 AUTHORS_DS = "33333333-3333-3333-3333-333333333333"
 WORKS_DS = "44444444-4444-4444-4444-444444444444"
 TEMPLATE = "55555555-5555-4555-8555-555555555555"
+AUTHOR_TEMPLATE = "66666666-6666-4666-8666-666666666666"
 URL = "https://www.jjwxc.net/oneauthor.php?authorid=123"
 CONFIG = {
     "databases": {
@@ -31,6 +32,7 @@ def reader(homepage=URL, catalog_homepage=True):
             return_value={
                 "works": {"default_template": WORK},
                 "authors": {
+                    "default_template": AUTHOR_TEMPLATE,
                     "properties": (
                         {"homepage": {"name": "作者主页", "type": "url"}}
                         if catalog_homepage
@@ -78,7 +80,8 @@ class Workspace(BlockAPI):
                 return {"text": "<view>\n" + json.dumps(config) + "\n</view>"}
             ds = id.removeprefix("collection://")
             kind, renamed, omit = self.sources[ds]
-            state = {"default_page_template": TEMPLATE} if ds == WORKS_DS else {}
+            template = TEMPLATE if ds == WORKS_DS else AUTHOR_TEMPLATE
+            state = {"default_page_template": template}
             options = self.options.get(ds, {})
             return {"text": mcp_schema(kind, renamed, omit, options, **state)}
         if name == "notion-query-data-sources":
@@ -110,7 +113,17 @@ class Workspace(BlockAPI):
             if set(page["properties"]) - set(self.names(ds).values()):
                 raise AssertionError("MCP create used a stale property name")
             self.mcp_creates.append(page)
-            return {"pages": [{"id": WORK}]}
+            if ds == WORKS_DS:
+                return {"pages": [{"id": WORK}]}
+            fields = {name: field for field, name in self.names(ds).items()}
+            values = {
+                fields[name]: {"type": "url", "url": value}
+                for name, value in page["properties"].items()
+                if fields[name] == "homepage"
+            }
+            title = page["properties"][self.names(ds)["title"]]
+            self.add_page(AUTHOR, title, source=ds, properties=values)
+            return {"pages": [{"id": AUTHOR}]}
         raise AssertionError((name, arguments))
 
 
@@ -133,7 +146,10 @@ class AuthorCreationTests(unittest.IsolatedAsyncioTestCase):
                         CONFIG,
                         tools=SimpleNamespace(call_api=AsyncMock()),
                     )
-                properties = remote.create_page.call_args_list[0].args[2]
+                author, work = remote.create_page.call_args_list
+                self.assertEqual(author.kwargs["template"], AUTHOR_TEMPLATE)
+                self.assertEqual(work.kwargs["template"], WORK)
+                properties = author.args[2]
                 self.assertEqual(
                     properties,
                     {"title": "作者", **({"homepage": URL} if homepage else {})},
@@ -187,10 +203,29 @@ class AuthorCreationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(plain(author["properties"]["笔名"]["title"]), "作者")
         self.assertEqual(book["work_id"], WORK)
         self.assertNotIn("pending_author", book)
-        [work] = api.mcp_creates
+        author, work = api.mcp_creates
+        # Both creates name the default template by ID, not its display name.
+        self.assertEqual(author["template_id"], AUTHOR_TEMPLATE)
+        self.assertEqual(work["template_id"], TEMPLATE)
         self.assertEqual(work["properties"]["书名"], "书")
         self.assertEqual(work["properties"]["文种"], "zh-CN")
         self.assertEqual([o["name"] for o in api.options[WORKS_DS]["subjects"]], ["爱情"])
+
+    async def test_missing_author_template_stops_before_any_write(self):
+        remote = reader()
+        remote.catalog.return_value["authors"].pop("default_template")
+        with tempfile.TemporaryDirectory() as temp:
+            with (
+                patch("src.notion.cms.NotionBooks", return_value=remote),
+                self.assertRaisesRegex(ValueError, "default author template"),
+            ):
+                await ensure_work(
+                    {"metadata": {"title": "书", "creator": "作者"}},
+                    Path(temp) / "state.json",
+                    CONFIG,
+                    tools=SimpleNamespace(call_api=AsyncMock()),
+                )
+        remote.create_page.assert_not_awaited()
 
     async def test_lookup_failure_stops_before_creating_an_empty_author(self):
         remote = reader()

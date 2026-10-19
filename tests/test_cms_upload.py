@@ -208,7 +208,10 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
                     patch(
                         "notion_books.NotionBooks.catalog",
                         new=AsyncMock(
-                            return_value={"works": {"default_template": WORK}}
+                            return_value={
+                                "works": {"default_template": WORK},
+                                "authors": {"default_template": DS},
+                            }
                         ),
                     ),
                     patch(
