@@ -35,8 +35,8 @@ For “update eternal gate” / “更新永恒之门”, use this workflow:
 4. Run structural validation and semantic QA, then rebuild
    `books/顾雪柔/永恒之门.method4.bilingual.epub`. Read the build's EPUB check
    (ZIP, chapter numbering, nav/NCX), then verify chapter coverage, metadata,
-   protected quotations, and placeholder scans before reporting completion. This update targets the bilingual EPUB; TXT export is
-   a separate request.
+   protected quotations, and placeholder scans before reporting completion.
+   This update targets the bilingual EPUB; TXT export is a separate request.
 
 ## Project Structure & Module Organization
 
