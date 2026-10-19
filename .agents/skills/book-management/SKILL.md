@@ -65,7 +65,8 @@ in `AGENTS.md`; preserve its established local bilingual output.
 3. Invoke `book-ingest` with each selected `--mode`. Crawl once; shared source
    preparation handles wording, structure and formatting before Notion/EPUB output.
    All selected destinations must finish before reporting the book complete.
-4. Verify the selected outputs: EPUB ZIP/navigation, title/order and thumbnail;
+4. Verify the selected outputs: EPUB check printed by the write (ZIP, chapter
+   numbering, nav/NCX), then title/order and thumbnail;
    Notion's verified upload checkpoint; TXT content and its targeted dataset
    manifest entry. Report every actual path or Notion destination, with failures
    distinguished from completed outputs.

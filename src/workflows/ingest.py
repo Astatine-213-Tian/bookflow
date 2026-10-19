@@ -8,6 +8,8 @@ from pathlib import Path
 from src.crawler.models import CrawledBook, CrawlOptions, DownloadedEdition
 from src.crawler.registry import ParserSpec
 from src.dataset.text import write_prepared_txt
+from src.epub.validate import EpubCheck, check_written_epub
+from src.runtime.progress import ProgressLogger
 from src.runtime.paths import (
     dataset_txt_output_path,
     resolve_output_path,
@@ -35,6 +37,7 @@ class IngestResult:
     txt_path: Path | None = None
     notion_state: Path | None = None
     source_path: Path | None = None
+    epub_check: EpubCheck | None = None
 
 
 def requested_formats(options: OutputOptions) -> tuple[str, ...]:
@@ -100,6 +103,7 @@ def write_book(
 
     validate_book(book)
     formats = requested_formats(options)
+    epub_check = None
     metadata = book["metadata"]
     epub_path = (
         resolve_output_path(options.output, metadata["title"], metadata["creator"])
@@ -130,6 +134,10 @@ def write_book(
             cover_mime=cover_mime,
             prevent_overwrite=options.prevent_overwrite,
         )
+        epub_check = check_written_epub(epub_path)
+        progress = ProgressLogger()
+        for line in epub_check.report_lines():
+            (progress.warning if epub_check.issues else progress.info)(line)
     if txt_path:
         write_prepared_txt(book, txt_path)
     notion_state = None
@@ -139,7 +147,9 @@ def write_book(
         notion_state = upload_source(
             book, cover_bytes=cover if not cover_url else None, cover_url=cover_url
         )
-    return IngestResult(epub_path, txt_path, notion_state)
+    return IngestResult(
+        epub_path, txt_path, notion_state, epub_check=epub_check
+    )
 
 
 def write_outputs(

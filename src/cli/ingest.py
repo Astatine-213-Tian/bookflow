@@ -4,36 +4,15 @@
 from __future__ import annotations
 
 import argparse
-import sys
-import zipfile
 from pathlib import Path
 
 from src.crawler.models import CrawlOptions
 from src.crawler.registry import PARSERS, find_parser
 from src.crawler.search import build_previews, choose_preview, search_all
 from src.dataset.library import extract_epub_text, upsert_txt_dataset_entry
-from src.epub.validate import validate_epub
 from src.metadata.jjwxc import GENRES, TIME_AREAS
 from src.runtime.progress import ProgressLogger, configure_progress
 from src.workflows.ingest import OutputOptions, ingest, requested_formats
-
-
-def validate_epub_output(epub_path: Path, *, strict: bool) -> bool:
-    with zipfile.ZipFile(epub_path) as zf:
-        bad_member = zf.testzip()
-    if bad_member:
-        print(f"FAIL {epub_path}: corrupt ZIP member {bad_member}", file=sys.stderr)
-        return False
-
-    issues, chapter_count = validate_epub(epub_path)
-    if issues:
-        print(f"WARN {epub_path}: {chapter_count} numbered chapter entries")
-        for issue in issues:
-            print(f"  - {issue}")
-        return not strict
-
-    print(f"OK   {epub_path}: ZIP valid; {chapter_count} numbered chapter entries")
-    return True
 
 
 def select_search_target(
@@ -294,7 +273,8 @@ def main(argv: list[str] | None = None) -> int:
         author: str | None = None
         if epub_path:
             title, author, _ = extract_epub_text(epub_path)
-            if not validate_epub_output(epub_path, strict=args.strict_epub_validation):
+            check = result.epub_check
+            if args.strict_epub_validation and check and check.issues:
                 return 1
 
         if result.txt_path and args.dataset_root:

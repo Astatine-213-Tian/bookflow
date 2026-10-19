@@ -314,3 +314,31 @@ def validate_epub(path: Path) -> tuple[list[str], int]:
             return issues, len(nav_entries)
     except (BadZipFile, ValueError) as exc:
         return [str(exc)], 0
+
+
+@dataclass(frozen=True)
+class EpubCheck:
+    path: Path
+    chapter_count: int
+    issues: tuple[str, ...] = ()
+
+    def report_lines(self) -> list[str]:
+        if not self.issues:
+            return [
+                f"OK   {self.path}: ZIP valid; "
+                f"{self.chapter_count} numbered chapter entries"
+            ]
+        return [
+            f"WARN {self.path}: {self.chapter_count} numbered chapter entries",
+            *(f"  - {issue}" for issue in self.issues),
+        ]
+
+
+def check_written_epub(path: Path) -> EpubCheck:
+    """Fail on a corrupt archive; report chapter numbering issues as warnings."""
+    with ZipFile(path) as epub:
+        corrupt_member = epub.testzip()
+    if corrupt_member:
+        raise ValueError(f"{path}: corrupt ZIP member {corrupt_member}")
+    issues, chapter_count = validate_epub(path)
+    return EpubCheck(path, chapter_count, tuple(issues))

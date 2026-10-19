@@ -13,6 +13,7 @@ from src.content.models import Chapter, Volume
 from src.crawler.models import CrawledBook, CrawlOptions, DownloadedEdition
 from src.crawler.registry import ParserSpec
 from src.dataset.library import export_txt_dataset, load_manifest
+from src.epub.validate import EpubCheck
 from src.workflows.ingest import (
     IngestResult,
     OutputOptions,
@@ -55,11 +56,33 @@ class IngestWorkflowTests(unittest.TestCase):
                 )
             crawl.assert_called_once_with("https://example.org/book", options)
             self.assertEqual(result.epub_path, root / "book.epub")
+            self.assertEqual(result.epub_check.chapter_count, 1)
+            self.assertEqual(result.epub_check.issues, ())
             self.assertIn("第二段。", (root / "book.txt").read_text())
             with zipfile.ZipFile(result.epub_path) as archive:
                 self.assertIn(
                     "第二段。", archive.read("EPUB/chapter_0001.xhtml").decode()
                 )
+
+    def test_strict_validation_fails_on_reported_epub_issues(self):
+        epub = Path("book.epub")
+        for issues, expected in [((), 0), (("number gap",), 1)]:
+            result = IngestResult(
+                epub_path=epub, epub_check=EpubCheck(epub, 1, issues)
+            )
+            with (
+                self.subTest(issues=issues),
+                patch("src.cli.ingest.ingest", return_value=result),
+                patch(
+                    "src.cli.ingest.extract_epub_text",
+                    return_value=("书", "作者", ""),
+                ),
+            ):
+                code = ingest_main(
+                    ["https://example.org/book", "--parser", "mgsf", "--mode", "epub"]
+                    + ["--strict-epub-validation"]
+                )
+                self.assertEqual(code, expected)
 
     def test_ingest_applies_collection_overrides_like_book_crawl(self):
         parser = ParserSpec(

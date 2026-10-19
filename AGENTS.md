@@ -33,9 +33,9 @@ For “update eternal gate” / “更新永恒之门”, use this workflow:
    changes against source evidence and preserve canonical names and protected
    quotations.
 4. Run structural validation and semantic QA, then rebuild
-   `books/顾雪柔/永恒之门.method4.bilingual.epub`. Verify chapter coverage,
-   navigation, metadata, protected quotations, and placeholder scans before
-   reporting completion. This update targets the bilingual EPUB; TXT export is
+   `books/顾雪柔/永恒之门.method4.bilingual.epub`. Read the build's EPUB check
+   (ZIP, chapter numbering, nav/NCX), then verify chapter coverage, metadata,
+   protected quotations, and placeholder scans before reporting completion. This update targets the bilingual EPUB; TXT export is
    a separate request.
 
 ## Project Structure & Module Organization
@@ -46,8 +46,10 @@ source cleanup in `src/content/`, local EPUB writing/repair in `src/epub/`, Noti
 upload in `src/notion/`, and translation/QA in `src/translation/`.
 `src/inputs/` extracts files and provider content into the shared JSON;
 `src/workflows/ingest.py` chooses outputs after shared preparation; `src/cli/` handles
-arguments. Reusable logic belongs outside CLI modules. `tests/test_architecture.py`
-checks dependency direction and the separation of cleanup from rendering.
+arguments. Agents run stages in any order and retry them, so put each guarantee
+in the stage that produces or consumes its artifact; every entry point then
+enforces it. `tests/test_architecture.py` checks dependency direction and the
+separation of cleanup from rendering.
 
 For adding, updating or repairing books, use the single
 [book-management skill](.agents/skills/book-management/SKILL.md). Ask for missing

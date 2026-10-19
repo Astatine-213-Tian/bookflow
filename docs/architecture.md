@@ -139,7 +139,10 @@ Destination capability checks run before selected writes. Notion rejects rich
 content it cannot preserve, including bilingual language/variant annotations
 and unsupported directory depth. TXT is the plain-text projection; EPUB retains
 rich formatting and language annotations. Writers never run source cleanup.
-EPUB creation validates ZIP/XML/navigation before atomic installation. Native
+EPUB creation validates ZIP/XML/navigation before atomic installation. Every
+`write_book` EPUB is then checked in place: a corrupt ZIP fails the write, and
+chapter-numbering or nav/NCX issues are reported on the result
+(`book-ingest --strict-epub-validation` makes them fatal). Native
 covers are thumbnails, with no separate reading page.
 
 `notion-books` owns typed validation, the REST block reader and resumable writer,
