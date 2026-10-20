@@ -186,6 +186,38 @@ class EpubMetadataEnricherTests(unittest.TestCase):
         assert non_bl is not None
         self.assertEqual(non_bl.subjects, ("言情", "爱情", "近现代"))
 
+    def test_jinjiang_writes_gusexiangxiang_as_lishi_beijing(self) -> None:
+        catalog = """
+        <html><body>
+          <table class="author novel">
+            <tr><td><a onclick="jump_book2(2423737,425111)">《千秋》</a></td></tr>
+            <tr><td>类型:原创-纯爱-古色古香-传奇-主受</td></tr>
+            <tr><td>发表时间：2015-10-27 20:00:00 [锁]</td></tr>
+          </table>
+        </body></html>
+        """
+        package = PackageMetadata(
+            title="千秋",
+            author="梦溪石",
+            language="zh-CN",
+            date="",
+            source="",
+            description="",
+            subjects=(),
+            series=None,
+            series_position=None,
+        )
+        lookup = MetadataLookup(
+            author_ids={"梦溪石": "425111"},
+            kadokado=False,
+        )
+        lookup._catalog_cache["425111"] = parse_jjwxc_author_catalog(catalog)
+
+        source = lookup.find(package)
+        self.assertIsNotNone(source)
+        assert source is not None
+        self.assertEqual(source.subjects, ("BL", "传奇", "历史背景"))
+
     def test_jinjiang_date_overwrites_existing_date_and_is_idempotent(self) -> None:
         source = SourceMetadata(
             provider="jinjiang",

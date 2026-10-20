@@ -19,7 +19,7 @@ DEFAULT_PRIMARY_SUBJECT = "BL"
 
 
 # Jinjiang time-area labels as written to book subjects.
-JJWXC_TIME_AREA_SUBJECTS = {"近代现代": "近现代"}
+JJWXC_TIME_AREA_SUBJECTS = {"近代现代": "近现代", "古色古香": "历史背景"}
 
 
 IGNORED_JJWXC_SERIES = {

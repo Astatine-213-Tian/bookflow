@@ -175,7 +175,7 @@ hidden description/subjects and report ambiguity. Explicit user values prevail.
 
 The repair can write official title/creator, Chinese language, publication date,
 source, description and ordered subjects (`BL`, theme/genre, then time-area,
-writing 近代现代 as 近现代).
+writing 近代现代 as 近现代 and 古色古香 as 历史背景).
 Jinjiang `〖...〗` series labels map to EPUB collection name and position.
 Use the lookup's structured directory only after comparing every volume and
 chapter with this edition; title/author agreement alone does not prove its layout.
