@@ -109,7 +109,7 @@ class _StaticLookup(MetadataLookup):
         self,
         package: PackageMetadata,
         *,
-        primary_subject: str = "耽美",
+        primary_subject: str = "BL",
     ) -> SourceMetadata | None:
         return self.source
 
@@ -149,7 +149,7 @@ class EpubMetadataEnricherTests(unittest.TestCase):
             [1, 2, 3, None],
         )
 
-    def test_jinjiang_omits_aiqing_when_danmei_is_present(self) -> None:
+    def test_jinjiang_omits_aiqing_when_bl_is_present(self) -> None:
         catalog = """
         <html><body>
           <table class="author novel">
@@ -176,15 +176,15 @@ class EpubMetadataEnricherTests(unittest.TestCase):
         )
         lookup._catalog_cache["425111"] = parse_jjwxc_author_catalog(catalog)
 
-        danmei = lookup.find(package)
-        self.assertIsNotNone(danmei)
-        assert danmei is not None
-        self.assertEqual(danmei.subjects, ("耽美", "近代现代"))
+        bl = lookup.find(package)
+        self.assertIsNotNone(bl)
+        assert bl is not None
+        self.assertEqual(bl.subjects, ("BL", "近现代"))
 
-        non_danmei = lookup.find(package, primary_subject="言情")
-        self.assertIsNotNone(non_danmei)
-        assert non_danmei is not None
-        self.assertEqual(non_danmei.subjects, ("言情", "爱情", "近代现代"))
+        non_bl = lookup.find(package, primary_subject="言情")
+        self.assertIsNotNone(non_bl)
+        assert non_bl is not None
+        self.assertEqual(non_bl.subjects, ("言情", "爱情", "近现代"))
 
     def test_jinjiang_date_overwrites_existing_date_and_is_idempotent(self) -> None:
         source = SourceMetadata(

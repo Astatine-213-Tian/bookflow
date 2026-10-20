@@ -15,7 +15,11 @@ from opencc import OpenCC
 
 from src.metadata.jjwxc import JjwxcContents, parse_article_type, parse_jjwxc_contents
 
-DEFAULT_PRIMARY_SUBJECT = "耽美"
+DEFAULT_PRIMARY_SUBJECT = "BL"
+
+
+# Jinjiang time-area labels as written to book subjects.
+JJWXC_TIME_AREA_SUBJECTS = {"近代现代": "近现代"}
 
 
 IGNORED_JJWXC_SERIES = {
@@ -463,10 +467,12 @@ class MetadataLookup:
                 [
                     primary_subject,
                     parsed_type.genre,
-                    parsed_type.time_area,
+                    JJWXC_TIME_AREA_SUBJECTS.get(
+                        parsed_type.time_area, parsed_type.time_area
+                    ),
                 ]
             )
-        if "耽美" in subjects:
+        if DEFAULT_PRIMARY_SUBJECT in subjects:
             subjects = tuple(subject for subject in subjects if subject != "爱情")
         return SourceMetadata(
             provider="jinjiang",
