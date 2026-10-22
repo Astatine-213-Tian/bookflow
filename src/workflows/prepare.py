@@ -29,7 +29,9 @@ def prepare_book(
     if layout is not None:
         reports["layout"] = apply_edition_layout(book, layout)
     if enrich:
-        reports["metadata"] = enrich_source(book, fields=enrich)
+        reports["metadata"] = enrich_source(
+            book, fields=enrich, keep=frozenset(overrides or {})
+        )
         if "volumes" in enrich and reports["metadata"].get("table_of_contents"):
             reports["outline"] = apply_jjwxc_outline(
                 book, reports["metadata"]["table_of_contents"], aliases=aliases

@@ -312,7 +312,7 @@ class IngestWorkflowTests(unittest.TestCase):
             crawl = Mock(return_value=book())
             provider = ParserSpec("fixture", (), "fixture", crawl)
 
-            def enriched(source, *, fields):
+            def enriched(source, *, fields, keep):
                 # A crawl's volumes come from its own directory.
                 self.assertEqual(fields, frozenset(METADATA_FIELDS))
                 source["metadata"]["title"] = "官方书名"

@@ -350,7 +350,7 @@ class ContentPipelineTests(unittest.TestCase):
             (root / "book.txt").read_text().endswith("MSN，QQ\n重复。\n重复。\n")
         )
 
-    def test_metadata_lookup_fills_missing_values_without_erasing_explicit_values(self):
+    def test_metadata_lookup_replaces_source_values_but_keeps_title_and_overrides(self):
         from types import SimpleNamespace
         from unittest.mock import Mock
 
@@ -378,12 +378,30 @@ class ContentPipelineTests(unittest.TestCase):
             table_of_contents_error=None,
         )
         value = {"metadata": metadata}
-        enrich_source(value, lookup=Mock(find=Mock(return_value=found)))
+        enrich_source(
+            value,
+            lookup=Mock(find=Mock(return_value=found)),
+            keep=frozenset({"date"}),
+        )
         self.assertEqual(value["metadata"]["title"], "User title")
         self.assertEqual(value["metadata"]["creator"], "User author")
         self.assertEqual(value["metadata"]["date"], "2008-01-01")
-        self.assertEqual(value["metadata"]["subjects"], ["danmei"])
+        self.assertEqual(value["metadata"]["subjects"], ["remote"])
         self.assertEqual(value["metadata"]["description"], "Remote description")
+
+        crawled = metadata_defaults(
+            {
+                "title": "User title",
+                "creator": "User author",
+                "source": "https://site.test/book/",
+                "description": "Site 文案",
+            }
+        )
+        empty = SimpleNamespace(**{**vars(found), "description": ""})
+        value = {"metadata": crawled}
+        enrich_source(value, lookup=Mock(find=Mock(return_value=empty)))
+        self.assertEqual(value["metadata"]["source"], "https://example.test")
+        self.assertEqual(value["metadata"]["description"], "Site 文案")
 
     def test_original_bilingual_blocks_are_not_rewritten(self):
         from src.content.normalize import normalize_chapter

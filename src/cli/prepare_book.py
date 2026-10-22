@@ -33,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--enrich",
         metavar="FIELDS",
-        help="Fill missing metadata from Jinjiang/KadoKado: all, or a comma-separated "
+        help="Replace metadata with Jinjiang/KadoKado values: all, or a comma-separated "
         "subset of " + ",".join(ENRICH_FIELDS) + "; volumes applies the official volume titles",
     )
     parser.add_argument(

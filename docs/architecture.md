@@ -67,8 +67,9 @@ Normalization follows [normalization.md](normalization.md) (explained for people
 the [normalization guide](normalization-guide.md)), operating on text
 and rich-text blocks. Uncertain findings stay in its report. It never invents
 chapter boundaries, silently removes uncertain content, searches the web, or
-round-trips through EPUB/Notion. Metadata enrichment fills missing values only;
-explicit overrides and original metadata remain authoritative. Preparation
+round-trips through EPUB/Notion. Metadata enrichment replaces selected fields with the
+authoritative match; explicit overrides and the local title remain, and an empty
+match never erases a value. Preparation
 caches bind input bytes, rules, implementation and options, and verify cover
 assets on resume. Changing those inputs requires a fresh run directory.
 

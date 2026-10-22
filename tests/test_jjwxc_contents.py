@@ -205,7 +205,7 @@ class JinjiangContentsTests(unittest.TestCase):
         )
         self.assertIsNone(lookup(Session()).find(other))
 
-    def test_enrichment_fills_only_selected_fields(self):
+    def test_enrichment_replaces_only_selected_fields(self):
         def book():
             return {
                 "metadata": {
@@ -213,8 +213,8 @@ class JinjiangContentsTests(unittest.TestCase):
                     "creator": "作者",
                     "language": "zh-CN",
                     "date": "",
-                    "source": "",
-                    "description": "",
+                    "source": "https://site.test/book/",
+                    "description": "站点文案",
                     "subjects": [],
                     "series": "",
                     "series_position": "",
@@ -224,11 +224,14 @@ class JinjiangContentsTests(unittest.TestCase):
         value = book()
         enrich_source(value, fields=frozenset({"description"}), lookup=lookup(Session()))
         self.assertEqual(value["metadata"]["description"], "面瘫攻脱线受手拉手盗墓")
-        self.assertEqual((value["metadata"]["date"], value["metadata"]["source"]), ("", ""))
+        self.assertEqual(
+            (value["metadata"]["date"], value["metadata"]["source"]),
+            ("", "https://site.test/book/"),
+        )
         value = book()
         enrich_source(value, fields=frozenset({"date"}), lookup=lookup(Session()))
         self.assertEqual(value["metadata"]["date"], "2020-01-02")
-        self.assertEqual(value["metadata"]["description"], "")
+        self.assertEqual(value["metadata"]["description"], "站点文案")
 
     def test_enrichment_fields_parse_all_or_a_subset(self):
         self.assertEqual(parse_enrich_fields("all"), frozenset(ENRICH_FIELDS))

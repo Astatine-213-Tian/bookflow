@@ -40,7 +40,13 @@ def enrich_source(
     *,
     fields: frozenset[str] = frozenset(METADATA_FIELDS),
     lookup: MetadataLookup | None = None,
+    keep: frozenset[str] = frozenset(),
 ) -> dict:
+    """Replace selected fields with the authoritative match.
+
+    ``keep`` names explicit user overrides. The local title can name a revised
+    edition, so it is only filled when missing; an empty match never erases a value.
+    """
     data = book["metadata"]
     package = PackageMetadata(
         title=data["title"],
@@ -71,9 +77,12 @@ def enrich_source(
             series=source.series or "", series_position=source.series_position or ""
         )
     for key, value in candidates.items():
-        if ("series" if key == "series_position" else key) not in fields:
+        field = "series" if key == "series_position" else key
+        if field not in fields or field in keep:
             continue
-        if not data.get(key) or key == "language" and data[key] == "und":
+        if key == "title" and data.get(key):
+            continue
+        if value or not data.get(key):
             data[key] = value
     return {
         "status": "matched",
