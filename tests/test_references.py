@@ -65,7 +65,7 @@ class ReferenceTests(unittest.TestCase):
             urls = [
                 run["text"]["link"]["url"]
                 for block in api.nodes.values()
-                if not block.get("archived")
+                if not block.get("in_trash")
                 for run in block.get(block["type"], {}).get("rich_text", [])
                 if run.get("text", {}).get("link")
             ]

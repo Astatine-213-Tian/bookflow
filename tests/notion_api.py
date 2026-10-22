@@ -204,7 +204,7 @@ class BlockAPI:
                 "results": [
                     self.nodes[id]
                     for id in self.children[parts[1]]
-                    if not self.nodes[id].get("archived")
+                    if not self.nodes[id].get("in_trash")
                 ],
                 "has_more": False,
                 "next_cursor": None,
@@ -228,7 +228,15 @@ class BlockAPI:
                 body = self.pages[id]
             elif method == "PATCH" and path.endswith("/children"):
                 ids = [self._create(node) for node in request["json"]["children"]]
-                self.children[parts[1]].extend(ids)
+                siblings = self.children[parts[1]]
+                position = request["json"].get("position", {"type": "end"})
+                if position["type"] == "start":
+                    at = 0
+                elif position["type"] == "after_block":
+                    at = siblings.index(position["after_block"]["id"]) + 1
+                else:
+                    at = len(siblings)
+                siblings[at:at] = ids
                 body = {
                     "object": "list",
                     "results": [self.nodes[id] for id in ids],
@@ -243,7 +251,7 @@ class BlockAPI:
                 self.nodes[parts[1]].update(copy.deepcopy(request["json"]))
                 body = self.nodes[parts[1]]
             elif method == "DELETE" and parts[0] == "blocks":
-                self.nodes[parts[1]]["archived"] = True
+                self.nodes[parts[1]]["in_trash"] = True
                 body = self.nodes[parts[1]]
             else:
                 raise AssertionError(request)
