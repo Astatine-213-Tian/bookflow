@@ -18,7 +18,7 @@ from src.metadata.catalog import (
     PackageMetadata,
     SourceMetadata,
 )
-from src.metadata.enrich import METADATA_FIELDS
+from src.metadata.enrich import DEFAULT_FIELDS
 from src.runtime.files import DEFAULT_BACKUP_DIR
 
 OPF_NS = "http://www.idpf.org/2007/opf"
@@ -324,7 +324,7 @@ def enrich_epub_metadata(
     overwrite_backup: bool = False,
     primary_subject: str = DEFAULT_PRIMARY_SUBJECT,
     lookup: MetadataLookup | None = None,
-    fields: frozenset[str] = frozenset(METADATA_FIELDS),
+    fields: frozenset[str] = DEFAULT_FIELDS,
 ) -> MetadataEnrichmentReport:
     path = Path(path)
     try:

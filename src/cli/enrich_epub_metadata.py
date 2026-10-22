@@ -84,7 +84,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--fields",
         default="all",
-        help="Metadata to update: all (default) or a comma-separated subset of "
+        help="Metadata to update: all (default, except series), all,series, or a "
+        "comma-separated subset of "
         + ",".join(METADATA_FIELDS)
         + ".",
     )

@@ -16,29 +16,36 @@ METADATA_FIELDS = (
     "series",
 )
 ENRICH_FIELDS = METADATA_FIELDS + ("volumes",)
+# Series assignments are curated per library, so only an explicit request adds one.
+EXPLICIT_FIELDS = frozenset({"series"})
+DEFAULT_FIELDS = frozenset(METADATA_FIELDS) - EXPLICIT_FIELDS
 
 
 def parse_enrich_fields(
     value: str, *, allowed: tuple[str, ...] = ENRICH_FIELDS
 ) -> frozenset[str]:
-    """Parse `all` or a comma-separated subset of the allowed fields."""
+    """Parse `all`, a comma-separated subset, or `all` plus explicit fields.
+
+    `all` leaves out `series`, which is only enriched when named.
+    """
     names = [name.strip() for name in value.split(",") if name.strip()]
-    if names == ["all"]:
-        return frozenset(allowed)
-    unknown = sorted(set(names) - set(allowed))
-    if not names or unknown:
+    selected = set(names) - {"all"}
+    unknown = sorted(selected - set(allowed))
+    if not names or unknown or "all" in names and not selected <= EXPLICIT_FIELDS:
         raise ValueError(
-            "Enrichment fields must be all or a comma-separated subset of "
+            "Enrichment fields must be all, all,series, or a comma-separated subset of "
             + ", ".join(allowed)
             + (f"; unknown: {', '.join(unknown)}" if unknown else "")
         )
-    return frozenset(names)
+    if "all" in names:
+        selected |= set(allowed) - EXPLICIT_FIELDS
+    return frozenset(selected)
 
 
 def enrich_source(
     book: dict,
     *,
-    fields: frozenset[str] = frozenset(METADATA_FIELDS),
+    fields: frozenset[str] = DEFAULT_FIELDS,
     lookup: MetadataLookup | None = None,
     keep: frozenset[str] = frozenset(),
 ) -> dict:

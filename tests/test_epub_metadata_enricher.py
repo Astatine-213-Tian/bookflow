@@ -8,6 +8,7 @@ from pathlib import Path
 from lxml import etree
 
 from src.epub.metadata import DC_NS, OPF_NS, enrich_epub_metadata
+from src.metadata.enrich import METADATA_FIELDS
 from src.metadata.catalog import (
     MetadataLookup,
     PackageMetadata,
@@ -243,6 +244,7 @@ class EpubMetadataEnricherTests(unittest.TestCase):
                 backup_dir=backup_root,
                 overwrite_backup=True,
                 lookup=_StaticLookup(source),
+                fields=frozenset(METADATA_FIELDS),
             )
             self.assertEqual(first.status, "enriched")
             self.assertIn("date", first.changed_fields)
@@ -274,6 +276,7 @@ class EpubMetadataEnricherTests(unittest.TestCase):
                 backup_dir=backup_root,
                 overwrite_backup=True,
                 lookup=_StaticLookup(source),
+                fields=frozenset(METADATA_FIELDS),
             )
             self.assertEqual(second.status, "already_complete")
             self.assertFalse(second.changed)

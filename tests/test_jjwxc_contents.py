@@ -234,7 +234,11 @@ class JinjiangContentsTests(unittest.TestCase):
         self.assertEqual(value["metadata"]["description"], "站点文案")
 
     def test_enrichment_fields_parse_all_or_a_subset(self):
-        self.assertEqual(parse_enrich_fields("all"), frozenset(ENRICH_FIELDS))
+        self.assertEqual(
+            parse_enrich_fields("all"), frozenset(ENRICH_FIELDS) - {"series"}
+        )
+        self.assertEqual(parse_enrich_fields("all,series"), frozenset(ENRICH_FIELDS))
+        self.assertEqual(parse_enrich_fields("series"), frozenset({"series"}))
         self.assertEqual(
             parse_enrich_fields("description, subjects"),
             frozenset({"description", "subjects"}),

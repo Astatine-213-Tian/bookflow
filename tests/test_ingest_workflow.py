@@ -314,7 +314,7 @@ class IngestWorkflowTests(unittest.TestCase):
 
             def enriched(source, *, fields, keep):
                 # A crawl's volumes come from its own directory.
-                self.assertEqual(fields, frozenset(METADATA_FIELDS))
+                self.assertEqual(fields, frozenset(METADATA_FIELDS) - {"series"})
                 source["metadata"]["title"] = "官方书名"
                 return {"status": "matched"}
 

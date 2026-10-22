@@ -16,7 +16,8 @@ uv run book ingest original.txt --title 书名 --author 作者 --mode txt \
 `report.json`. Inspect normalization findings before upload. Enrichment is
 explicit: `--enrich all` replaces metadata with Jinjiang's and applies the official volume
 titles; `--enrich FIELDS` selects a comma-separated subset of `title`, `language`,
-`date`, `source`, `description`, `subjects`, `series` and `volumes`.
+`date`, `source`, `description`, `subjects`, `series` and `volumes`. `all` leaves
+out `series`; request it explicitly with `all,series` or `series`.
 `--chapter-aliases` can resolve known title
 differences without rewriting the chapter body. `--chapter-layout` applies
 exhaustive reviewed splits after extraction, using stable chapter IDs.
