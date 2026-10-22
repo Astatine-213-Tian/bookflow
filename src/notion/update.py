@@ -43,7 +43,17 @@ def content_from_checkpoint(checkpoint: dict) -> dict:
     return book
 
 
-async def read_current(checkpoint: dict, *, tools, allow_pending: bool = False) -> dict:
+async def read_current(
+    checkpoint: dict,
+    *,
+    tools,
+    allow_pending: bool = False,
+    only: set[str] | None = None,
+) -> dict:
+    """Read editor content; `only` limits fresh reads to those chapter/extra IDs.
+
+    Other rows keep their checkpoint copy, which still supplies link targets.
+    """
     book = content_from_checkpoint(checkpoint)
     reader = NotionBooks(tools, api=tools.call_api)
     for key, chapter in book["chapters"].items():
@@ -52,6 +62,8 @@ async def read_current(checkpoint: dict, *, tools, allow_pending: bool = False) 
             if allow_pending:
                 continue
             raise ValueError("Complete or recover the import before editing")
+        if only is not None and key not in only:
+            continue
         page = await reader.document(row["page_id"], "chapters")
         chapter["title"] = page.properties["title"]
         chapter["blocks"] = page.blocks
@@ -61,6 +73,8 @@ async def read_current(checkpoint: dict, *, tools, allow_pending: bool = False) 
             if allow_pending:
                 continue
             raise ValueError("Complete or recover the extras import first")
+        if only is not None and chapter.get("id") not in only:
+            continue
         page = await reader.document(row["page_id"], "extras")
         chapter["title"] = page.properties["title"]
         chapter["blocks"] = page.blocks
@@ -98,6 +112,8 @@ async def apply_update(state: Path, change: dict, config: dict, *, tools) -> dic
         raise ValueError("Not a checkpoint for this CMS catalog")
     journal_path = state.parent / "changes" / f"{change['id']}.json"
     signature = content_hash(change)
+    # Only targeted rows can change, so only they are read and refreshed.
+    touched = {op["chapter_id"] for op in change["operations"]}
     reader = NotionBooks(tools, api=tools.call_api)
     if journal_path.exists():
         journal = json.loads(journal_path.read_text())
@@ -109,13 +125,13 @@ async def apply_update(state: Path, change: dict, config: dict, *, tools) -> dic
         ):
             raise ValueError("Change journal belongs to a different destination")
         if journal.get("complete"):
-            return await read_current(checkpoint, tools=tools)
+            return await read_current(checkpoint, tools=tools, only=touched)
         if journal.get("version") != 2:
             raise ValueError(
                 "This write journal requires explicit reconciliation before the new manuscript writer can proceed"
             )
     else:
-        current = await read_current(checkpoint, tools=tools)
+        current = await read_current(checkpoint, tools=tools, only=touched)
         candidate, report = apply_changes(current, change)
         validate_notion_content(candidate)
         journal = {
@@ -201,11 +217,13 @@ async def apply_update(state: Path, change: dict, config: dict, *, tools) -> dic
         checkpoint["chapters"][key].update(desired)
         checkpoint["chapters"][key]["verified"] = True
         write_json(state, checkpoint)
-    fresh = await read_current(checkpoint, tools=tools)
+    fresh = await read_current(checkpoint, tools=tools, only=touched)
     for key, chapter in fresh["chapters"].items():
-        checkpoint["chapters"][key].update(chapter)
+        if key in touched:
+            checkpoint["chapters"][key].update(chapter)
     for row, chapter in zip(checkpoint["extras"], fresh["extras"], strict=True):
-        row.update(chapter)
+        if chapter.get("id") in touched:
+            row.update(chapter)
     checkpoint["source_sha256"] = source_digest(content_from_checkpoint(checkpoint))
     write_json(state, checkpoint)
     journal["complete"] = True

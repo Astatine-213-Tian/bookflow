@@ -271,6 +271,41 @@ class NotionChangesTests(unittest.IsolatedAsyncioTestCase):
                 result["chapters"][key]["blocks"][0]["runs"][0]["text"], "后来手改。"
             )
 
+    async def test_replacement_reads_only_its_target_chapter(self):
+        source, api = await self.fixture()
+        key = "chapter-1-1"
+        other = source["chapters"]["chapter-1-2"]["page_id"]
+        before = await read_current(source, tools=api)
+        task = change(
+            source,
+            {
+                "kind": "replace_chapter",
+                "chapter_id": key,
+                "expected_sha256": content_hash(before["chapters"][key]),
+                "chapter": {"title": "第1章", "blocks": [paragraph("修订。")]},
+            },
+        )
+        paths = []
+        original_call = api.call_api
+
+        async def call(request):
+            paths.append(request["path"])
+            return await original_call(request)
+
+        api.call_api = call
+        config = {"databases": {"works": {"data_source_id": SOURCE}}}
+        with tempfile.TemporaryDirectory() as temporary:
+            state = Path(temporary) / "import.json"
+            write_json(state, source)
+            result = await apply_update(state, task, config, tools=api)
+            self.assertEqual(result["chapters"][key]["blocks"][0]["runs"][0]["text"], "修订。")
+            saved = json.loads(state.read_text())
+            self.assertEqual(saved["chapters"]["chapter-1-2"], source["chapters"]["chapter-1-2"])
+        self.assertTrue(paths)
+        self.assertFalse(
+            [p for p in paths if other in p or other.replace("-", "") in p], paths
+        )
+
     async def test_resume_interrupted_append_uses_existing_checkpoint(self):
         source, api = await self.fixture()
         calls = []

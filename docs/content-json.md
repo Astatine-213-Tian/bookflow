@@ -61,6 +61,8 @@ not universal regex rules that delete paragraphs from every book.
 1. Read the current book JSON. For Notion use
    `book notion export --state IMPORT --report current.json`; chapter text is
    freshly read, while book metadata/outline come from the import checkpoint.
+   For a targeted fix add `--chapter ID` per chapter: only those are read, and
+   the rest keep their checkpoint copy.
 2. Read supplied images using the image transcription workflow. Reconcile the
    affected region with current content and review a complete replacement
    chapter, preserving the rest. A new independent extra becomes one chapter.

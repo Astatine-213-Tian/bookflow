@@ -62,6 +62,11 @@ def run(argv: list[str] | None = None) -> dict:
         help="Confirm this extra is separate content",
     )
     parser.add_argument("--change", type=Path, help="Explicit chapter change JSON")
+    parser.add_argument(
+        "--chapter",
+        action="append",
+        help="Export: freshly read only this chapter or extra ID (repeatable)",
+    )
     args = parser.parse_args(argv)
     resume = f"book notion resume --state {args.state}"
     if args.command in {"export", "update"}:
@@ -69,10 +74,12 @@ def run(argv: list[str] | None = None) -> dict:
             parser.error("export/update requires --state")
         if args.command == "update" and not args.change:
             parser.error("update requires --change")
+        if args.command == "update" and args.chapter:
+            parser.error("--chapter applies to export; update reads its targets")
         result = (
             notion.update(args.state, args.change, args.config)
             if args.command == "update"
-            else notion.export(args.state)
+            else notion.export(args.state, args.chapter)
         )
         if args.report:
             write_json(args.report, result)

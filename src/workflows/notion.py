@@ -140,15 +140,23 @@ def resolve_shared_extra(state: Path, extra: int, use_existing: str | None) -> N
 # ------------------------------------------------------------------------------
 
 
-def export(state: Path) -> dict[str, Any]:
-    """Read the current editor content of an uploaded book."""
+def export(state: Path, chapters: list[str] | None = None) -> dict[str, Any]:
+    """Read the current editor content of an uploaded book, or only `chapters`."""
     from src.notion.update import read_current
 
     _require_token()
+    checkpoint = _read(state)
+    only = set(chapters) if chapters else None
+    if only is not None:
+        known = set(checkpoint["chapters"]) | {
+            row.get("id") for row in checkpoint.get("extras", [])
+        }
+        if unknown := sorted(only - known):
+            raise ValueError("Unknown chapter IDs: " + ", ".join(unknown))
 
     async def run() -> dict[str, Any]:
         async with _session(state) as tools:
-            return await read_current(_read(state), tools=tools)
+            return await read_current(checkpoint, tools=tools, only=only)
 
     return asyncio.run(run())
 

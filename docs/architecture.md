@@ -126,7 +126,8 @@ untargeted chapters are never normalized or replaced as a side effect.
 Local updates produce a new JSON in a fresh run directory, then optionally EPUB
 or TXT. Notion updates support chapter replacement/addition and independent
 extras. Catalog/outline edits are rejected by that adapter until implemented.
-Each run freshly reads editor content. A journal binds task ID, request, book
+Each run freshly reads and refreshes only the chapters its operations target;
+other rows keep their checkpoint copy for link targets. A journal binds task ID, request, book
 and destination, records partial writes and permits resuming a body/title write
 independently. Conflicting editor changes stop the task. Notion has no atomic
 compare-and-swap across content and properties: fresh checks and independent
