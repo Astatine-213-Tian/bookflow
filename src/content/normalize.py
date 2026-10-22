@@ -28,7 +28,7 @@ from src.content.numerals import format_chinese_numeral
 from src.content.outline import group_fanwai
 from src.content.titles import normalize_outline, normalize_volume_colors
 
-RULES_SHA256 = "8ba3d039cfd703f71d7c617d525457cb4f1f9c9a85d4bff824393827a08005d2"
+RULES_SHA256 = "59f1829c7cd2e274390bf2c188f46dff889d761cf99633d7ea3ed0a7f13fb08d"
 
 SECTION_NUMBER = r"(?:[0-9０-９]{1,3}|[一二三四五六七八九十百零〇]+)"
 SECTION_LABEL_RE = re.compile(
