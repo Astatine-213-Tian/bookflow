@@ -28,7 +28,7 @@ from src.content.numerals import format_chinese_numeral
 from src.content.outline import group_fanwai
 from src.content.titles import normalize_outline, normalize_volume_colors
 
-RULES_SHA256 = "59f1829c7cd2e274390bf2c188f46dff889d761cf99633d7ea3ed0a7f13fb08d"
+RULES_SHA256 = "ddc32495584b63274b78df92b5ffdceabf3b4a80c69c9b9fa4279708363e021e"
 
 SECTION_NUMBER = r"(?:[0-9０-９]{1,3}|[一二三四五六七八九十百零〇]+)"
 SECTION_LABEL_RE = re.compile(
@@ -41,6 +41,12 @@ NUMBERED_HEADING_RE = re.compile(
 LIST_MARKER_RE = re.compile(
     r"^\s*([0-9０-９]{1,3})[,，、.．][ \t\u3000]*(?=[^\d\s.,，．])"
 )
+EPIGRAPH_PUNCTUATION = "—。！？!?，,；;：:“”\"‘’「」『』\n"
+EPIGRAPH_SOURCE_RE = re.compile(
+    rf"——[ \t\u3000]*(?P<name>[^\s{EPIGRAPH_PUNCTUATION}]"
+    rf"[^{EPIGRAPH_PUNCTUATION}]{{0,29}}?)(?:(?<=》)[。.])?[ \t\u3000]*"
+)
+EPIGRAPH_QUOTE_END = tuple("。！？!?…”」』.")
 
 
 def normalize_list_markers(
@@ -247,6 +253,80 @@ def insert_note_dividers(
     return result
 
 
+def _slice_runs(runs: list[dict], start: int, end: int) -> list[dict]:
+    result, cursor = [], 0
+    for run in runs:
+        left = max(start, cursor) - cursor
+        right = min(end, cursor + len(run["text"])) - cursor
+        if left < right:
+            result.append({**copy.deepcopy(run), "text": run["text"][left:right]})
+        cursor += len(run["text"])
+    return result
+
+
+def _epigraph_source(text: str, body: str) -> re.Match | None:
+    """Match a `——name` or `——《work》` attribution closing a quoted body."""
+    match = EPIGRAPH_SOURCE_RE.fullmatch(text)
+    if not match or not body.strip():
+        return None
+    name = match["name"]
+    cited_work = "《" in name and "》" in name
+    # A date signature or an unquoted clause is not an attribution.
+    if not cited_work and (
+        re.search(r"[0-9０-９]", name) or not body.rstrip().endswith(EPIGRAPH_QUOTE_END)
+    ):
+        return None
+    return match
+
+
+def format_epigraph(
+    blocks: list[dict], *, member: str = "chapter", report: NormalizationReport
+) -> list[dict]:
+    """Show a chapter-opening `quotation——source` as a quote with its source right-aligned."""
+
+    def plain(block: dict, alignments: tuple) -> bool:
+        return (
+            block["kind"] == "paragraph"
+            and not block.get("variant")
+            and not block.get("children")
+            and not has_reference_identity(block)
+            and block.get("alignment") in alignments
+        )
+
+    if not blocks or not plain(blocks[0], (None, "left")):
+        return blocks
+    first, text = blocks[0], block_text(blocks[0])
+    start = text.rfind("——")
+    if start > 0 and _epigraph_source(text[start:], text[:start]):
+        body_runs = _slice_runs(first["runs"], 0, len(text[:start].rstrip()))
+        source_runs = _slice_runs(first["runs"], start, len(text.rstrip()))
+        consumed = 1
+    elif (
+        len(blocks) > 1
+        and plain(blocks[1], (None, "left", "right"))
+        and _epigraph_source(block_text(blocks[1]).strip(), text)
+    ):
+        source = block_text(blocks[1])
+        body_runs = _slice_runs(first["runs"], 0, len(text.rstrip()))
+        source_runs = _slice_runs(
+            blocks[1]["runs"], len(source) - len(source.lstrip()), len(source.rstrip())
+        )
+        consumed = 2
+    else:
+        return blocks
+    quote = copy.deepcopy(first)
+    quote.pop("alignment", None)
+    quote.update(
+        kind="quote",
+        runs=body_runs,
+        children=[{"kind": "paragraph", "alignment": "right", "runs": source_runs}],
+    )
+    before = "\n".join(block_text(b) for b in blocks[:consumed])
+    after = block_text(quote) + "\n" + block_text(quote["children"][0])
+    report.record_change("epigraph_quote_formatted", member, 1, before, after)
+    return [quote, *blocks[consumed:]]
+
+
 def normalize_text(
     text: str,
     *,
@@ -407,6 +487,7 @@ def normalize_chapter(
         report.record_change(
             "chapter_leading_empty_removed", member, 1, "empty paragraph", ""
         )
+    blocks = format_epigraph(blocks, member=member, report=report)
     blocks = insert_note_dividers(blocks, member=member, report=report)
     if result.get("role") != "intro":
         scan_content_issues(

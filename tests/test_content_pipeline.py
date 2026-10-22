@@ -350,6 +350,66 @@ class ContentPipelineTests(unittest.TestCase):
             (root / "book.txt").read_text().endswith("MSN，QQ\n重复。\n重复。\n")
         )
 
+    def test_chapter_epigraph_is_a_quote_with_its_source_right_aligned(self):
+        import zipfile
+        from unittest.mock import patch
+
+        from src.content.models import Chapter, Volume
+        from src.crawler.models import CrawledBook
+        from src.notion.capabilities import validate_notion_content
+        from src.workflows.ingest import OutputOptions, write_outputs
+        from tests.fixtures import isolated_workdir
+
+        source = CrawledBook(
+            "书",
+            "作者",
+            [Volume("", [Chapter("第1章", ["真实，这残酷的真实。——《红与黑》", "正文。"])])],
+            "https://example.test/book",
+        )
+        root = isolated_workdir(self)
+        with patch(
+            "src.notion.upload.upload_source", return_value=root / "state.json"
+        ) as upload:
+            write_outputs(
+                source,
+                OutputOptions(
+                    output=root / "book.epub",
+                    txt_output=root / "book.txt",
+                    output_formats=("epub", "txt", "notion"),
+                ),
+            )
+        uploaded = upload.call_args.args[0]
+        quote = next(iter(uploaded["chapters"].values()))["blocks"][0]
+        self.assertEqual(quote["kind"], "quote")
+        self.assertEqual(quote["runs"][0]["text"], "真实，这残酷的真实。")
+        self.assertEqual(
+            quote["children"],
+            [
+                {
+                    "kind": "paragraph",
+                    "alignment": "right",
+                    "runs": [{"text": "——《红与黑》", "styles": []}],
+                }
+            ],
+        )
+        validate_notion_content(uploaded)
+        self.assertTrue(
+            (root / "book.txt")
+            .read_text()
+            .endswith("真实，这残酷的真实。\n——《红与黑》\n正文。\n")
+        )
+        with zipfile.ZipFile(root / "book.epub") as archive:
+            xhtml = "".join(
+                archive.read(name).decode()
+                for name in archive.namelist()
+                if name.endswith(".xhtml")
+            )
+        self.assertRegex(
+            xhtml,
+            r"<blockquote>真实，这残酷的真实。<p style=\"text-align: right;[^\"]*\">"
+            r"——《红与黑》</p></blockquote>",
+        )
+
     def test_metadata_lookup_replaces_source_values_but_keeps_title_and_overrides(self):
         from types import SimpleNamespace
         from unittest.mock import Mock

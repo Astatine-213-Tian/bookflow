@@ -62,14 +62,17 @@ def write_prepared_txt(book: dict, out_path: Path) -> None:
             parts.append(text)
         return "".join(parts).rstrip() if block.get("footnote") else "".join(parts)
 
+    def render_blocks(blocks: list[dict]) -> list[str]:
+        # Quote and list children follow their parent as separate lines.
+        return [
+            line
+            for block in blocks
+            for line in [render_text(block), *render_blocks(block.get("children", []))]
+        ]
+
     def add_chapter(chapter: dict) -> None:
         sections.append(
-            "\n".join(
-                [
-                    chapter["title"],
-                    *[render_text(block) for block in chapter["blocks"]],
-                ]
-            )
+            "\n".join([chapter["title"], *render_blocks(chapter["blocks"])])
         )
 
     def add_sections(nodes: list[dict]) -> None:

@@ -129,6 +129,11 @@
   多次引用保留各自回链。结构由共享 JSON 表达，见[内容契约](content-json.md)。
 - 引文不是代码块。明确的 quote 保留；仅凭字体、缩进或引号无法确定时，先筛选候选，
   再由 Codex 审查。只有高置信度结论能改变块类型，不改原文，见[引用审查](local-editions.md#review-possible-quotations)。
+- 章首题记 `引文——出处` 转为引用块：引文作引用块正文，出处（含破折号）作右对齐子段落，
+  Notion 显示为引用块内的三栏右对齐行。出处是 `——` 后不超过 30 字、不含句读和引号的
+  人名或 `《作品》`（`》` 后可带句号）；引文与出处也可以是章首相邻的两段。没有书名号时，
+  引文须以句末标点或闭引号结尾，出处不含数字，以免把正文破折号、日期落款当作出处。
+  只处理章节第一个非空块，不改原文，带链接、脚注或双语标记的段落不变。
 - Notion 的对齐和脚注往返表示见[Notion 排版约定](notion-books.md#排版约定)。
   渲染器不再靠匹配正文猜结构；TXT 是保留链接文字/URL 和注释内容的纯文本投影。
 
@@ -188,6 +193,18 @@
   {
     "input": [{"kind":"paragraph","runs":[{"text":"全文完","styles":[]}]},{"kind":"paragraph","runs":[{"text":"------------","styles":[]}]}],
     "expected": [{"kind":"paragraph","alignment":"center","runs":[{"text":"——全文完——","styles":[]}]},{"kind":"divider","runs":[]}]
+  },
+  {
+    "input": [{"kind":"paragraph","runs":[{"text":"真实，这残酷的真实。——《红与黑》","styles":[]}]},{"kind":"paragraph","runs":[{"text":"正文。","styles":[]}]}],
+    "expected": [{"kind":"quote","runs":[{"text":"真实，这残酷的真实。","styles":[]}],"children":[{"kind":"paragraph","alignment":"right","runs":[{"text":"——《红与黑》","styles":[]}]}]},{"kind":"paragraph","runs":[{"text":"正文。","styles":[]}]}]
+  },
+  {
+    "input": [{"kind":"paragraph","runs":[{"text":"“自由不是财富。”","styles":["italic"]}]},{"kind":"paragraph","runs":[{"text":"——路西斐尔","styles":[]}]}],
+    "expected": [{"kind":"quote","runs":[{"text":"“自由不是财富。”","styles":["italic"]}],"children":[{"kind":"paragraph","alignment":"right","runs":[{"text":"——路西斐尔","styles":[]}]}]}]
+  },
+  {
+    "input": [{"kind":"paragraph","runs":[{"text":"第二医院，半个小时前——","styles":[]}]},{"kind":"paragraph","runs":[{"text":"他走了——没有回头","styles":[]}]}],
+    "expected": [{"kind":"paragraph","runs":[{"text":"第二医院，半个小时前——","styles":[]}]},{"kind":"paragraph","runs":[{"text":"他走了——没有回头","styles":[]}]}]
   }
 ]
 ```
