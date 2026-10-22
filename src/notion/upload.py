@@ -7,7 +7,7 @@ import copy
 import json
 from pathlib import Path
 
-from notion_books import NotionBooks, relation_ids, content_matches
+from notion_books import CONTENT_STATUSES, NotionBooks, relation_ids, content_matches
 
 from src.notion.content import targets, write_content
 from src.notion.cms import (
@@ -220,7 +220,13 @@ async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
             state,
             data_source=book["chapters_data_source_id"],
             kind="chapters",
-            properties={"title": item["title"], "parent_title": parent or None},
+            # CMS maintains content status only after the book's first publication
+            # registers this database, so a new chapter starts unpublished here.
+            properties={
+                "title": item["title"],
+                "parent_title": parent or None,
+                "content_status": CONTENT_STATUSES["unpublished"],
+            },
             tools=tools,
         )
     for item in reversed(book["extras"]):

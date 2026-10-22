@@ -390,6 +390,10 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
                 ["简介", "第1章", "第2章"],
             )
             self.assertEqual(
+                {created[r["id"]]["properties"]["content_status"] for r in rows["main"]},
+                {"未发布"},
+            )
+            self.assertEqual(
                 created[rows["main"][1]["id"]]["properties"]["parent_title"], "卷一"
             )
             count = len(calls)
