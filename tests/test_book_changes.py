@@ -301,10 +301,59 @@ class NotionChangesTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["chapters"][key]["blocks"][0]["runs"][0]["text"], "修订。")
             saved = json.loads(state.read_text())
             self.assertEqual(saved["chapters"]["chapter-1-2"], source["chapters"]["chapter-1-2"])
+            # Each write checkpoint rewrites the journal, so it omits unchanged chapters.
+            journal = json.loads(
+                (Path(temporary) / "changes" / f"{task['id']}.json").read_text()
+            )
+            self.assertEqual(set(journal["candidate"]["chapters"]), {key})
+            self.assertEqual(set(journal["before"]["chapters"]), {key})
         self.assertTrue(paths)
         self.assertFalse(
             [p for p in paths if other in p or other.replace("-", "") in p], paths
         )
+
+    async def test_replacements_write_concurrently_with_few_reads(self):
+        import asyncio
+
+        source, api = await self.fixture()
+        before = await read_current(source, tools=api)
+        operations = [
+            {
+                "kind": "replace_chapter",
+                "chapter_id": key,
+                "expected_sha256": content_hash(before["chapters"][key]),
+                "chapter": {"title": chapter["title"], "blocks": [paragraph("修订。")]},
+            }
+            for key, chapter in source["chapters"].items()
+        ]
+        task = change(source, operations[0])
+        task["operations"] = operations
+        requests, in_flight, peak = [], 0, 0
+        original_call = api.call_api
+
+        async def call(request):
+            nonlocal in_flight, peak
+            requests.append(request)
+            in_flight += 1
+            peak = max(peak, in_flight)
+            try:
+                await asyncio.sleep(0.05)
+                return await original_call(request)
+            finally:
+                in_flight -= 1
+
+        api.call_api = call
+        config = {"databases": {"works": {"data_source_id": SOURCE}}}
+        with tempfile.TemporaryDirectory() as temporary:
+            state = Path(temporary) / "import.json"
+            write_json(state, source)
+            result = await apply_update(state, task, config, tools=api)
+        for key in source["chapters"]:
+            self.assertEqual(result["chapters"][key]["blocks"][0]["runs"][0]["text"], "修订。")
+        self.assertEqual(peak, len(operations))
+        # Two chapters previously took 30 reads: a fresh check before planning,
+        # then three readbacks and a final refresh per chapter.
+        self.assertLessEqual(sum(r["method"] == "GET" for r in requests), 18)
 
     async def test_resume_interrupted_append_uses_existing_checkpoint(self):
         source, api = await self.fixture()

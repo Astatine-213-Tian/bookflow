@@ -127,9 +127,11 @@ Local updates produce a new JSON in a fresh run directory, then optionally EPUB
 or TXT. Notion updates support chapter replacement/addition and independent
 extras. Catalog/outline edits are rejected by that adapter until implemented.
 Each run freshly reads and refreshes only the chapters its operations target;
-other rows keep their checkpoint copy for link targets. A journal binds task ID, request, book
+other rows keep their checkpoint copy for link targets. Targeted chapters are
+written by up to eight concurrent writers. A journal binds task ID, request, book
 and destination, records partial writes and permits resuming a body/title write
-independently. Conflicting editor changes stop the task. Notion has no atomic
+independently; it stores only rows that differ from the checkpoint, because
+every write step saves it. Conflicting editor changes stop the task. Notion has no atomic
 compare-and-swap across content and properties: fresh checks and independent
 readback detect conflicts but do not make concurrent editing transactional.
 

@@ -122,40 +122,48 @@ async def upload_row(
     write_json(state, book)
 
 
-async def upload_rows(
-    rows: list[dict], book: dict, state: Path, *, tools, destinations: dict
-) -> None:
-    """Bound independent bodies under the caller's single request limiter.
+async def run_bounded(items: list, action) -> None:
+    """Run independent jobs under the caller's single request limiter.
 
-    Identities must already exist so concurrent bodies cannot alter manual order.
-    On failure stop scheduling and drain in-flight rows before releasing locks.
+    On failure stop scheduling and drain in-flight jobs before releasing locks.
     """
-    remaining = iter(rows)
+    remaining = iter(items)
     failures: list[Exception] = []
-    completed = 0
 
     async def worker() -> None:
-        nonlocal completed
         while not failures:
-            row = next(remaining, None)
-            if row is None:
+            item = next(remaining, None)
+            if item is None:
                 return
             try:
-                await upload_row(
-                    book=book, state=state, tools=tools,
-                    destinations=destinations, **row,
-                )
-                completed += 1
-                if completed % 10 == 0 or completed == len(rows):
-                    print(f"Content verified {completed}/{len(rows)}", flush=True)
+                await action(item)
             except Exception as error:
                 failures.append(error)
 
     await asyncio.gather(
-        *(worker() for _ in range(min(UPLOAD_CONCURRENCY, len(rows))))
+        *(worker() for _ in range(min(UPLOAD_CONCURRENCY, len(items))))
     )
     if failures:
         raise failures[0]
+
+
+async def upload_rows(
+    rows: list[dict], book: dict, state: Path, *, tools, destinations: dict
+) -> None:
+    """Write bodies concurrently; identities must already exist so concurrent
+    bodies cannot alter manual order."""
+    completed = 0
+
+    async def upload(row: dict) -> None:
+        nonlocal completed
+        await upload_row(
+            book=book, state=state, tools=tools, destinations=destinations, **row
+        )
+        completed += 1
+        if completed % 10 == 0 or completed == len(rows):
+            print(f"Content verified {completed}/{len(rows)}", flush=True)
+
+    await run_bounded(rows, upload)
 
 
 async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
