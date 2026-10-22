@@ -38,7 +38,7 @@ translates only the rest. Act on the `status` in its final JSON line:
   then run `resume`.
 - `failed`: read `error`. After a glossary change on a pending run, use
   `--restart`; for a bad snapshot, `--recrawl`. For a collection failure, inspect
-  the actual crawler error before loading Agent Browser or BrowserAct; use
+  the actual crawler error before loading Agent Browser; use
   interactive browser tools only for login, verification or browser inspection.
   For the user's existing Arc session, use a verified `arc-cdp run <adapter>`.
 
