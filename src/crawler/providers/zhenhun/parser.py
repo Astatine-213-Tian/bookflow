@@ -25,6 +25,8 @@ UA = (
 BOOK_RE = re.compile(r"^/([^/]+)/?$")
 POST_RE = re.compile(r"^/(\d+)\.html$")
 SECTION_MARK_RE = re.compile(r"^\s*(\d{1,4})\s*$")
+AUTHOR_TITLE_RE = re.compile(r"[(（]([^()（）]+)[)）]|_([^_]+?)小说作品")
+INTRO_POST_RE = re.compile(r"简介\s*$")
 
 
 class Fetcher:
@@ -70,6 +72,7 @@ class Section:
     paragraphs: list[str]
     source_title: str
     source_url: str
+    title: str = ""
 
 
 def _clean_text(s: str) -> str:
@@ -91,9 +94,9 @@ def _paragraph_lines(tag) -> list[str]:
 
 def _author_from_page(soup: BeautifulSoup) -> str:
     title = _clean_text(soup.title.string) if soup.title and soup.title.string else ""
-    m = re.search(r"\(([^()]+)\)", title)
+    m = AUTHOR_TITLE_RE.search(title)
     if m:
-        return _clean_text(m.group(1))
+        return _clean_text(m.group(1) or m.group(2))
 
     intro = soup.select_one(".focusbox-text .text") or soup.select_one(".focusbox-text")
     intro_text = _clean_text(intro.get_text(" ")) if intro else ""
@@ -134,7 +137,8 @@ def parse_book_page(html: str, slug: str) -> tuple[BookMeta, list[ChapterRef]]:
             continue
         seen.add(post_id)
         title_text = _clean_text(a.get("title") or a.get_text())
-        if not title_text:
+        # The category's 简介 post repeats the intro already read from the list page.
+        if not title_text or INTRO_POST_RE.search(title_text):
             continue
         refs.append(
             ChapterRef(
@@ -190,8 +194,13 @@ def parse_chapter_page(html: str, ref: ChapterRef) -> list[Section]:
     if sections:
         return sections
 
-    paragraphs = [line for line in lines if line != ref.title and set(line) > {"-"}]
-    return [Section(ref.order + 1, paragraphs, ref.title, ref.url)]
+    # A post without numbered sections is one chapter titled by its directory entry.
+    paragraphs = [
+        line for line in lines if line != ref.title and not set(line) <= {"-"}
+    ]
+    if not paragraphs:
+        return []
+    return [Section(ref.order + 1, paragraphs, ref.title, ref.url, title=ref.title)]
 
 
 async def crawl_post(ref: ChapterRef, *, delay: float = 0.4) -> list[Section]:
@@ -234,7 +243,10 @@ def _sections_to_chapters(section_groups: list[list[Section]]) -> list[Chapter]:
             continue
         seen.add(section.number)
         chapters.append(
-            Chapter(title=f"第{section.number}节", paragraphs=section.paragraphs)
+            Chapter(
+                title=section.title or f"第{section.number}节",
+                paragraphs=section.paragraphs,
+            )
         )
 
     if chapters:
