@@ -25,6 +25,7 @@ from src.content.normalization import (
     scan_content_issues,
 )
 from src.content.numerals import format_chinese_numeral
+from src.content.outline import group_fanwai
 from src.content.titles import normalize_outline, normalize_volume_colors
 
 RULES_SHA256 = "8ba3d039cfd703f71d7c617d525457cb4f1f9c9a85d4bff824393827a08005d2"
@@ -441,6 +442,9 @@ def normalize_book(source: dict) -> tuple[dict, dict]:
             )
 
     book["sections"] = normalize_outline(book["sections"], report=report)
+    for member in group_fanwai(book):
+        title = book["chapters"][member]["title"]
+        report.record_change("fanwai_grouped", member, 1, title, f"番外/{title}")
     if "volume_colors" in book:
         book["volume_colors"] = normalize_volume_colors(book["volume_colors"])
     return book, report.to_dict()

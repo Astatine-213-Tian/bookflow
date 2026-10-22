@@ -294,6 +294,66 @@ class NormalizationRulesTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "colors conflict"):
                 normalize_book(prepared)
 
+    def test_fanwai_outside_a_fanwai_heading_moves_to_trailing_group(self):
+        chapter = lambda title: {"title": title, "role": "chapter", "blocks": []}
+        source = {
+            "metadata": {"title": "书", "creator": "作者"},
+            "chapters": {
+                "c77": chapter("第77章 终极（下）"),
+                "f1": chapter("番外一"),
+                "f2": chapter("出书版新番外天下座师"),
+                "v1": chapter("第78章 番外卷·旅途"),
+                "e1": chapter("第79章 尾声"),
+                "x1": chapter("番外二"),
+            },
+            "sections": [
+                {"title": "终卷", "children": [{"member": "c77"}, {"member": "f1"}]},
+                {"member": "f2"},
+                {"title": "第三卷 番外卷", "children": [{"member": "v1"}]},
+                {"title": "尾声", "children": [{"member": "e1"}, {"member": "x1"}]},
+            ],
+            "extras": [],
+        }
+
+        prepared, report = normalize_book(source)
+
+        self.assertEqual(
+            chapter_entries(prepared),
+            [
+                ("c77", "终卷"),
+                ("v1", "卷三·番外卷"),
+                ("e1", "尾声"),
+                ("f1", "番外"),
+                ("f2", "番外"),
+                ("x1", "番外"),
+            ],
+        )
+        self.assertEqual(report["change_counts"]["fanwai_grouped"], 3)
+        self.assertEqual(normalize_book(prepared)[0], prepared)
+
+    def test_fanwai_join_an_existing_trailing_fanwai_group(self):
+        chapter = lambda title: {"title": title, "role": "chapter", "blocks": []}
+        source = {
+            "metadata": {"title": "书", "creator": "作者"},
+            "chapters": {
+                "c1": chapter("第1章"),
+                "f1": chapter("番外一"),
+                "f2": chapter("番外二"),
+            },
+            "sections": [
+                {"title": "卷一", "children": [{"member": "c1"}, {"member": "f1"}]},
+                {"title": "第二卷 番外", "children": [{"member": "f2"}]},
+            ],
+            "extras": [],
+        }
+
+        prepared, _ = normalize_book(source)
+
+        self.assertEqual(
+            chapter_entries(prepared),
+            [("c1", "卷一"), ("f2", "卷二·番外"), ("f1", "卷二·番外")],
+        )
+
     def test_explicit_outline_edit_uses_same_volume_rule(self):
         with tempfile.TemporaryDirectory() as d:
             source = write_source(Path(d), ["正文"])
