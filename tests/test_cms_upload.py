@@ -385,6 +385,23 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
             state = Path(directory) / "import.json"
             await upload_draft(book, state, config, tools=Tools())
             self.assertTrue(book["uploaded"])
+            # A short new row costs its create, one body read and one page read.
+            for id in created:
+                touching = sorted(
+                    (r["method"], r["path"].split("?")[0])
+                    for r in api.calls
+                    if id in r["path"]
+                )
+                self.assertEqual(
+                    touching, [("GET", f"blocks/{id}/children"), ("GET", f"pages/{id}")]
+                )
+            self.assertEqual(
+                [r["method"] for r in api.calls if r["path"] == "pages"],
+                ["POST"] * len(created),
+            )
+            self.assertFalse(any(
+                r["method"] == "PATCH" and r["path"].endswith("/children") for r in api.calls
+            ))
             self.assertEqual(
                 [created[r["id"]]["properties"]["title"] for r in rows["main"]],
                 ["简介", "第1章", "第2章"],
@@ -486,10 +503,21 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
                     if fail and item == 0:
                         raise ValueError("row failed")
 
-                with patch("src.notion.upload.upload_row", side_effect=row):
+                created = []
+
+                async def create(item, *args, **kwargs):
+                    created.append(item)
+
+                rows = [
+                    {"item": i, "data_source": DS, "kind": "chapters", "properties": {}, "fields": {}}
+                    for i in range(25)
+                ]
+                with (
+                    patch("src.notion.upload.create_row", side_effect=create),
+                    patch("src.notion.upload.upload_row", side_effect=row),
+                ):
                     run = asyncio.create_task(upload_rows(
-                        [{"item": i} for i in range(25)], {}, Path("unused"),
-                        tools=None, destinations={},
+                        rows, {}, Path("unused"), tools=None, destinations={},
                     ))
                     await asyncio.wait_for(full.wait(), 2)
                     self.assertEqual(len(started), UPLOAD_CONCURRENCY)
@@ -504,6 +532,31 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual(len(started), 25)
                 self.assertEqual(peak, UPLOAD_CONCURRENCY)
                 self.assertCountEqual(started, finished)
+                self.assertEqual(created, list(range(25)))
+
+    async def test_create_failure_stops_creates_and_finishes_created_rows(self):
+        created, finished = [], []
+
+        async def create(item, *args, **kwargs):
+            if item == 3:
+                raise ValueError("create failed")
+            created.append(item)
+
+        async def row(*, item, **kwargs):
+            finished.append(item)
+
+        rows = [
+            {"item": i, "data_source": DS, "kind": "chapters", "properties": {}, "fields": {}}
+            for i in range(25)
+        ]
+        with (
+            patch("src.notion.upload.create_row", side_effect=create),
+            patch("src.notion.upload.upload_row", side_effect=row),
+            self.assertRaisesRegex(ValueError, "create failed"),
+        ):
+            await upload_rows(rows, {}, Path("unused"), tools=None, destinations={})
+        self.assertEqual(created, [0, 1, 2])
+        self.assertLessEqual(set(finished), {0, 1, 2})
 
     async def test_initial_body_read_is_reused_and_editor_content_is_preserved(self):
         from tests.notion_api import PAGE, write

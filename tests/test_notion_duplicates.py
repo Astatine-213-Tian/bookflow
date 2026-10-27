@@ -111,6 +111,11 @@ class Library:
         (self.main if data_source == "main-db" else self.shared).insert(0, id)
         return id
 
+    async def create_page_with_content(self, data_source, kind, properties, blocks, **kwargs):
+        id = await self.create_page(data_source, kind, properties)
+        self.pages[id]["content"] = "\n".join(text_blocks(blocks))
+        return {**await self.prepare_content(id, blocks, **kwargs), "done": True}
+
     async def write_properties(self, page, properties):
         return await NotionBooks(self, api=self.call_api).write_properties(
             page, properties
@@ -161,6 +166,9 @@ class Library:
             cover=None,
             cover_known=False,
         )
+
+    async def page(self, id, kind):
+        return await self.document(id, kind)
 
     async def prepare_content(self, id, blocks, **kwargs):
         return {

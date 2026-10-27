@@ -86,3 +86,14 @@ async def write_content(
 
 def targets(book: dict) -> dict[str, str]:
     return chapter_targets(chapters(book))
+
+
+# Any valid page ID; it stands in for pages that do not exist yet.
+PROBE_PAGE = "00000000-0000-4000-8000-000000000000"
+
+
+def link_targets_need_pages(book: dict) -> bool:
+    """Whether some chapter is a link target, so its page must exist first."""
+    return bool(chapter_targets([
+        {**row, "page_id": row["page_id"] or PROBE_PAGE} for row in chapters(book)
+    ]))

@@ -224,7 +224,9 @@ class BlockAPI:
                     "last_edited_time": "0",
                     "properties": props,
                 }
-                self.children[id] = []
+                self.children[id] = [
+                    self._create(node) for node in payload.get("children", [])
+                ]
                 body = self.pages[id]
             elif method == "PATCH" and path.endswith("/children"):
                 ids = [self._create(node) for node in request["json"]["children"]]

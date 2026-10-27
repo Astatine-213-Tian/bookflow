@@ -7,9 +7,9 @@ import copy
 import json
 from pathlib import Path
 
-from notion_books import CONTENT_STATUSES, NotionBooks, relation_ids, content_matches
+from notion_books import CONTENT_STATUSES, NotionBooks, relation_ids
 
-from src.notion.content import targets, write_content
+from src.notion.content import link_targets_need_pages, targets, write_content
 from src.notion.cms import (
     CONFIG,
     STORAGE,
@@ -47,7 +47,9 @@ async def create_row(
     kind: str,
     properties: dict,
     tools,
+    destinations: dict | None = None,
 ) -> None:
+    """Create a row; with ``destinations`` it holds the first body batch too."""
     if item.get("page_id"):
         return
     if item.get("pending"):
@@ -56,9 +58,15 @@ async def create_row(
         )
     item["pending"] = True
     write_json(state, book)
-    item["page_id"] = await NotionBooks(tools, api=tools.call_api).create_page(
-        data_source, kind, properties
-    )
+    reader = NotionBooks(tools, api=tools.call_api)
+    if destinations is None:
+        item["page_id"] = await reader.create_page(data_source, kind, properties)
+    else:
+        plan = await reader.create_page_with_content(
+            data_source, kind, properties, item["blocks"], targets=destinations
+        )
+        item["page_id"] = plan["page_id"]
+        item["content_write"] = plan
     item.pop("pending")
     write_json(state, book)
 
@@ -88,23 +96,22 @@ async def upload_row(
     reader = NotionBooks(tools, api=tools.call_api)
     if destinations is None:
         destinations = targets(book)
-    if not item.get("reused"):
-        # prepare_content already reads the complete page. Its before snapshot
-        # rejects editor content without an identical second preliminary read.
-        await write_content(
-            reader, item, state, book, destinations, require_empty=True
-        )
-    document = await reader.document(item["page_id"], kind)
-    props = document.properties
-    if item.get("reuse_fingerprint"):
+    if item.get("reused"):
+        document = await reader.document(item["page_id"], kind)
+        props = document.properties
         matches = (
             fingerprint(props.get("title"), document.blocks)
             == item["reuse_fingerprint"]
         )
     else:
-        matches = props.get("title") == item["title"] and content_matches(
-            document.blocks, item["blocks"], destinations
+        # prepare_content already reads the complete page. Its before snapshot
+        # rejects editor content without an identical second preliminary read.
+        await write_content(
+            reader, item, state, book, destinations, require_empty=True
         )
+        # The write verified the body against an actual read; check properties.
+        props = (await reader.page(item["page_id"], kind)).properties
+        matches = props.get("title") == item["title"]
     if not matches:
         raise ValueError(
             "CMS draft readback differs from prepared content; reconcile without overwriting edits"
@@ -148,22 +155,68 @@ async def run_bounded(items: list, action) -> None:
 
 
 async def upload_rows(
-    rows: list[dict], book: dict, state: Path, *, tools, destinations: dict
+    rows: list[dict],
+    book: dict,
+    state: Path,
+    *,
+    tools,
+    destinations: dict,
+    with_content: bool = False,
 ) -> None:
-    """Write bodies concurrently; identities must already exist so concurrent
-    bodies cannot alter manual order."""
+    """Create missing rows one at a time in list order while workers finish
+    created rows. Only creation alters manual order, so bodies run concurrently;
+    ``with_content`` puts each body's first batch into its create.
+
+    On failure stop scheduling and drain in-flight jobs before releasing locks.
+    """
+    created: asyncio.Queue = asyncio.Queue()
+    failures: list[Exception] = []
+    workers = min(UPLOAD_CONCURRENCY, len(rows))
     completed = 0
 
-    async def upload(row: dict) -> None:
-        nonlocal completed
-        await upload_row(
-            book=book, state=state, tools=tools, destinations=destinations, **row
-        )
-        completed += 1
-        if completed % 10 == 0 or completed == len(rows):
-            print(f"Content verified {completed}/{len(rows)}", flush=True)
+    async def create() -> None:
+        try:
+            for row in rows:
+                if failures:
+                    return
+                await create_row(
+                    row["item"],
+                    book,
+                    state,
+                    data_source=row["data_source"],
+                    kind=row["kind"],
+                    properties=row["fields"],
+                    tools=tools,
+                    destinations=destinations if with_content else None,
+                )
+                created.put_nowait(row)
+        except Exception as error:
+            failures.append(error)
+        finally:
+            for _ in range(workers):
+                created.put_nowait(None)
 
-    await run_bounded(rows, upload)
+    async def worker() -> None:
+        nonlocal completed
+        while not failures and (row := await created.get()) is not None:
+            try:
+                await upload_row(
+                    book=book,
+                    state=state,
+                    tools=tools,
+                    destinations=destinations,
+                    **{k: v for k, v in row.items() if k != "fields"},
+                )
+            except Exception as error:
+                failures.append(error)
+                return
+            completed += 1
+            if completed % 10 == 0 or completed == len(rows):
+                print(f"Content verified {completed}/{len(rows)}", flush=True)
+
+    await asyncio.gather(create(), *(worker() for _ in range(workers)))
+    if failures:
+        raise failures[0]
 
 
 async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
@@ -220,65 +273,60 @@ async def upload_draft(book: dict, state: Path, config: dict, *, tools) -> None:
     )
     # New records enter manual views at the top. Create from the end, then verify
     # the actual editorial order instead of assuming query insertion order.
-    for member, parent in reversed(entries):
-        item = book["chapters"][member]
-        await create_row(
-            item,
-            book,
-            state,
-            data_source=book["chapters_data_source_id"],
-            kind="chapters",
-            # CMS maintains content status only after the book's first publication
-            # registers this database, so a new chapter starts unpublished here.
-            properties={
-                "title": item["title"],
-                "parent_title": parent or None,
-                "content_status": CONTENT_STATUSES["unpublished"],
-            },
-            tools=tools,
-        )
-    for item in reversed(book["extras"]):
-        await create_row(
-            item,
-            book,
-            state,
-            data_source=extras_ds,
-            kind="extras",
-            properties={"title": item["title"], "related_works": [book["work_id"]]},
-            tools=tools,
-        )
     rows = []
     for member, parent in reversed(entries):
         item = book["chapters"][member]
+        properties = {"title": item["title"], "parent_title": parent or None}
         rows.append({
             "item": item,
             "data_source": book["chapters_data_source_id"],
             "kind": "chapters",
-            "properties": {"title": item["title"], "parent_title": parent or None},
+            "properties": properties,
+            # CMS maintains content status only after the book's first publication
+            # registers this database, so a new chapter starts unpublished here.
+            "fields": {**properties, "content_status": CONTENT_STATUSES["unpublished"]},
         })
     for item in reversed(book["extras"]):
-        if item.get("reused") and not item.get("verified"):
-            document = await reader.document(item["page_id"], "extras")
-            props, blocks = document.properties, document.blocks
-            expected = item.get("reuse_fingerprint") or fingerprint(
-                item["title"], item["blocks"]
-            )
-            if fingerprint(props.get("title"), blocks) != expected:
-                raise ValueError(
-                    "Shared extra changed after duplicate review; reconcile before linking"
-                )
-            works = relation_ids(props.get("related_works"))
-            if book["work_id"] not in works:
-                await reader.write_properties(
-                    document, {"related_works": works + [book["work_id"]]}
-                )
+        properties = {"title": item["title"], "related_works": [book["work_id"]]}
         rows.append({
             "item": item,
             "data_source": extras_ds,
             "kind": "extras",
-            "properties": {"title": item["title"], "related_works": [book["work_id"]]},
+            "properties": properties,
+            "fields": properties,
         })
-    await upload_rows(rows, book, state, tools=tools, destinations=targets(book))
+    # A chapter link resolves only after every page exists; otherwise each
+    # create carries its body's first batch.
+    with_content = not link_targets_need_pages(book)
+    if not with_content:
+        for row in rows:
+            await create_row(
+                row["item"], book, state, data_source=row["data_source"],
+                kind=row["kind"], properties=row["fields"], tools=tools,
+            )
+    reused = [r for r in rows if r["item"].get("reused") and not r["item"].get("verified")]
+    await upload_rows(
+        [r for r in rows if r not in reused], book, state, tools=tools,
+        destinations=targets(book), with_content=with_content,
+    )
+    # Link reviewed shared extras only after every new row exists.
+    for row in reused:
+        item = row["item"]
+        document = await reader.document(item["page_id"], "extras")
+        props, blocks = document.properties, document.blocks
+        expected = item.get("reuse_fingerprint") or fingerprint(
+            item["title"], item["blocks"]
+        )
+        if fingerprint(props.get("title"), blocks) != expected:
+            raise ValueError(
+                "Shared extra changed after duplicate review; reconcile before linking"
+            )
+        works = relation_ids(props.get("related_works"))
+        if book["work_id"] not in works:
+            await reader.write_properties(
+                document, {"related_works": works + [book["work_id"]]}
+            )
+    await upload_rows(reused, book, state, tools=tools, destinations=targets(book))
     for view, data_source, kind, expected in [
         (
             book["chapters_view_id"],
