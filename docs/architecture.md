@@ -166,9 +166,10 @@ before cleanup and the final result afterward, and reconciles interrupted
 sessions before continuing.
 The importer owns the page while writing; edits during cleanup may be archived.
 See the shared [write-session decision](https://github.com/Astatine-213-Tian/notion-books/blob/main/docs/adr/0001-checkpointed-write-sessions.md).
-The importer creates identities serially to preserve manual order; each create
-carries its body's first batch unless a chapter link must wait for every page,
-while up to eight body writers finish created pages. MCP and REST each share one credential budget:
+The importer creates identities serially to preserve manual order; a create holds
+any body that fits in it unless a chapter link must wait for every page, while
+up to eight workers verify created pages; other bodies are written after every
+create. MCP and REST each share one credential budget:
 three request starts per second, four in flight, and the SDK's common six-attempt
 retry policy with server cooldowns. Permanent errors stop immediately; uncertain
 writes require checkpoint recovery. The bridge multiplexes independent reads and

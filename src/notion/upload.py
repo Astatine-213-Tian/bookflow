@@ -7,7 +7,7 @@ import copy
 import json
 from pathlib import Path
 
-from notion_books import CONTENT_STATUSES, NotionBooks, relation_ids
+from notion_books import CONTENT_STATUSES, NotionBooks, content_fits_create, relation_ids
 
 from src.notion.content import link_targets_need_pages, targets, write_content
 from src.notion.cms import (
@@ -164,8 +164,10 @@ async def upload_rows(
     with_content: bool = False,
 ) -> None:
     """Create missing rows one at a time in list order while workers finish
-    created rows. Only creation alters manual order, so bodies run concurrently;
-    ``with_content`` puts each body's first batch into its create.
+    created rows. Only creation alters manual order, so bodies run concurrently.
+    With ``with_content`` a create holds a body that fits it. A write right after
+    such a create can be lost, so bodies that do not fit are written only after
+    every create.
 
     On failure stop scheduling and drain in-flight jobs before releasing locks.
     """
@@ -175,10 +177,17 @@ async def upload_rows(
     completed = 0
 
     async def create() -> None:
+        later = []
         try:
             for row in rows:
                 if failures:
                     return
+                new = not row["item"].get("page_id")
+                content = (
+                    with_content
+                    and new
+                    and content_fits_create(row["item"]["blocks"], destinations)
+                )
                 await create_row(
                     row["item"],
                     book,
@@ -187,8 +196,13 @@ async def upload_rows(
                     kind=row["kind"],
                     properties=row["fields"],
                     tools=tools,
-                    destinations=destinations if with_content else None,
+                    destinations=destinations if content else None,
                 )
+                if new and not content:
+                    later.append(row)
+                else:
+                    created.put_nowait(row)
+            for row in later:
                 created.put_nowait(row)
         except Exception as error:
             failures.append(error)

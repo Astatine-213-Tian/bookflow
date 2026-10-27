@@ -492,6 +492,7 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
 
                 async def row(*, item, **kwargs):
                     nonlocal active, peak
+                    item = item["n"]
                     started.append(item)
                     active += 1
                     peak = max(peak, active)
@@ -506,10 +507,11 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
                 created = []
 
                 async def create(item, *args, **kwargs):
-                    created.append(item)
+                    created.append(item["n"])
 
                 rows = [
-                    {"item": i, "data_source": DS, "kind": "chapters", "properties": {}, "fields": {}}
+                    {"item": {"n": i, "page_id": f"page-{i}"}, "data_source": DS,
+                     "kind": "chapters", "properties": {}, "fields": {}}
                     for i in range(25)
                 ]
                 with (
@@ -538,15 +540,16 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
         created, finished = [], []
 
         async def create(item, *args, **kwargs):
-            if item == 3:
+            if item["n"] == 3:
                 raise ValueError("create failed")
-            created.append(item)
+            created.append(item["n"])
 
         async def row(*, item, **kwargs):
-            finished.append(item)
+            finished.append(item["n"])
 
         rows = [
-            {"item": i, "data_source": DS, "kind": "chapters", "properties": {}, "fields": {}}
+            {"item": {"n": i, "page_id": f"page-{i}"}, "data_source": DS,
+             "kind": "chapters", "properties": {}, "fields": {}}
             for i in range(25)
         ]
         with (
@@ -557,6 +560,33 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
             await upload_rows(rows, {}, Path("unused"), tools=None, destinations={})
         self.assertEqual(created, [0, 1, 2])
         self.assertLessEqual(set(finished), {0, 1, 2})
+
+    async def test_rows_a_create_cannot_hold_are_written_after_every_create(self):
+        events = []
+
+        async def create(item, *args, destinations=None, **kwargs):
+            events.append(("create", item["n"], destinations is not None))
+            item["page_id"] = f"page-{item['n']}"
+
+        async def row(*, item, **kwargs):
+            events.append(("write", item["n"]))
+
+        rows = [
+            {"item": {"n": i, "blocks": [i]}, "data_source": DS,
+             "kind": "chapters", "properties": {}, "fields": {}}
+            for i in range(3)
+        ]
+        with (
+            patch("src.notion.upload.create_row", side_effect=create),
+            patch("src.notion.upload.upload_row", side_effect=row),
+            patch("src.notion.upload.content_fits_create", side_effect=lambda blocks, _: blocks != [0]),
+            patch("src.notion.upload.UPLOAD_CONCURRENCY", 1),
+        ):
+            await upload_rows(rows, {}, Path("unused"), tools=None, destinations={}, with_content=True)
+        creates = [e for e in events if e[0] == "create"]
+        self.assertEqual(creates, [("create", 0, False), ("create", 1, True), ("create", 2, True)])
+        self.assertEqual(events[-1], ("write", 0))
+        self.assertLess(events.index(("create", 2, True)), events.index(("write", 0)))
 
     async def test_initial_body_read_is_reused_and_editor_content_is_preserved(self):
         from tests.notion_api import PAGE, write
