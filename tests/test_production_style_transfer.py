@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from src.runtime.models import TRANSLATION_MODEL_ORDER
 from src.runtime.files import write_json
 from src.translation.methods import METHODS, TranslateOptions
 from src.translation.codex_cli import (
@@ -108,17 +109,9 @@ class ProductionStyleTransferTests(unittest.TestCase):
                 )
                 self.assertEqual(semantic_qa.call_count, expected_calls)
 
-    def test_default_model_order_prefers_all_local_56_variants(self) -> None:
+    def test_default_model_order_uses_configured_constant(self) -> None:
         self.assertEqual(
-            configured_model_order({}),
-            [
-                "gpt-5.6-sol",
-                "gpt-5.6-terra",
-                "gpt-5.6-luna",
-                "gpt-5.5",
-                "gpt-5.3-codex-spark",
-                "gpt-5.4",
-            ],
+            configured_model_order({}), list(TRANSLATION_MODEL_ORDER)
         )
 
     def test_asset_request_matches_frozen_method_evidence(self) -> None:
@@ -159,7 +152,7 @@ class ProductionStyleTransferTests(unittest.TestCase):
                 asset_file_sha256=ASSET_SHA256,
                 prompt_path=PROMPT_PATH,
                 schema_path=SCHEMA_PATH,
-                models=("gpt-5.6-sol", "gpt-5.6-terra"),
+                models=("gpt-5.6-sol", "gpt-6.1-terra"),
                 reasoning_effort="high",
                 timeout_seconds=30,
                 max_attempts=2,
@@ -213,8 +206,8 @@ class ProductionStyleTransferTests(unittest.TestCase):
                     segment_name="root",
                     depth=0,
                 )
-            self.assertEqual(result.models_used, ["gpt-5.6-terra"])
-            self.assertEqual(calls, ["gpt-5.6-sol", "gpt-5.6-terra"])
+            self.assertEqual(result.models_used, ["gpt-6.1-terra"])
+            self.assertEqual(calls, ["gpt-5.6-sol", "gpt-6.1-terra"])
             self.assertIn("gpt-5.6-sol", runner.disabled_models())
 
     def test_style_runner_does_not_downgrade_contract_failure(self) -> None:
@@ -225,7 +218,7 @@ class ProductionStyleTransferTests(unittest.TestCase):
                 asset_file_sha256=ASSET_SHA256,
                 prompt_path=PROMPT_PATH,
                 schema_path=SCHEMA_PATH,
-                models=("gpt-5.6-sol", "gpt-5.6-terra"),
+                models=("gpt-5.6-sol", "gpt-6.1-terra"),
                 reasoning_effort="high",
                 timeout_seconds=30,
                 max_attempts=2,
@@ -266,7 +259,7 @@ class ProductionStyleTransferTests(unittest.TestCase):
                         depth=0,
                     )
             self.assertEqual(calls, ["gpt-5.6-sol", "gpt-5.6-sol"])
-            self.assertNotIn("gpt-5.6-terra", calls)
+            self.assertNotIn("gpt-6.1-terra", calls)
 
     def test_neutral_runner_resumes_on_next_model_after_capacity(self) -> None:
         base_summary = {
@@ -303,8 +296,8 @@ class ProductionStyleTransferTests(unittest.TestCase):
                     run_dir=Path(temp),
                     models=DEFAULT_MODEL_ORDER[:2],
                 )
-            self.assertEqual(calls, ["gpt-5.6-sol", "gpt-5.6-terra"])
-            self.assertEqual(summary["effective_model"], "gpt-5.6-terra")
+            self.assertEqual(calls, ["gpt-5.6-sol", "gpt-6.1-terra"])
+            self.assertEqual(summary["effective_model"], "gpt-6.1-terra")
             self.assertIn("gpt-5.6-sol", summary["unavailable_models"])
 
     def test_semantic_qa_summary_is_bound_to_style_outputs(self) -> None:

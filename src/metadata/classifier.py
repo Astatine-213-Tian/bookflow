@@ -6,6 +6,7 @@ import tempfile
 from dataclasses import asdict
 from pathlib import Path
 
+from src.runtime.models import CLASSIFIER_MODEL
 from src.runtime.paths import repo_root
 from src.metadata.jjwxc import GENRES, TIME_AREAS, JjwxcTypeMetadata
 
@@ -54,6 +55,7 @@ Sample:
             [
                 "codex",
                 "exec",
+                *(["--model", CLASSIFIER_MODEL] if CLASSIFIER_MODEL else []),
                 "--ephemeral",
                 "--sandbox",
                 "read-only",
@@ -148,6 +150,7 @@ INPUT JSON:
             [
                 "codex",
                 "exec",
+                *(["--model", CLASSIFIER_MODEL] if CLASSIFIER_MODEL else []),
                 "--ephemeral",
                 "--sandbox",
                 "read-only",

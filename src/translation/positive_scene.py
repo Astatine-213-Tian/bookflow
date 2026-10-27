@@ -26,6 +26,7 @@ from src.translation.source import (
     load_source,
     source_entries,
 )
+from src.runtime.models import SCENE_POSITIVE_MODEL, SCENE_POSITIVE_REVIEW_MODEL
 from src.translation.style_transfer import run_structured_attempt
 from src.translation.style_transfer_assets import file_sha256, sha256_json
 
@@ -194,7 +195,7 @@ def invoke(
         "prompt": prompt,
         "payload": payload,
         "schema": schema,
-        "model": settings["review_model" if review else "model"],
+        "model": settings.get("review_model" if review else "model") or (SCENE_POSITIVE_REVIEW_MODEL if review else SCENE_POSITIVE_MODEL),
         "reasoning_effort": settings["reasoning_effort"],
     }
     request_path = run / "requests" / f"{name}.json"

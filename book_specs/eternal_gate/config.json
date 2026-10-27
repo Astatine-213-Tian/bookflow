@@ -30,14 +30,6 @@
     "timeout_seconds": 900,
     "max_attempts": 2,
     "workers": 2,
-    "model_order": [
-      "gpt-5.6-sol",
-      "gpt-5.6-terra",
-      "gpt-5.6-luna",
-      "gpt-5.5",
-      "gpt-5.3-codex-spark",
-      "gpt-5.4"
-    ],
     "model_switch_policy": "capacity_or_unavailability_only"
   },
   "semantic_compression": {
@@ -48,14 +40,6 @@
     "min_auto_apply_confidence": "medium"
   },
   "codex": {
-    "model_order": [
-      "gpt-5.6-sol",
-      "gpt-5.6-terra",
-      "gpt-5.6-luna",
-      "gpt-5.5",
-      "gpt-5.3-codex-spark",
-      "gpt-5.4"
-    ],
     "timeout_seconds": 300
   },
   "scene_positive": {
@@ -65,8 +49,6 @@
     "prompt_file_sha256": "c97e705136cf5686cc15c279e100171dd39c54496683314b6587cce3f58fcaa1",
     "target_words": 230,
     "context_paragraphs": 2,
-    "model": "gpt-5.6-sol",
-    "review_model": "gpt-5.6-terra",
     "reasoning_effort": "high",
     "timeout_seconds": 900,
     "workers": 6

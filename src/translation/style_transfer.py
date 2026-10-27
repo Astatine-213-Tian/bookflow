@@ -16,6 +16,7 @@ from typing import Any, Callable, Sequence
 
 from src.runtime.files import write_json
 from src.runtime.paths import repo_root
+from src.runtime.models import TRANSLATION_MODEL_ORDER
 from src.translation.codex_cli import is_model_capacity_text
 from src.translation.source import (
     chapter_ids,
@@ -34,14 +35,7 @@ from src.translation.style_transfer_assets import (
 
 RUN_SCHEMA = "author_style_transfer_run.v1"
 DEFAULT_BLOCK_SIZE = 12
-DEFAULT_MODEL_ORDER = (
-    "gpt-5.6-sol",
-    "gpt-5.6-terra",
-    "gpt-5.6-luna",
-    "gpt-5.5",
-    "gpt-5.3-codex-spark",
-    "gpt-5.4",
-)
+DEFAULT_MODEL_ORDER = TRANSLATION_MODEL_ORDER
 HAN_RUN_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]{8,}")
 CJK_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
 NUMBER_RE = re.compile(r"\d+(?:[.,:/-]\d+)*")

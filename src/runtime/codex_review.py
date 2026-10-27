@@ -10,6 +10,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from src.runtime.models import QUOTE_REVIEW_MODEL
+
 
 def extract_review_payload(output: str) -> dict[str, Any]:
     stripped = output.strip()
@@ -39,6 +41,8 @@ def run_review_prompt(prompt: str, timeout_seconds: int) -> str:
         command = [
             codex_bin,
             "exec",
+            "--model",
+            QUOTE_REVIEW_MODEL,
             "--sandbox",
             "read-only",
             "--output-last-message",
