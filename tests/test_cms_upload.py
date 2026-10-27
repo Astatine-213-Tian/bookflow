@@ -668,6 +668,22 @@ class UploadTests(unittest.IsolatedAsyncioTestCase):
             tools.call.assert_not_awaited()
             self.assertEqual(tools.call_api.await_count, 2)
 
+    def test_token_comes_from_environment_else_checkout_dotenv(self):
+        from src.notion.api import TOKEN, configured_token
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch("src.notion.api.repo_root", return_value=root):
+                with patch.dict(os.environ, {}, clear=False):
+                    os.environ.pop(TOKEN, None)
+                    self.assertEqual(configured_token(), "")
+                    (root / ".env").write_text(f"OTHER=1\nexport {TOKEN}=\"from-file\"\n")
+                    self.assertEqual(configured_token(), "from-file")
+                with patch.dict(os.environ, {TOKEN: " from-env "}):
+                    self.assertEqual(configured_token(), "from-env")
+                with patch.dict(os.environ, {TOKEN: ""}):
+                    self.assertEqual(configured_token(), "")
+
     async def test_browser_cover_task_resumes_with_rest_readback(self):
         with (
             tempfile.TemporaryDirectory() as temporary,

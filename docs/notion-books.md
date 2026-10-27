@@ -57,8 +57,7 @@ uv run book ingest "作品URL" --mode epub --mode notion --mode txt
 
 目录、显式模板、关联视图及手动顺序通过官方 Notion MCP 操作；普通页面创建、页面属性、
 作者信息、封面元数据及正文通过官方 REST API 读写。OAuth 凭据保存在私有状态目录，
-可刷新。REST 操作需要进程环境中的 `NOTION_API_TOKEN`；集成须能访问目标库并有读取、插入及更新内容权限。
-凭据由进程环境提供，不写入检查点。脚注的实际 block ID 由 REST 获取，无需浏览器绑定。
+可刷新。REST 集成须能访问目标库并有读取、插入及更新内容权限。凭据不写入检查点。脚注的实际 block ID 由 REST 获取，无需浏览器绑定。
 `book notion logout` 删除本地 MCP token；重新授权使用 `book notion login`。
 
 上传按倒序逐页创建以保留手动顺序，创建请求直接带上正文的第一批块；同时最多 8 个任务
@@ -75,7 +74,7 @@ uv run book ingest "作品URL" --mode epub --mode notion --mode txt
 
 ### 封面
 
-封面使用官方 File Upload API，复用正文所需的 `NOTION_API_TOKEN`。
+封面使用官方 File Upload API。
 上传前封面先按[封面规范化](../.agents/skills/book-management/references/cover-normalization.md)
 统一为 2:3、不超过 1,000,000 字节；需要修复时上传暂停，审核通过后用 `--cover` 续传。
 已有 `cover-browser.json` 待办可按[封面流程](../.agents/skills/book-management/references/notion-cover.md)
@@ -83,7 +82,7 @@ uv run book ingest "作品URL" --mode epub --mode notion --mode txt
 封面恢复与正文分开，不重建正文。
 
 PNG/JPEG 最大 10 MiB、2500 万像素。封面不可读取或回读字节不一致时保留
-待处理状态，不重复创建正文。脚本不读取 `.env`，不保存 token 或签名下载 URL。
+待处理状态，不重复创建正文。脚本不保存 token 或签名下载 URL。
 公开 URL 封面仍可用 `--cover-url` 经 MCP 附加。
 
 本地 EPUB 嵌入封面图片及 cover metadata，供书库显示缩略图；

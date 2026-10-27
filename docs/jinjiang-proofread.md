@@ -13,8 +13,7 @@ uv run book proofread review --run-dir generated/proofread/BOOK_DATE
 uv run book proofread apply --run-dir generated/proofread/BOOK_DATE
 ```
 
-Notion 正文需要进程环境中的 `NOTION_API_TOKEN`，目录使用项目已有 MCP 登录。
-如凭据放在本地 `.env`，可显式使用 `uv run --env-file .env ...` 提供环境；命令本身不读取该文件。
+Notion 目录使用项目已有 MCP 登录。
 晋江通过 `arc-cdp run browser-harness` 使用现有 Arc 登录，不自动订阅或购买。
 登录失效、购买页、锁章和加载失败分别报告；之前失败的章节在续跑时重新尝试。
 需要登录时在浏览器完成登录，再运行同一命令。

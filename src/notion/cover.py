@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import io
-import os
 import warnings
 from pathlib import Path
 
@@ -12,7 +11,7 @@ from notion_books import API_VERSION, NotionBooks
 from PIL import Image
 
 from src.runtime.files import digest, write_json
-from src.notion.api import api_request, api_token
+from src.notion.api import api_request, api_token, configured_token
 
 MAX_BYTES = 10 * 1024 * 1024
 MAX_PIXELS = 25_000_000
@@ -111,7 +110,7 @@ async def finish_cover(book: dict, state: Path, *, tools) -> None:
         validate_cover(data)
         if digest(data) != book["cover_sha256"]:
             raise ValueError("Cover asset changed since preparation")
-        if os.environ.get("NOTION_API_TOKEN", "").strip():
+        if configured_token():
             await upload_cover(book, state, tools=tools)
             return
         task = state.parent / "cover-browser.json"

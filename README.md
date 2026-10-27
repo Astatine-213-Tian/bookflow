@@ -88,7 +88,7 @@ uv run book notion verify --state state/notion/RUN/import.json
 ```
 
 Official MCP handles catalogs, creation/templates, linked views and manual chapter
-order. Metadata and manuscript reads/writes use REST and require `NOTION_API_TOKEN` with
+order. Metadata and manuscript reads/writes use REST through an integration with
 access to the destination. Footnotes bind to REST block IDs; covers require
 byte readback. Details: [storage/recovery](docs/notion-books.md),
 [shared extras](docs/fanwai-notion.md) and the [reference contract](docs/content-json.md#hyperlinks-and-footnotes).

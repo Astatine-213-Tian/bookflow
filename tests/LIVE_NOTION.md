@@ -6,8 +6,7 @@ then executes the real source preparation, metadata mapping, duplicate scan,
 template application, chapter/extra upload, checkpoint persistence and resume.
 Live readback checks names and complete formatting/content. It uses the crawler's
 own MCP OAuth login and public `book_specs/notion/config.json` database settings.
-Manuscript reads and writes also require `NOTION_API_TOKEN` in the process
-environment, with access to the fixture databases.
+The REST integration needs access to the fixture databases.
 
 This tests the result-to-Notion path. Provider crawling/parsing remains covered
 by provider fixtures and the regular crawler suite. Success means the uploaded

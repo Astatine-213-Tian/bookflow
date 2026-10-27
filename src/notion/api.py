@@ -2,14 +2,45 @@
 
 import base64
 import os
+from pathlib import Path
+
 import httpx
+
+from src.runtime.paths import repo_root
+
+TOKEN = "NOTION_API_TOKEN"
+
+
+def configured_token() -> str:
+    """The token from the environment, else from the checkout's git-ignored .env.
+
+    A variable present in the environment wins, even when empty.
+    """
+    if TOKEN in os.environ:
+        return os.environ[TOKEN].strip()
+    return dotenv_value(repo_root() / ".env", TOKEN)
+
+
+def dotenv_value(path: Path, key: str) -> str:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        return ""
+    for line in lines:
+        name, separator, value = line.strip().removeprefix("export ").partition("=")
+        if separator and name.strip() == key:
+            value = value.strip()
+            if len(value) > 1 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            return value.strip()
+    return ""
 
 
 def api_token() -> str:
-    token = os.environ.get("NOTION_API_TOKEN", "").strip()
+    token = configured_token()
     if not token:
         raise ValueError(
-            "Notion manuscript access requires NOTION_API_TOKEN in the process environment; .env is not read"
+            "Notion manuscript access requires NOTION_API_TOKEN in the environment or the checkout's .env"
         )
     return token
 
