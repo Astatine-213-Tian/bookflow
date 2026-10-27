@@ -156,6 +156,11 @@ requires reviewed boundaries, preserves every part under centered numbered H3s,
 and updates subsequent numbering consistently. Never merge solely from a suffix.
 Duplicate-number warnings may suggest a missing number, but require checking the
 actual chapter identities before any rename. Preserve uncertain content.
+Everything the author wrote is content: keep chapter-end notes, comments, thanks,
+apologies, update notices, 收藏/投票 pleas and mentions of the author's other books.
+Remove only advertising that points readers to a third-party location (another
+website, account, group or download site). When unsure, keep, and list every
+removed line in full for review.
 
 ### Metadata enrichment
 

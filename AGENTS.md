@@ -104,6 +104,15 @@ uv run book ingest --search "斗破苍穹" --parser quanben --mode epub
 uv run book ingest --search "全球高考" --first --mode epub -o books/book.epub
 ```
 
+Notion uploads need `NOTION_API_TOKEN` in the command's process environment. The
+`book` package never reads `.env` itself, but the repo's git-ignored `.env` holds
+the token: agents load it into that one command's subshell and run the upload
+there, never printing or echoing it and never asking the user to export it:
+
+```bash
+(set -a; source ./.env; set +a; uv run book ingest SOURCE --mode notion)
+```
+
 Use `uv run book ingest --list-parsers` to inspect supported sites. Browser-backed providers such as xfxs and pili45 use `src.crawler.fetch.browser.resolve_browser_executable()` to find a Chromium-compatible browser. Set `BOOKLIB_BROWSER_PATH` to force a specific executable; otherwise discovery checks Playwright-managed Chromium, common executables on `PATH`, and common macOS app bundle paths.
 
 Run bilingual stages separately when debugging one of them; `update` chains the
