@@ -20,7 +20,7 @@ import requests
 import zendriver as zd
 from bs4 import BeautifulSoup
 
-from src.content.html import is_scene_break_text, render_scene_break
+from src.content.html import alignment_style, is_scene_break_text, render_scene_break
 from src.content.models import Chapter, Volume
 from src.crawler.fetch.browser import resolve_browser_executable
 from src.crawler.fetch.parallel import crawl_items
@@ -534,15 +534,18 @@ def _extract_json_html_blocks(value: Any) -> list[str]:
         return _extract_json_html_blocks(content)
     if node_type == "paragraph":
         text = _text_from_json_node(value)
+        alignment = _node_alignment(value)
         if is_scene_break_text(text):
-            return [render_scene_break()]
+            return [render_scene_break(alignment)]
         inline = _inline_html(content)
-        return [f"<p>{inline}</p>"] if inline else []
+        style = alignment_style(alignment)
+        return [f"<p{style}>{inline}</p>"] if inline else []
     if node_type == "heading":
         level = int((value.get("attrs") or {}).get("level") or 3)
         level = min(max(level, 1), 4)
         inline = _inline_html(content)
-        return [f"<h{level}>{inline}</h{level}>"] if inline else []
+        style = alignment_style(_node_alignment(value))
+        return [f"<h{level}{style}>{inline}</h{level}>"] if inline else []
     if node_type == "blockquote":
         inner = "\n".join(_extract_json_html_blocks(content))
         return [f"<blockquote>{inner}</blockquote>"] if inner else []
@@ -559,6 +562,12 @@ def _extract_json_html_blocks(value: Any) -> list[str]:
     if node_type == "hard_break":
         return ["<br/>"]
     return _extract_json_html_blocks(content)
+
+
+def _node_alignment(node: dict) -> str | None:
+    """Keep the alignment Patreon stores per block; left is the shared default."""
+    alignment = (node.get("attrs") or {}).get("nodeTextAlignment")
+    return alignment if alignment in {"center", "right", "justify"} else None
 
 
 def _inline_html(value: Any) -> str:

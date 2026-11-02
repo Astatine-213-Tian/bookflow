@@ -14,5 +14,10 @@ def is_scene_break_text(text: str) -> bool:
     return bool(re.fullmatch(r"(?:\*\s*){3,}", text.strip()))
 
 
-def render_scene_break() -> str:
-    return '<p class="scene-break">***</p>'
+def alignment_style(alignment: str | None) -> str:
+    """Inline alignment the shared HTML input reads back into a block."""
+    return f' style="text-align: {alignment}"' if alignment else ""
+
+
+def render_scene_break(alignment: str | None = None) -> str:
+    return f'<p class="scene-break"{alignment_style(alignment)}>***</p>'
