@@ -142,19 +142,32 @@ class PositiveSceneTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "translation.method"):
                 method_for(config)
     def test_unchanged_chapters_reuse_the_baseline_without_model_calls(self) -> None:
+        for aligned in (False, True):
+            with self.subTest(aligned=aligned):
+                self._assert_baseline_reused(aligned=aligned)
+
+    def _assert_baseline_reused(self, *, aligned: bool) -> None:
         import hashlib
         import json
         import tempfile
         from pathlib import Path
         from unittest.mock import patch
 
+        from src.content.prepared import save_source
         from src.runtime.files import write_json
         from src.translation.positive_scene import run_positive_scenes
         from tests.fixtures import write_source
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            write_source(root / "snapshot", ["The door opened.", "He smiled."])
+            paragraphs = ["The door opened.", "***", "He smiled."]
+            write_source(root / "baseline_snapshot", paragraphs)
+            book = write_source(root / "snapshot", paragraphs)
+            if aligned:
+                # A recrawl that only recovers source alignment changes no English.
+                for block in book["chapters"]["01"]["blocks"][1:]:
+                    block["alignment"] = "center"
+                save_source(book, root / "snapshot" / "source.json", None, "image/png")
             groups = [
                 {"english_indices": [0], "paragraphs": ["门开了。"]},
                 {"english_indices": [1], "paragraphs": ["他笑了。"]},
@@ -183,7 +196,7 @@ class PositiveSceneTests(unittest.TestCase):
                     snapshot_dir=root / "snapshot",
                     run_dir=root / "run",
                     config=config,
-                    baseline_snapshot=root / "snapshot",
+                    baseline_snapshot=root / "baseline_snapshot",
                     baseline_run=root / "baseline",
                 )
             self.assertEqual(summary["chunks"], [])

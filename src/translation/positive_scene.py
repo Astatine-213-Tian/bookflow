@@ -101,8 +101,17 @@ def read(path: Path) -> Any:
 
 
 def source_digest(chapter: dict[str, Any]) -> str:
+    """Bind what a translation depends on: title, English and scene boundaries.
+
+    Presentation such as alignment is joined from the snapshot at build time, so a
+    presentation-only change keeps reviewed translations reusable.
+    """
     return sha256_json(
-        {key: chapter.get(key) for key in ("title", "paragraphs", "blocks")}
+        {
+            "title": chapter.get("title"),
+            "paragraphs": chapter.get("paragraphs"),
+            "blocks": [block["type"] for block in chapter.get("blocks", [])],
+        }
     )
 
 
