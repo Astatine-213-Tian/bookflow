@@ -28,6 +28,15 @@ class EnglishTermTests(unittest.TestCase):
                     self.assertEqual(count, int(before != canonical))
                     self.assertEqual(normalize_english_terms(after), (after, 0))
 
+    def test_reviewed_spelling_variants_use_the_canonical_name(self):
+        for before in ("wifi", "Wifi", "WIFI", "WiFi", "wi-fi", "WI-FI"):
+            with self.subTest(before=before):
+                self.assertEqual(normalize_english_terms(before), ("Wi-Fi", 1))
+        self.assertEqual(normalize_english_terms("Wi-Fi"), ("Wi-Fi", 0))
+        self.assertEqual(normalize_text("连上wifi了"), "连上 Wi-Fi 了")
+        value = "wifis mywifi wifi6 wifi.txt `wifi`"
+        self.assertEqual(normalize_english_terms(value), (value, 0))
+
     def test_chinese_boundaries_models_and_ambiguous_words(self):
         self.assertEqual(
             normalize_text("10月用IPHONE15、IPAD和github。"),

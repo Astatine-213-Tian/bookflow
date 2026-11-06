@@ -28,7 +28,8 @@
   清除段首排版缩进；保留段内换行，不把词间空格删成连写。
 - 常见英文名称按下表统一大小写，词表维护在 `src/content/english_terms.py`。
   只匹配完整英文词（允许紧邻汉字），`iphone` / `IPHONE` / `iPhOnE` → `iPhone`；
-  不猜拼写、不模糊匹配，`IPONE` 保留原样。`iPhone15` 等明确产品的纯数字后缀保留。
+  不猜拼写、不模糊匹配，`IPONE` 保留原样；只有审定的异写会改写，`wifi` / `Wifi` → `Wi-Fi`。
+  `iPhone15` 等明确产品的纯数字后缀保留。
   网址、邮箱、文件名/路径、账号、反引号代码及结构化行内代码不参加这项大小写替换；
   链接的显示文字可规范化，目标 URL 不变。`MAC 地址` 不按 Mac 电脑名处理。
   `apple`、`python`、`word`、`app`、`it`、`id`、`us` 等存在普通词义的词不自动改大小写。
@@ -169,6 +170,7 @@
   {"input":"①与Ⅳ不是全角英数字。","expected":"①与Ⅳ不是全角英数字。"},
   {"input":"作话：10月用IPHONE和github发文。","expected":"作话：10 月用 iPhone 和 GitHub 发文。"},
   {"input":"IPHONE iPhOnE IPONE IPHONE15","expected":"iPhone iPhone IPONE iPhone15"},
+  {"input":"家里的wifi和Wifi都连不上。","expected":"家里的 Wi-Fi 和 Wi-Fi 都连不上。"},
   {"input":"MAC地址与MAC电脑，apple和python保留。","expected":"MAC 地址与 Mac 电脑，apple 和 python 保留。"},
   {"input":"\"……\"他沉默了一会儿，说，\"你这么笨？\"","expected":"“……”他沉默了一会儿，说，“你这么笨？”"},
   {"input":"\"你说那个人？”","expected":"“你说那个人？”"},

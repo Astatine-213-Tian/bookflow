@@ -1,4 +1,4 @@
-"""Reviewed casing of common names, without spelling guesses or token rewrites."""
+"""Reviewed casing and spellings of common names, without spelling guesses."""
 
 from __future__ import annotations
 
@@ -65,7 +65,12 @@ ABBREVIATIONS = (
     "SIM",
     "DIY",
 )
+# Reviewed alternate spellings, matched case-insensitively like the names above.
+SPELLING_VARIANTS = {
+    "wifi": "Wi-Fi",
+}
 CANONICAL_TERMS = {term.casefold(): term for term in (*PRODUCT_NAMES, *ABBREVIATIONS)}
+TERM_REPLACEMENTS = {**CANONICAL_TERMS, **SPELLING_VARIANTS}
 NUMBERED_PRODUCTS = {
     term.casefold()
     for term in ("iPhone", "iPad", "iPod", "iOS", "macOS", "Windows", "PlayStation")
@@ -73,7 +78,7 @@ NUMBERED_PRODUCTS = {
 TERM_RE = re.compile(
     r"(?<![A-Za-z0-9_])(?P<term>"
     + "|".join(
-        re.escape(term) for term in sorted(CANONICAL_TERMS, key=len, reverse=True)
+        re.escape(term) for term in sorted(TERM_REPLACEMENTS, key=len, reverse=True)
     )
     + r")(?P<number>[0-9]*)(?![A-Za-z0-9_])",
     re.IGNORECASE | re.ASCII,
@@ -122,7 +127,7 @@ def normalize_english_terms(
                 r"\s*(?:地址|位址|address\b)", value[match.end() :], re.IGNORECASE
             ):
                 return match[0]
-            after = CANONICAL_TERMS[key] + match["number"]
+            after = TERM_REPLACEMENTS[key] + match["number"]
             count += after != match[0]
             return after
 

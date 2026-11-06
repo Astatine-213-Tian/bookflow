@@ -55,9 +55,11 @@ names is in `src/content/english_terms.py`.
 | --- | --- |
 | `iphone`, `IPHONE`, `iPhOnE` | `iPhone` |
 | `github` | `GitHub` |
+| `wifi`, `Wifi` | `Wi-Fi` |
 
 The rule changes only a complete English word. It does not correct spelling, so
-`IPONE` does not change. These items do not change:
+`IPONE` does not change. The only changed spellings are in a reviewed list, for
+example `wifi` becomes `Wi-Fi`. These items do not change:
 
 - Web addresses, email addresses, file names, account names and code.
 - Names that are also usual words, for example `apple`, `python` and `word`.
