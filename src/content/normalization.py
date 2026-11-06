@@ -313,7 +313,18 @@ STRUCTURAL_MARKER_RE = re.compile(
 )
 
 
-STRAIGHT_DOUBLE_QUOTE_RE = re.compile(rf'"([^"\n]*[{HAN_CLASS}][^"\n]*)"')
+CHINESE_QUOTE_CONTEXT_RE = re.compile(
+    rf"[{HAN_CLASS}\u3000-\u303f\uff01-\uff60\u2026\u2014\u201c\u201d]"
+)
+
+
+HALFWIDTH_TILDE_RE = re.compile(r"~+")
+
+
+TILDE_PROTECTED_RE = re.compile(
+    r"(?:https?://|www\.)[^\s<>{}]+|[\w.+-]+@[\w-]+(?:\.[\w-]+)+",
+    re.IGNORECASE,
+)
 
 
 STRAIGHT_SINGLE_QUOTE_RE = re.compile(
@@ -767,6 +778,90 @@ def _normalize_dialogue_attribution(
     return normalized
 
 
+def _curl_straight_double_quotes(
+    text: str,
+    *,
+    member: str,
+    report: NormalizationReport,
+) -> str:
+    # Pair quotes in reading order. Matching each straight pair on its own
+    # content skips a pair without Han, such as "……", and then pairs the
+    # closing quote of one span with the opening quote of the next.
+    if '"' not in text or not CHINESE_QUOTE_CONTEXT_RE.search(text):
+        return text
+    chars = list(text)
+    open_quotes: list[tuple[int, bool]] = []
+    changes = 0
+    for index, char in enumerate(text):
+        if char == "“":
+            open_quotes.append((index, False))
+            continue
+        if char not in '"”' or not open_quotes:
+            if char == '"':
+                open_quotes.append((index, True))
+            continue
+        opening, opening_straight = open_quotes.pop()
+        closing_straight = char == '"'
+        if opening_straight and closing_straight:
+            content = text[opening + 1 : index]
+            # A quoted English phrase inside Chinese prose keeps ASCII quotes.
+            if not CHINESE_QUOTE_CONTEXT_RE.search(content) and re.search(
+                r"[\s,.!?;:]", content
+            ):
+                continue
+        if opening_straight:
+            chars[opening] = "“"
+            changes += 1
+        if closing_straight:
+            chars[index] = "”"
+            changes += 1
+    for index, straight in open_quotes:
+        if not straight:
+            continue
+        # An unmatched quote at a text boundary has only one valid direction;
+        # a multi-paragraph quotation opens each paragraph and closes the last.
+        if not text[:index].strip():
+            chars[index] = "“"
+            changes += 1
+        elif not text[index + 1 :].strip() and text[index - 1] in "。！？…～—":
+            chars[index] = "”"
+            changes += 1
+    normalized = "".join(chars)
+    report.record_change(
+        "straight_double_quotes_curled", member, changes, text, normalized
+    )
+    return normalized
+
+
+def _normalize_halfwidth_tilde(
+    text: str,
+    *,
+    member: str,
+    report: NormalizationReport,
+) -> str:
+    if "~" not in text or not CHINESE_QUOTE_CONTEXT_RE.search(text):
+        return text
+    protected = [match.span() for match in TILDE_PROTECTED_RE.finditer(text)]
+    changes = 0
+
+    def replace(match: re.Match[str]) -> str:
+        nonlocal changes
+        start, end = match.span()
+        # A slash marks a path or an emoticon such as /(ㄒoㄒ)/~~.
+        if (start and text[start - 1] == "/") or text[end : end + 1] == "/":
+            return match.group(0)
+        if any(left <= start < right for left, right in protected):
+            return match.group(0)
+        changes += end - start
+        return "～" * (end - start)
+
+    normalized = HALFWIDTH_TILDE_RE.sub(replace, text)
+    report.record_change(
+        "halfwidth_tilde_to_fullwidth", member, changes, text, normalized
+    )
+    return normalized
+
+
 def _normalize_contextual_quote_directions(
     text: str,
     *,
@@ -786,7 +881,7 @@ def _normalize_contextual_quote_directions(
         previous = text[index - 1] if index else ""
         following = text[index + 1] if index + 1 < len(text) else ""
         if char == "“":
-            if depth > 0 and previous in "，。！？…—":
+            if depth > 0 and (previous in "，。！？…—" or not text[index + 1 :].strip()):
                 output.append("”")
                 depth -= 1
                 changes += 1
@@ -800,6 +895,9 @@ def _normalize_contextual_quote_directions(
                 not seen_non_whitespace
                 or previous in ":："
                 and bool(HAN_RE.match(following))
+                or previous in "，"
+                and bool(HAN_RE.match(following))
+                and "”" in text[index + 1 :]
             )
             if wrong_opening_context:
                 output.append("“")
@@ -1523,6 +1621,7 @@ def _normalize_plain_text(
     term_protected_ranges: list[tuple[int, int]] | None = None,
 ) -> str:
     text = _normalize_fullwidth_alphanumeric(text, member=member, report=report)
+    text = _normalize_halfwidth_tilde(text, member=member, report=report)
     before_terms = text
     text, term_count = normalize_english_terms(
         text, protected_ranges=term_protected_ranges
@@ -1589,14 +1688,7 @@ def _normalize_plain_text(
             member=member,
             report=report,
         )
-    text = _apply_regex(
-        text,
-        STRAIGHT_DOUBLE_QUOTE_RE,
-        r"“\1”",
-        kind="straight_double_quotes_curled",
-        member=member,
-        report=report,
-    )
+    text = _curl_straight_double_quotes(text, member=member, report=report)
     text = _apply_regex(
         text,
         STRAIGHT_SINGLE_QUOTE_RE,
