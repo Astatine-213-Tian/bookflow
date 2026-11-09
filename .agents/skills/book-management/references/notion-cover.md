@@ -1,27 +1,26 @@
 # Native Notion cover upload
 
-Use this procedure for a pending native cover in `cover-browser.json`, or when
-the user requests a browser upload. `src/notion/cover.py` owns cover validation,
-API upload and byte-for-byte verification. No live browser action is necessary
-for a code-only refactor or fixture test.
+For a pending `cover-browser.json` or a browser upload the user requests.
+`src/notion/cover.py` owns validation, API upload and byte-for-byte
+verification; code-only changes and fixture tests need no live browser. The task
+is written only when no Notion REST token is configured; with the token,
+`book notion resume --state …` uploads and verifies the cover through the API.
 
-1. Read the task's work URL, local asset, SHA-256 and import checkpoint. Validate
-   the asset with `validate_cover`; confirm its bytes still match the checkpoint.
-   Use the existing work page. Never create another book to retry a cover.
-2. Read the installed `browser-harness` skill. For the user's authenticated Arc
-   session, run `arc-cdp adapters` and select a listed compatible adapter through
-   `arc-cdp run <adapter> ...`. Keep a full-window tab and preserve the session.
-   Do not attach a test Chrome profile expecting the user's Notion login.
-3. Inspect the exact work page and its current cover. If a different cover exists,
-   resolve against the user's requested replacement scope before overwriting it.
-   Open the cover upload panel and locate the actual DOM `input[type=file]`.
-4. Use the selected adapter's documented file-upload/file-input method with the
-   absolute asset path. Read that method's installed documentation before use.
-   Prefer assigning the file to the DOM input over invoking the native macOS
-   chooser. Do not repeatedly click Upload/Open when the adapter never supplies
-   file bytes; inspect the input, browser error or harness capability instead.
-5. Wait for upload completion, close the panel and reload the page. Inspect the
-   visible cover and run the independent readback:
+1. Read the task's work URL, asset, SHA-256 and import checkpoint. Check the asset
+   with `validate_cover` and confirm its bytes still match the checkpoint. Retry on
+   the existing work page; never create another book for a cover.
+2. Read the installed `browser-harness` skill. Use the user's authenticated Arc
+   session through a compatible adapter listed by `arc-cdp adapters`
+   (`arc-cdp run <adapter> ...`), in a full-window tab, preserving the session;
+   a test Chrome profile lacks the user's Notion login.
+3. Inspect the work page's current cover; replace a different cover only within
+   the user's requested scope. Open the cover upload panel and locate the actual
+   DOM `input[type=file]`.
+4. Assign the absolute asset path to that input with the adapter's documented
+   file-input method (read its documentation first) rather than the native macOS
+   chooser. If the adapter supplies no file bytes, inspect the input, the browser
+   error or the harness capability instead of clicking Upload/Open again.
+5. Wait for the upload, close the panel, reload and inspect the visible cover, then:
 
    ```bash
    uv run book notion verify-cover --state state/notion/RUN/import.json
@@ -29,8 +28,8 @@ for a code-only refactor or fixture test.
    uv run book notion verify --state state/notion/RUN/import.json
    ```
 
-`verify-cover` reads current native-cover metadata through REST, downloads its
-bytes, checks the prepared SHA-256, and only then marks it uploaded. It also resolves an uncertain
-API attachment after the same verification. A click, chooser screenshot or upload
-spinner is not proof. Do not set `cover_uploaded` manually or persist signed URLs,
-browser credentials or tokens in source/evidence files.
+Done when `verify-cover` passes: it downloads the current native cover through
+REST, checks the prepared SHA-256 and only then marks it uploaded, also resolving
+an uncertain API attachment. A click, chooser screenshot or spinner is not proof.
+Leave `cover_uploaded` to `verify-cover`, and keep signed URLs, browser
+credentials and tokens out of source and evidence files.

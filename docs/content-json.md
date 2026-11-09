@@ -1,9 +1,12 @@
 # Content JSON and explicit changes
 
-The executable contract is [`src/content/book.schema.json`](../src/content/book.schema.json).
-`validate_book` rejects unsupported fields, unsafe identities, duplicate or
-missing chapter references and invalid blocks before output. Book JSON is
-version 3; change JSON is version 1 and reuses the schema's chapter definitions.
+The executable contract is [`src/content/book.schema.json`](../src/content/book.schema.json)
+(book JSON version 3; change JSON version 1, reusing its chapter definition).
+Block schema and semantic link validation belong to `notion-books`;
+`src/content/contract.py` registers the installed content schema locally. Print
+it with `uv run python -c "import json, notion_books; print(json.dumps(notion_books.CONTENT_SCHEMA, indent=1))"`.
+`validate_book` rejects unknown fields, duplicate or missing chapter references
+and invalid blocks before any output.
 
 ```json
 {
@@ -22,56 +25,51 @@ version 3; change JSON is version 1 and reuses the schema's chapter definitions.
 }
 ```
 
-- `identifier` identifies the book; chapter dictionary keys and volume `id`
-  identify content independently of its title. Assign stable `id` values to
-  independent extras, especially before translation or updates.
-- `sections` is an ordered tree of volume groups and chapter references. Each
-  chapter appears exactly once. Maximum depth is three; Notion accepts one
-  volume level. A volume named 番外 does not imply shared standalone extras.
-- `role` is `intro`, `chapter`, `afterword` or `extra`. Independent extras live
-  in `extras`; afterwords remain separate chapters in the outline.
-- Block kinds are `paragraph`, `heading`, `quote`, `divider`. Runs support
-  `bold`, `italic`, `underline`, `strikethrough`, `code`; explicit alignment is
-  `left`, `center`, `right`, `justify`. New normalized subheadings use level 3.
-  Bilingual blocks can declare `language` and `variant` (`original`/`translation`).
-- Metadata supports title, creator/creators, language, date, source URL,
-  description, subjects, series and series position. Unknown fields are errors.
-  Year-only dates use January 1 during preparation. No explanatory note is added.
-  EPUB retains all `creators`; TXT prints their names together. An explicit
-  `--author` replaces the source author list. TXT is a reading projection;
-  arbitrary volume/author labels require reviewed parsing when reimported.
-- An optional `assets.cover` has `path`, `mime`, `sha256`. Paths are relative to
-  the JSON directory and must remain inside it. Cover bytes are verified when
-  loaded. Images in chapter bodies require transcription or an explicit
-  reviewed omission; they are not silently passed to an unsupported destination.
-- Keep original platform responses, page/image coverage, comments and metadata
-  evidence in sibling evidence/review files. Do not put tokens, Notion page IDs,
-  provider HTML or arbitrary attributes in content blocks.
-- `related_works` contains content book identities, not destination page IDs.
-  Notion rejects explicit values until there is a reviewed destination mapping;
-  shared-extra duplicate review links existing pages while retaining their
-  current work relations. It never silently treats these IDs as Notion pages.
+Conventions the schema does not express:
 
-For source selection, copyright/制作/阅读提示 removal and genre exclusions are
-review decisions recorded in a task's EPUB range map or agent evidence. They are
-not universal regex rules that delete paragraphs from every book.
+- `identifier` identifies the book; chapter keys and volume `id`s identify
+  content independently of titles. Give independent extras stable `id`s,
+  especially before translation or updates.
+- `sections` references each chapter exactly once, at most three levels deep
+  (Notion accepts one volume level). Independent extras (`role: "extra"`) live in
+  `extras`, outside `sections`, and go to the shared-extras database; a volume
+  titled 番外 stays book content ([shared extras](fanwai-notion.md)).
+  Afterwords stay chapters in the outline.
+- Year-only dates become January 1 during preparation, with no explanatory
+  note. An explicit `--author` replaces the whole source author list. TXT is a
+  reading projection; reimporting arbitrary volume/author labels needs reviewed
+  parsing.
+- `assets.cover` (`path`, `mime`, `sha256`) is relative to the JSON directory and
+  must stay inside it; bytes are verified on load. Images in chapter bodies need
+  transcription or an explicit reviewed omission before output.
+- Keep platform responses, page/image coverage, comments and metadata evidence
+  in sibling evidence/review files. Content blocks hold no tokens, Notion page
+  IDs, provider HTML or arbitrary attributes.
+- `related_works` holds content book identities, never destination page IDs.
+  Notion rejects explicit values until a reviewed destination mapping exists;
+  shared-extra duplicate review links existing pages and keeps their current
+  work relations.
+- Removing copyright/制作/阅读提示 text and genre exclusions are per-book review
+  decisions recorded in the task's EPUB range map or agent evidence, not
+  universal regex rules.
 
 ## A partial correction or new extra
 
-1. Read the current book JSON. For Notion use
-   `book notion export --state IMPORT --report current.json`; chapter text is
-   freshly read, while book metadata/outline come from the import checkpoint.
-   For a targeted fix add `--chapter ID` per chapter: only those are read, and
-   the rest keep their checkpoint copy.
-2. Read supplied images using the image transcription workflow. Reconcile the
-   affected region with current content and review a complete replacement
-   chapter, preserving the rest. A new independent extra becomes one chapter.
-3. Compute `content_hash(current["chapters"][chapter_id])` using
-   `src.content.changes`. Save the explicit task below; do not hash transport
-   checkpoint fields or a differently formatted string.
-4. Run `book update current.json --change change.json --run-dir generated/updates/run`
-   for local content, or `book notion update --state IMPORT --change change.json`.
-   Repeat the same task ID to resume an interrupted Notion write.
+1. Read the current book JSON. For Notion run
+   `book notion export --state IMPORT --report current.json`: chapter text is
+   read fresh, but metadata and outline come from the import checkpoint. Add
+   `--chapter ID` per chapter for a targeted fix; only those are read, the rest
+   keep their checkpoint copy.
+2. Transcribe supplied images with the image transcription workflow. Reconcile
+   the affected region with current content and review a complete replacement
+   chapter, preserving the rest. A new independent extra is one chapter.
+3. Compute `content_hash(current["chapters"][chapter_id])` with
+   `src.content.changes` and save the change below. Hash the content JSON value,
+   never checkpoint transport fields or a reformatted string.
+4. Apply it with `book update current.json --change change.json --run-dir generated/updates/run`
+   for local outputs, or `book notion update --state IMPORT --change change.json`.
+   Rerun the same task ID to resume an interrupted Notion write; never reuse a
+   completed task ID for new content.
 
 ```json
 {
@@ -89,43 +87,37 @@ not universal regex rules that delete paragraphs from every book.
 }
 ```
 
+`replace_chapter` merges the supplied fields over the current chapter, so
+`blocks` must be the complete chapter; omitted fields are kept, not deleted.
 Other operations:
 
 | Kind | Fields besides `kind` | Meaning |
 | --- | --- | --- |
 | `append_chapter` | `chapter_id`, `after`, `chapter` | Insert after a stable chapter ID; `after: null` inserts at the start |
-| `append_extra` | `chapter_id`, `chapter` | Add a standalone extra; the same ID/content is idempotent |
-| `set_outline` | `expected_sha256`, `sections` | Replace only the complete reviewed outline; hash current `sections` |
-| `metadata` | `expected_sha256`, `fields` | Set only supplied metadata; hash the current values of exactly those keys |
+| `append_extra` | `chapter_id`, `chapter` | Add a standalone extra; the same ID and content is idempotent |
+| `set_outline` | `expected_sha256`, `sections` | Replace the complete reviewed outline; hash current `sections` |
+| `metadata` | `expected_sha256`, `fields` | Set only the supplied keys; hash the current values of exactly those keys |
 
-Missing fields do not mean deletion. Each chapter can be targeted once per task.
-Unknown fields/operations or stale fingerprints fail before writing. Notion
-currently accepts only the three chapter operations; metadata/outline changes
-remain local JSON operations. Never reuse a completed task ID for new content.
+Each chapter can be targeted once per task. Stale fingerprints fail before
+writing. Notion accepts only the three chapter operations; outline and metadata
+changes are local-only.
 
 ## Hyperlinks and footnotes
 
-A text run can add `href`; its displayed text and styles remain separate from
-its destination. External HTTP(S)/mailto links retain their complete URL.
-Portable internal links use `#anchor`. Blocks declare unique `anchor` values;
-all internal targets must exist. A footnote block adds `footnote` with the same
-ID, and reference runs use `link_role: "noteref"` or `"backlink"`.
-Crawler links resolve against the chapter's source URL (book URL as fallback);
-unambiguous collected destinations become internal anchors, while other web
-links remain absolute URLs. Source IDs are namespaced per chapter.
-
-Prepared footnotes use linked `[n]` in the body and `[n] note text ↩n` at the
-chapter end. Multiple references get return labels `↩n.1`, `↩n.2`, in source
-order. A multi-paragraph note is one note block with explicit paragraph breaks.
-Footnotes belong to their referring chapter; unresolved cross-chapter notes are
-rejected for review. Original unlinked editorial notes remain ordinary text.
-
-The shared Notion REST block parser recovers this explicit paired structure from the document
-itself. Platform block URLs are bound only by the Notion writer; an EPUB renders
-local destinations, `epub:type="noteref"`, `epub:type="footnote"`, and return links.
-TXT retains `[n]` plus endnotes and writes ordinary links as `text（URL）`.
-URLs, anchor identities and note relationships are never text-normalized.
-
-Block schema and semantic link validation belong to `notion-books`. The book
-schema references its content schema ID; `content/contract.py` registers the
-installed schema locally, with no network lookup.
+- A run adds `href`; its text and styles stay separate from the destination.
+  External HTTP(S)/mailto links keep the complete URL. Internal links use
+  `#anchor`; blocks declare unique `anchor` values and every internal target must
+  exist. A footnote block adds `footnote` with the same ID; reference runs use
+  `link_role: "noteref"` or `"backlink"`.
+- Crawled links resolve against the chapter's source URL (book URL as fallback):
+  unambiguous collected destinations become internal anchors, other links stay
+  absolute. Source IDs are namespaced per chapter.
+- Footnotes are linked `[n]` in the body and `[n] note text ↩n` at the chapter
+  end; multiple references get `↩n.1`, `↩n.2` in source order. A multi-paragraph
+  note is one note block with explicit paragraph breaks. Footnotes belong to
+  their referring chapter; unresolved cross-chapter notes are rejected for
+  review. Unlinked editorial notes stay ordinary text.
+- EPUB renders local destinations, `epub:type="noteref"`/`"footnote"` and return
+  links; TXT keeps `[n]` plus endnotes and writes links as `text（URL）`; Notion
+  specifics are in [formatting conventions](notion-books.md#formatting-conventions). URLs, anchors and note
+  relationships are never text-normalized.

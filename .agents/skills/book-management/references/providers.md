@@ -1,196 +1,110 @@
 # Crawler Development
 
-## Expected File Layout
+Providers only collect source material; `src/workflows/ingest.py` owns source
+preparation and the selected outputs.
 
-- Entry point: `src/cli/ingest.py`, exposed as `uv run book ingest`.
-- Registry: `src/crawler/registry.py`.
-- Parser modules: `src/crawler/providers/<site>/parser.py`.
-- Search modules: `src/crawler/providers/<site>/search.py`.
-- Prepared source adapter: `src/content/prepare.py`.
-- Notion draft upload: `src/notion/upload.py`.
-- EPUB presentation: `src/epub/`.
-- Shared models: `src/content/models.py`.
-- Working sources: `generated/`; Notion checkpoints: `state/notion/`; reader outputs: `books/`.
+## Parser and Registry
 
-## Parser Module Contract
-
-A parser module should expose these pieces where practical:
-
-```python
-def crawl_book(url: str, ...) -> tuple[BookMeta, list[Volume]]: ...
-```
-
-Use local `BookMeta` when site metadata differs, but reuse:
-
-```python
-from src.content.models import Chapter, Volume
-```
-
-The registry collector returns `CrawledBook`. `src/workflows/ingest.py` owns
-source preparation and the explicitly selected Notion, EPUB and/or TXT outputs. Providers only collect source material.
-
-## Registry Pattern
-
-Add a lazy collector in `src/crawler/registry.py`:
-
-```python
-def run_example(target: str, options: CrawlOptions) -> CrawledBook:
-    from src.crawler.providers.example import parser
-
-    meta, volumes = parser.crawl_book(target)
-    return CrawledBook(
-        title=meta.title, author=meta.author, volumes=volumes,
-        source_url=target, intro_paragraphs=meta.intro_paragraphs,
-    )
-```
-
-Register a `ParserSpec` with `name`, `domains`, `description`, and `crawl`.
-Lazy imports keep discovery independent of individual provider dependencies.
+- `src/crawler/providers/<site>/parser.py` exposes
+  `crawl_book(url, ...) -> tuple[BookMeta, list[Volume]]`, reusing `Chapter` and
+  `Volume` from `src.content.models` (a local `BookMeta` is fine when site
+  metadata differs).
+- Register a collector `run_<site>(target: str, options: CrawlOptions) -> CrawledBook`
+  and its `ParserSpec` (`name`, `domains`, `description`, `crawl`) in
+  `src/crawler/registry.py`, following an existing one. Import the provider inside
+  the collector so discovery does not depend on any provider's dependencies.
+- Inspect a saved HTML fixture first. Browser-backed collection stays inside the
+  provider, following `xfxs`/`pili45`, and finds the browser with
+  `src.crawler.fetch.browser.resolve_browser_executable()`. When a site rejects
+  headless browsers, fail with a message to retry without `--headless`.
 
 ## Search and Preview
 
-Implement search/preview as a lightweight metadata layer. Do not download chapter bodies during preview unless the site has no table of contents and there is no cheaper option.
-
-Expected `search.py` API:
-
-```python
-from src.crawler.search.models import BookPreview, SearchResult
-
-def search_books(query: str, *, limit: int = 10) -> list[SearchResult]:
-    ...
-
-def preview_book(result: SearchResult) -> BookPreview:
-    ...
-```
-
-Search strategy preference:
+`search.py` exposes `search_books(query, *, limit=10) -> list[SearchResult]` and
+`preview_book(result) -> BookPreview` (`src.crawler.search.models`). Search in
+this order of preference:
 
 1. Native site search page or endpoint.
 2. Local provider index, if one exists.
-3. Shared external site search through `src.crawler.search.engines.site_search()`.
-4. No search support, but keep `preview_book()` working for direct URLs if useful.
+3. `src.crawler.search.engines.site_search(query, site=..., path_prefix=..., limit=...)`
+   (DuckDuckGo/Google), filtered back to canonical provider book URLs.
+4. No search; keep `preview_book()` working for direct URLs if useful.
 
-Preview should return title, author, canonical book URL, status when available, chapter count, first two chapter titles, last two chapter titles, and a short intro. Reuse parser helpers like `parse_info()`, `parse_toc()`, `parse_list_page()`, and `_resolve_book_url()` instead of duplicating selectors.
+Where raw result pages throttle or block requests, optionally add
+`search_books_with_browser(query, *, limit, browser)` with the same strategy
+through Chromium.
 
-Ranking is centralized in `src/crawler/search/orchestrator.py`: query match level first, then chapter count, then provider priority. Provider `search.py` should return clean candidate metadata and avoid its own complex ranking.
-
-Use `src.crawler.search.engines.site_search()` for reusable DuckDuckGo/Google fallback:
-
-```python
-from src.crawler.search.engines import site_search
-
-items = site_search(
-    query,
-    site="example.com",
-    path_prefix="/book/",
-    limit=limit,
-)
-```
-
-Always filter external search results back to canonical provider URLs before returning `SearchResult`.
-
-For providers where raw result pages throttle or block requests, optionally expose
-`search_books_with_browser(query, *, limit, browser)` and reuse the same external
-search strategy through Chromium. Keep browser search provider-specific when the
-result parsing or canonicalization depends on that site's URL shapes.
-
-## HTML Inspection
-
-Inspect a saved HTML fixture first. For live inspection, follow the repository
-browser/session rules; browser-backed collection remains inside the provider.
-When an ordinary HTTP fetch is appropriate:
-
-```bash
-curl -sSL --compressed -A 'Mozilla/5.0 ...' '<url>' -o /tmp/site.html
-uv run python - <<'PY'
-from pathlib import Path
-from bs4 import BeautifulSoup
-html = Path('/tmp/site.html').read_text(encoding='utf-8', errors='replace')
-soup = BeautifulSoup(html, 'lxml')
-print(soup.title.get_text(strip=True) if soup.title else '')
-for selector in ['div.main', 'article', '.intro', '#chaptercontent']:
-    nodes = soup.select(selector)
-    if nodes:
-        print(selector, nodes[0].get_text(' ', strip=True)[:300])
-PY
-```
-
-For browser-backed sites, follow the existing `xfxs`/`pili45` collection pattern
-and use `src.crawler.fetch.browser.resolve_browser_executable()`;
-`BOOKLIB_BROWSER_PATH` overrides browser discovery.
+Preview is a lightweight metadata layer: title, author, canonical book URL,
+status when available, chapter count, first two and last two chapter titles and
+a short intro, from the info and TOC pages through the parser's existing helpers.
+Fetch chapter bodies only when the site has no table of contents. Return clean
+candidates; ranking (query match, then chapter count, then provider priority)
+belongs to `src/crawler/search/orchestrator.py`.
 
 ## Pagination and Completeness
 
-Many novel sites paginate both the chapter list and individual long chapters. Treat both as first-class parser behavior:
+- **TOC pagination:** follow `下一页`, numbered TOC pages or API offsets and crawl
+  every TOC page before building `ChapterRef`s. Books over 100 chapters often hide
+  later entries on `/2/<book_id>/2/`, `/3/`, …; the first page never proves
+  completeness. Deduplicate by stable chapter id, not title: sites duplicate
+  titles or split one into `(1)` and `(2)`.
+- **Body pagination:** follow same-chapter next-page links such as
+  `<chapter>_2.html`; stop at a link to another chapter id, a non-chapter URL, or
+  no link.
+- Preserve source order and let post-generation validation expose numbering
+  problems instead of renumbering silently.
+- For long books, test a subset spanning a TOC page boundary and a body
+  pagination boundary.
 
-- Chapter list pagination: look for `下一页`, numbered TOC pages, or API offsets. Crawl all TOC pages before building `ChapterRef`s. Deduplicate by stable chapter id, not title, because source sites can duplicate titles or split one title into `(1)` and `(2)`.
-- Chapter body pagination: follow same-chapter next-page links such as `<chapter>_2.html`; stop only when the next link points to a different chapter id, a non-chapter URL, or no link exists.
-- Never infer completeness from the first TOC page. Books with more than 100 chapters often hide later entries on `/2/<book_id>/2/`, `/3/`, etc.
-- Preserve source order, but validate after generation so source numbering problems are visible instead of silently renumbered.
+## Concurrency
 
-For long books, make a temporary subset test around a TOC page boundary and a chapter body pagination boundary. This catches skipped chapters without waiting for the whole book.
+Correctness comes before speed.
 
-## Concurrency Pattern
+- Honour `CrawlOptions.concurrency` with a conservative default and one rate
+  limiter shared by all workers; multi-page chapters multiply requests and trigger
+  `429`.
+- Keep results in original `ChapterRef` order; log each completion with done,
+  failed, remaining and the current chapter title.
+- Retry failed chapters serially through the most reliable navigation path. If
+  that also fails, raise: a book is written complete or not at all.
+- Browser-backed: one browser with several tabs usually beats several processes,
+  but initialize each worker tab on the site origin, or cookies/origin state can
+  block it. If multi-tab setup times out, fall back to a shared tab or serial
+  fetching instead of aborting. Several processes still share one IP rate limit;
+  try pacing and fallback first.
+- Browser `response.text()` can mis-decode legacy encodings: for GBK/Big5, fetch
+  `arrayBuffer()`, return base64 to Python and decode the bytes explicitly.
 
-Concurrency is useful for large books, but parser correctness is more important than speed. Use this pattern:
+## Source Cleanup
 
-- Add a CLI option such as `--concurrency`, defaulting conservatively.
-- Keep results ordered by the original `ChapterRef` index even when tasks finish out of order.
-- Add progress logging on completion, not only task start: `done`, `failed`, `remaining`, and current chapter title.
-- Add a global request interval or rate limiter across all workers. Multi-page chapters can multiply requests and trigger `429` if each worker fetches subpages aggressively.
-- If the fast concurrent path fails for a chapter, collect the failed indexes and retry those chapters serially with the most reliable navigation path before failing the whole book.
-- Do not let failed concurrent tasks produce a partial EPUB. Raise if fallback also fails.
+Site-specific boilerplate belongs in the provider; cleanup for every source
+belongs in shared preparation (`src/content/`).
 
-For browser-backed sites:
+- End the intro at review headings such as `作品简评`, `编辑评价` or
+  image-alt-prefixed `金.gif 作品简评`; keep intro metadata such as `内容标签`
+  and `搜索关键字`.
+- End FC2 post bodies at footers such as `FC2拍手标签从这里开始` and its
+  Traditional variants.
+- Remove embedded navigation, page-break prompts, duplicated chapter headings,
+  site ads and empty paragraphs.
+- Drop a chapter zero that mostly repeats the intro, comparing normalized
+  paragraph overlap rather than raw strings.
+- Convert Traditional Chinese sources with OpenCC `t2s` (title, author, intro,
+  volume and chapter titles, paragraphs) after parsing, before preparation.
 
-- One browser with multiple tabs can work better than multiple browser processes, but still test it. Multiple tabs may be blocked by origin/cookie state unless each worker tab is initialized on the site origin.
-- Multiple browser processes are heavier and may still hit the same IP/site rate limit; try request pacing and fallback before adding them.
-- Browser `response.text()` can decode legacy encodings incorrectly. For GBK/Big5 pages, fetch `arrayBuffer()`, return base64 to Python, and decode bytes explicitly.
-- If multi-tab setup times out, degrade gracefully to a shared-tab or serial path instead of aborting before chapter crawling.
-
-## Text Cleanup Heuristics
-
-Implement cleanup during source preparation, before either output. Common rules used in this project:
-
-- Stop intro at review headings such as `作品简评`, `编辑评价`, or image-alt-prefixed headings like `金.gif 作品简评`.
-- Stop FC2 post bodies at footer markers like `FC2拍手标签从这里开始` or Traditional variants.
-- Remove embedded navigation lines, page-break prompts, duplicated chapter headings, ad text, and empty paragraphs.
-- Drop chapter zero when it mostly repeats intro text. Normalize punctuation/whitespace and compare paragraph overlap rather than exact raw strings.
-- Preserve meaningful intro metadata like `内容标签` and `搜索关键字` unless the user asks otherwise.
-
-## Traditional Chinese Conversion
-
-For Traditional Chinese sources, convert title, author, intro, volume titles, chapter titles, and paragraphs with:
-
-```python
-from opencc import OpenCC
-cc = OpenCC('t2s')
-```
-
-Convert after parsing and before source preparation.
-
-## Validation Checklist
-
-Run at least:
+## Validation
 
 ```bash
 uv run book ingest --list-parsers
 uv run python -m compileall -q src
 ```
 
-For a new parser, validate with a saved page fixture or a small live crawl:
+Then crawl a saved fixture or a small live book. Done when title and author are
+correct; the intro has no reviews, editor comments or footers; chapter count and
+first/last titles are plausible; TOC pages after the first and every part of a
+paginated chapter are included; a concurrent run's requested refs, fetched
+chapters, empty bodies and nav/TOC counts agree; Traditional sources come out
+Simplified; and EPUB nav, TOC and spine reference no removed chapter.
 
-- Title and author are correct.
-- Intro does not contain reviews/editor comments/footers.
-- Chapter count and first/last chapter titles are plausible.
-- Chapter list pagination includes entries after page 1 when present.
-- Chapter body pagination joins all parts of a long chapter.
-- Concurrent runs do not skip chapters; compare requested refs, fetched chapters, empty bodies, and final nav/toc counts.
-- Traditional Chinese sources are Simplified in output.
-- EPUB nav/toc/spine do not reference removed chapters.
-
-## Repairing Reader Output
-
-When a parser defect also affects an existing book, correct the parser first.
-For an explicitly requested repair of that book, follow [formatting.md](formatting.md)
-to keep its source, chapter titles and navigation consistent.
+A parser defect that also damaged an existing book is fixed in the parser first;
+repair that book only when asked, following [formatting.md](formatting.md).

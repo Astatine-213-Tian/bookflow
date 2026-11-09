@@ -1,198 +1,66 @@
 # Repository Guidelines
 
-## Image Transcription
+bookflow turns sites, files and images into one book JSON and writes EPUB, TXT or
+Notion drafts. Every task is a subcommand of one `book` command (`uv run book`
+lists them). Each ends with one JSON result line on stdout, logs going to stderr:
+act on that line's `status` (`src/cli/output.py`), not on the log text.
 
-Transcribe supplied text images directly with Codex vision; never use traditional
-OCR tools or services, including for drafts or fallback. For multiple images,
-spawn parallel Codex agents with small batches and independently read every region
-twice. Follow the [image transcription workflow](.agents/skills/book-management/references/image-transcription.md)
-for long-image crops, coverage tracking and discrepancy resolution. Keep the raw
-transcription, then apply the shared formatting rules before output and readback,
-including quote direction and Chinese/Latin/digit spacing.
+- **Book tasks** (add, find, update, repair, proofread, covers, training export,
+  crawler providers): use the [book-management skill](.agents/skills/book-management/SKILL.md);
+  bilingual books follow the section below.
+- **Text images**: transcribe with Codex vision only, never traditional OCR, not
+  even for a draft or fallback; follow [image transcription](.agents/skills/book-management/references/image-transcription.md).
+- **Code changes**: first read [docs/architecture.md](docs/architecture.md)
+  (module ownership, conventions, normalization rule changes, verification).
+- **Saving or cleaning up files**: [docs/storage.md](docs/storage.md). One-off
+  scripts, probes, crops and previews go in the system temporary directory.
+- **Setup**: [dependency installation](docs/notion-books.md#install-shared-dependencies); later
+  syncs use `mise exec -- uv sync --locked`.
+- **Issues**: [tracker](docs/agents/issue-tracker.md) and
+  [triage labels](docs/agents/triage-labels.md); domain terms and decisions:
+  [domain docs](docs/agents/domain.md).
+
+Keep credentials, checkpoints, browser profiles, book data and working runs local
+and out of Git. Keep documentation, dependency upgrades and verification within
+this repository: a task ends at its verified output (local EPUB/TXT, or a Notion
+draft read back); publication and deployment belong to other projects.
+
+Commits use Conventional Commits, e.g. `fix(xfxs): repair preview metadata`. A PR
+names the target site, validation commands, output path and manual steps such as
+Cloudflare verification.
 
 ## Bilingual Books
 
-A bilingual book is one spec, `book_specs/<book>/config.json`: its `source`,
+A bilingual book is one spec, `book_specs/<book>/config.json`: `source`,
 `translation.method` and glossary, `output`, and `edition` (reviewed identifier,
-intro, section titles and extras that every build applies). Record such
-decisions in `edition`, never only in the built EPUB. For “update <book>”, such as
-“update eternal gate” / “更新永恒之门” (`eternal_gate`), run:
+intro, section titles and extras that every build applies). Record such decisions
+in `edition`, never only in a built EPUB. For “update <book>”, e.g. “update eternal
+gate” / “更新永恒之门” (`eternal_gate`), run:
 
 ```bash
 uv run book bilingual update eternal_gate --headless
 ```
 
-It collects a fresh dated snapshot, reuses the last successful build as the
-baseline, translates with the spec's method, validates, writes the spec's output
-and records the new baseline in `bilingual/<book>/state.json`; snapshots and runs
-live beside it. Rerunning resumes the pending run. With no baseline but an earlier
-bilingual EPUB, first run `uv run book bilingual seed <book> --from-epub PATH`:
-it crawls, recovers each chapter whose English is unchanged, and `update` then
-translates only the rest. Act on the `status` in its final JSON line:
+It collects a dated snapshot, reuses the last successful build as baseline,
+translates with the spec's method, validates, writes the spec's output and records
+the new baseline in `bilingual/<book>/state.json`. Rerunning resumes the pending
+run. With no baseline but an earlier bilingual EPUB, first run
+`uv run book bilingual seed <book> --from-epub PATH`; `update` then translates only
+chapters whose English changed. Act on `status`:
 
 - `complete`: report `outputs` and any `epub_check` issues. Review
-  `comment_evidence` against the glossary, preserving canonical names and
-  protected quotations; after a reviewed glossary edit, run `update` again.
-  Spot-check metadata and scan for placeholder text. TXT is a separate request.
+  `comment_evidence` against the glossary, preserving canonical names and protected
+  quotations; after a reviewed glossary edit, run `update` again. Spot-check
+  metadata and scan for placeholder text. TXT is a separate request.
 - `review_required`: write the decisions `review` asks for under `review.path`,
-  then run `resume`.
-- `failed`: read `error`. After a glossary change on a pending run, use
+  then run the result's `resume` command.
+- `failed`: read `error`. After a glossary change on a pending run, rerun with
   `--restart`; for a bad snapshot, `--recrawl`. For a collection failure, inspect
-  the actual crawler error before loading Agent Browser; use
-  interactive browser tools only for login, verification or browser inspection.
-  For the user's existing Arc session, use a verified `arc-cdp run <adapter>`.
+  the actual crawler error first; use Agent Browser or other interactive browser
+  tools only for login, verification or inspection, and a verified
+  `arc-cdp run <adapter>` for the user's existing Arc session.
 
-## Project Structure & Module Organization
-
-When changing module boundaries or adding an output destination, read
-[docs/architecture.md](docs/architecture.md). Keep collection in `src/crawler/`,
-source cleanup in `src/content/`, local EPUB writing/repair in `src/epub/`, Notion
-upload in `src/notion/`, and translation/QA in `src/translation/`.
-`src/inputs/` extracts files and provider content into the shared JSON;
-`src/workflows/ingest.py` chooses outputs after shared preparation; `src/cli/` handles
-arguments. Agents run stages in any order and retry them, so put each guarantee
-in the stage that produces or consumes its artifact; every entry point then
-enforces it. Every task is a subcommand of one `book` command (`uv run book`
-lists them). Each ends with one JSON result line on stdout and logs to stderr;
-`src/cli/output.py` defines its statuses and exit codes. Read that line, not the
-log text. `tests/test_architecture.py` checks dependency direction and the
-separation of cleanup from rendering.
-
-For adding, updating or repairing books, use the single
-[book-management skill](.agents/skills/book-management/SKILL.md). Ask for missing
-output choices; EPUB, Notion draft and TXT can be combined. A training request
-uses TXT plus the targeted dataset manifest. Notion storage and recovery follow
-[docs/notion-books.md](docs/notion-books.md); shared extras follow
-[docs/fanwai-notion.md](docs/fanwai-notion.md).
-Render explicit formatting without matching prose. EPUB covers are thumbnail
-assets with no separate reading page. Keep credentials and checkpoints local.
-
-- `book_specs/` stores maintained per-book settings and reviewed glossaries.
-- `assets/` stores reusable local inputs; `state/notion/` stores durable checkpoints.
-- `bilingual/<book>/` stores a bilingual book's snapshots, runs and baseline state.
-- `generated/` stores other working runs.
-- `books/` stores final reader outputs grouped by author, not source code.
-- `tests/` contains production contract tests.
-- `research/` is an independent nested `uv` project for corpora and experiments;
-  production must not import it. Dataset manifests live in `research/datasets/`.
-
-For task artifacts and cleanup, follow [storage and retention](docs/storage.md).
-Use system temporary directories for one-off scripts, probes, crops and previews;
-tests use `TemporaryDirectory`. Keep a task's recovery and baseline data only as
-specified there instead of archiving every intermediate under `generated/`.
-
-## Build, Test, and Development Commands
-
-For initial environment setup, follow
-[dependency installation](docs/notion-books.md#安装共享依赖): the required private
-`notion-books` package needs GitHub access and the pinned Go toolchain to build.
-Use `mise exec -- uv sync --locked` for subsequent dependency syncs.
-
-Run the unified entry point:
-
-```bash
-uv run book ingest "https://www.mangguoshufang.com/1/2574/info.html" --mode epub -o books/book.epub
-uv run book ingest "http://jrkywsy.blog.fc2.com/blog-entry-938.html" --mode epub -o books/book.epub
-uv run book ingest 2574 --parser mgsf --mode epub -o books/book.epub
-```
-
-Run the search-and-preview pipeline:
-
-```bash
-uv run book ingest --search "全球高考" --mode epub
-uv run book ingest --search "斗破苍穹" --parser quanben --mode epub
-uv run book ingest --search "全球高考" --first --mode epub -o books/book.epub
-```
-
-Use `uv run book ingest --list-parsers` to inspect supported sites. Browser-backed providers such as xfxs and pili45 use `src.crawler.fetch.browser.resolve_browser_executable()` to find a Chromium-compatible browser. Set `BOOKLIB_BROWSER_PATH` to force a specific executable; otherwise discovery checks Playwright-managed Chromium, common executables on `PATH`, and common macOS app bundle paths.
-
-Run bilingual stages separately when debugging one of them; `update` chains the
-same functions. `book bilingual methods` lists translation methods.
-
-```bash
-uv run book crawl --config book_specs/eternal_gate/config.json \
-  --output bilingual/eternal_gate/snapshots/DATE --headless
-uv run book bilingual translate bilingual/eternal_gate/snapshots/DATE \
-  --book eternal_gate --run-dir bilingual/eternal_gate/runs/DATE
-uv run book bilingual validate bilingual/eternal_gate/runs/DATE --book eternal_gate
-uv run book bilingual build bilingual/eternal_gate/snapshots/DATE \
-  --book eternal_gate --run-dir bilingual/eternal_gate/runs/DATE
-```
-
-Dataset TXT output and manifests live under `research/datasets/`. The production
-`book ingest --dataset-root research/datasets` and `book dataset` write there so crawling and
-EPUB generation remain centralized while research owns the resulting corpus.
-Run author-style experiments from `research/` with its own environment:
-
-```bash
-cd research
-uv sync
-uv run author-style-research verify
-```
-
-## Coding Style & Naming Conventions
-
-Target modern Python 3 with `from __future__ import annotations`. Use 4-space indentation, type hints for data models and helpers, and `dataclass` for structured records. Keep constants in `UPPER_SNAKE_CASE`, classes in `PascalCase`, and functions or variables in `snake_case`. Prefer small parser/fetcher/build functions over large monolithic changes. Preserve the existing section-divider comment style for readability.
-
-For new providers, create `src/crawler/providers/<provider>/parser.py` and, only when search is supported, `src/crawler/providers/<provider>/search.py`. Keep provider-specific selectors, URL normalization, boilerplate cleanup, and browser work inside the provider package. Register a collector in `src/crawler/registry.py` that accepts `CrawlOptions` and returns `CrawledBook`; keep output selection in `src/workflows/ingest.py` and ranking/selection in `src/crawler/search/orchestrator.py`.
-
-Keep platform collection in `src/crawler/providers/<provider>/`. The workflow extracts its result to the shared `source.json`; keep comments/platform responses in `evidence.json`. Do not add another provider-specific snapshot format. Do not put book-specific translation choices in provider code; use `book_specs/<book_slug>/config.json` and `book_specs/<book_slug>/glossary.json`.
-
-For browser-backed providers, do not hard-code Chrome or Chromium paths. Use `resolve_browser_executable()` from `src.crawler.fetch.browser`.
-
-Provider `search.py` modules should expose:
-
-```python
-def search_books(query: str, *, limit: int = 10) -> list[SearchResult]: ...
-def preview_book(result: SearchResult) -> BookPreview: ...
-```
-
-Prefer native site search. If unavailable, use `src.crawler.search.engines.site_search()` and filter results back to canonical provider book URLs. The shared helper uses no-key DuckDuckGo and raw Google result-page fallbacks. Preview should be lightweight: parse metadata and table-of-contents pages, but do not fetch all chapter bodies before the user chooses a result.
-
-## Testing Guidelines
-
-Keep documentation, dependency upgrades and verification scoped to this project.
-Tests cover collection through the selected output: local EPUB/TXT or Notion
-upload, readback and checkpoint resume. External publication and deployment are
-outside this boundary. For live Notion upload checks, follow
-[tests/LIVE_NOTION.md](tests/LIVE_NOTION.md).
-
-Focused production contract tests live under `tests/` and run with
-`uv run python -m unittest discover -s tests -p 'test_*.py'`. For parser
-changes, also validate manually with a small known book or saved HTML fixture
-when possible. For search changes, verify
-`uv run book ingest --search "known title" --parser <provider> --mode epub`
-shows sensible previews without immediately
-downloading the whole book. For EPUB output, open the generated file and confirm
-metadata, table of contents, chapter order, and cover handling.
-
-For translation-pipeline changes, at minimum run `uv run python -m py_compile ...`, `uv run book crawl --help`, `uv run book bilingual --help`, the focused production unit tests, and a small fixture through `book bilingual translate --no-codex`, `validate` and `build`.
-
-For generated bilingual EPUBs, the main Codex run retries failed chunks with narrower context and paragraph fallbacks. Empty `zh` values are allowed only after retry when a paragraph still cannot be translated and must produce no placeholder/refusal text. In that case validate the run with `book bilingual validate --allow-missing --book ...`, then scan the final EPUB for placeholder strings and confirm only the intended paragraphs are English-only.
-
-## Commit & Pull Request Guidelines
-
-Use Conventional Commits for commit messages, such as `fix(xfxs): repair preview metadata` or `docs: update provider search notes`. Pull requests should describe the target site, commands used for validation, generated output path, and any manual steps such as Cloudflare verification.
-
-## Security & Configuration Tips
-
-Keep credentials, browser profiles, local book data and working runs out of Git.
-Follow [storage and retention](docs/storage.md) for local paths and lifecycle.
-Avoid hard-coded absolute paths.
-
-## Agent skills
-
-### Issue tracker
-
-Use GitHub Issues for issues and specs. Read `docs/agents/issue-tracker.md`
-before tracker operations.
-
-### Triage labels
-
-Use the five canonical triage labels. Read `docs/agents/triage-labels.md`
-before applying or interpreting triage labels.
-
-### Domain docs
-
-Use a single-context layout. Read `docs/agents/domain.md` before exploring
-domain concepts or architectural decisions.
+A paragraph still empty after the run's retries (neutral methods) stays
+English-only, never placeholder or refusal text: run `book bilingual validate` and
+`build` with `--allow-missing`, then scan the final EPUB for placeholder strings and
+confirm only those paragraphs are English-only.

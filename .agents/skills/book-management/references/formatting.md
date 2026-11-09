@@ -1,6 +1,9 @@
 # Formatting
 
-The canonical formatting rules are [docs/normalization.md](../../../../docs/normalization.md).
-Read that document when preparing or correcting content. Update it, the shared
-normalizer and its executable examples together; do not add source-specific
-copies of these rules.
+[NORMALIZATION.md](../../../../NORMALIZATION.md) holds the canonical formatting
+rules; read it before preparing or correcting content. A rule change updates that
+document, the shared normalizer with its `RULES_SHA256` and
+`tests/normalization_examples.json` together, never a source-specific copy.
+
+Correct an uploaded book in Notion. Repair a local archive only when the user
+asks, following [existing EPUB maintenance](../../../../docs/local-editions.md#existing-epub-maintenance).

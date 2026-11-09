@@ -1,122 +1,106 @@
 ---
 name: book-management
-description: Add, find, update, or repair books in bookflow. Use for choosing sources, transcribing book or extra text from images with Codex vision, crawling to local EPUB, Notion drafts and/or TXT, targeted training-dataset exports, adding or fixing crawler providers, and correcting book formatting or metadata. Dataset export is an output choice in the shared book workflow.
+description: Add, find, update or repair books in bookflow. Use for choosing sources, crawling to local EPUB, Notion drafts and/or TXT, targeted training-dataset exports, transcribing book or extra text from images with Codex vision, adding or fixing crawler providers, and correcting or proofreading a book's formatting, structure, cover or metadata.
 ---
 
 # Book Management
 
-Use the maintained CLI for book acquisition and output. One crawl can produce
-local EPUB, a Notion draft, TXT, or any combination of these.
-For working files and task completion, follow [storage and cleanup](../../../docs/storage.md).
-
 ## Choose the Task
 
-- **Import a local EPUB/TXT edition:** follow
-  [local-editions.md](../../../docs/local-editions.md). Use `book prepare` for
-  preparation and `book notion upload`/`verify` for the reviewed source,
-  or `book ingest FILE` for the combined workflow. Keep book-specific decisions
-  in reviewed JSON; extend the owning module when a reusable stage is missing.
-- **Compare local editions when the user requests it:** use the independent
-  [comparison tool](../../../docs/local-editions.md#compare-editions-only-when-requested).
-  Standard imports start from the supplied source and require no version comparison.
-- **Add or reacquire a book:** follow the acquisition steps below.
-- **Transcribe supplied text images:** read
-  [image-transcription.md](references/image-transcription.md). Use Codex vision
-  and parallel independent readings, then apply the shared formatting rules before
-  writing and verifying the requested outputs.
-- **Source unsupported, incomplete or broken:** read [providers.md](references/providers.md),
-  implement or repair the provider, then resume acquisition if a book output was requested.
-  A provider-development-only task ends with its fixture and CLI checks.
-- **Append images or correct part of a chapter:** follow [content-json.md](../../../docs/content-json.md). Read current content, transcribe into the shared schema, then apply an explicit change task with `book update` or `book notion update`.
-- **Normalize, restore or review a cover:** follow
-  [cover normalization](references/cover-normalization.md); `book cover` checks,
-  crops, compresses and builds the review page.
-- **Upload or recover a Notion cover:** use the native API and byte readback in
-  [notion-books.md](../../../docs/notion-books.md#封面). For a pending browser task
-  or an explicit browser upload, follow [notion-cover.md](references/notion-cover.md).
-- **Correct existing content, formatting, TOC or metadata:** read
-  [formatting.md](references/formatting.md). Edit uploaded content in Notion;
-  repair a local archive when requested.
+- **Add or reacquire a book from a site:** [Acquire a Book](#acquire-a-book).
+- **Import a local EPUB/TXT edition:** [local editions](../../../docs/local-editions.md).
+  Compare editions only when the user asks
+  ([comparison](../../../docs/local-editions.md#compare-editions-only-when-requested)).
+- **Transcribe supplied text images:** [image-transcription.md](references/image-transcription.md).
+- **Source unsupported, incomplete or broken:** [providers.md](references/providers.md);
+  then resume acquisition if a book output was requested. A provider-only task
+  ends with its fixture and CLI checks.
+- **Append images or correct part of a chapter:** [content JSON](../../../docs/content-json.md):
+  transcribe into the shared schema, then apply an explicit change with
+  `book update` or `book notion update`.
+- **Check, crop or restore a cover** (including `review_required` with `kind: cover`):
+  [cover-normalization.md](references/cover-normalization.md).
+- **Upload or recover a Notion cover:** native API and byte readback in
+  [notion-books.md](../../../docs/notion-books.md#cover); for a pending
+  `cover-browser.json` or a requested browser upload, [notion-cover.md](references/notion-cover.md).
+- **Correct an existing book's content, formatting, TOC or metadata:**
+  [formatting.md](references/formatting.md).
 - **Proofread an EPUB's typography, mixed-language punctuation, cover or download
-  metadata:** follow [EPUB proofreading](../../../docs/epub-proofreading.md).
-  Audit each book, show representative before/after previews, and apply only
-  the confirmed version. Update local inputs in their original directory, using
-  title-only filenames; do not move them into the repository by default.
-  Keep this agent-led review within this skill.
-- **Proofread an existing edition against Jinjiang:** follow
-  [Jinjiang proofreading](../../../docs/jinjiang-proofread.md) for `book proofread`,
-  including missing blank lines, suspect-text evidence and plain-text author notes.
-  Preserve the selected edition and use the existing destination named by the user.
-- **Export an existing book for training:** use the targeted dataset command below.
-  Training output uses the same collection pipeline when a fresh source is needed.
-
-For bilingual books such as Eternal Gate, follow “Bilingual Books” in `AGENTS.md`:
-`book bilingual update <book>` writes the output named in the book spec.
+  metadata:** [EPUB proofreading](../../../docs/epub-proofreading.md); apply only
+  the previewed version the user confirms.
+- **Proofread an existing edition against Jinjiang** (missing blank lines, suspect
+  characters, author's notes): [Jinjiang proofreading](../../../docs/jinjiang-proofread.md);
+  keep the selected edition and the destination the user names.
+- **Export an existing book for training:** [Training Data](#training-data).
+- **Bilingual book** such as Eternal Gate: “Bilingual Books” in `AGENTS.md`.
 
 ## Acquire a Book
 
-1. Determine the output destinations from the user's request and established
-   instructions. If they are missing, ask which they want: **local EPUB, Notion
-   draft, TXT, or a combination**. Explain that this chooses where the book will
-   be written. Do not assume Notion or add a training export without a request.
-   A supplied EPUB/TXT path or “add to the training dataset” already specifies
-   that destination. Ask only about unresolved choices; source research can
-   continue while awaiting the answer.
-2. Find or verify the source and completeness. Use `book ingest --search` for
-   supported sites, then compare previews before choosing a version. If the
-   source needs development, follow the provider reference above.
-3. Invoke `book ingest` with each selected `--mode`. Crawl once; shared source
-   preparation handles wording, structure and formatting before Notion/EPUB output.
-   All selected destinations must finish before reporting the book complete.
-   The cover is normalized to 2:3 first; a `review_required` result with
-   `kind: cover` means it needs restoration, so follow
-   [cover normalization](references/cover-normalization.md) and rerun with the
-   approved `--cover`.
-4. Verify the selected outputs: EPUB check printed by the write (ZIP, chapter
-   numbering, nav/NCX), then title/order and the delivered cover at full size and
-   as a thumbnail;
-   Notion's verified upload checkpoint; TXT content and its targeted dataset
-   manifest entry. Report every actual path or Notion destination, with failures
-   distinguished from completed outputs.
+1. **Choose destinations:** local EPUB, Notion draft, TXT, or a combination, from
+   the request or established instructions. A supplied EPUB/TXT path or “add to
+   the training dataset” already names one. Ask only about unresolved choices,
+   researching the source meanwhile; add Notion or a training export only on
+   request. Done when every destination is known.
+2. **Find and verify the source.** `book ingest --search "<title>" --mode …`
+   previews matches on supported sites without downloading them. For a Jinjiang
+   work, `book jjwxc TITLE --author AUTHOR` (read-only) prints its page, metadata
+   and official directory: volume titles, chapter numbers and titles, chapter
+   count and 番外. It is the source for Jinjiang facts; compare every candidate's
+   chapters against it. An unsupported or incomplete source goes to
+   [providers.md](references/providers.md). Done when the chosen source is
+   complete (against the official directory where one exists), or you have
+   reported the gap.
+3. **Write.** Crawl once; shared preparation normalizes wording, structure and
+   formatting before any output.
+   - **Direct:** `uv run book ingest "<url>" --mode epub --mode notion --mode txt`
+     (any subset). On a URL, `--enrich` takes metadata fields only and never
+     applies volumes.
+   - **Reviewed structure** (e.g. applying the official volumes): crawl, prepare,
+     review, then write from the reviewed source, with RUN under `generated/ingest/`.
+     A changed input needs a fresh `--run-dir`.
 
-```bash
-uv run book ingest "<url>" --mode epub
-uv run book ingest "<url>" --mode notion
-uv run book ingest "<url>" --mode txt
-uv run book ingest "<url>" --mode epub --mode notion --mode txt
-uv run book ingest --search "<title>" --mode epub --mode txt
-```
+     ```bash
+     uv run book crawl "<url>" [--provider P] --output RUN/crawl
+     uv run book prepare RUN/crawl/source.json --enrich all --run-dir RUN/reviewed
+     # Review RUN/reviewed/report.json (normalization.issues) and the volume
+     # sections in RUN/reviewed/source.json; apply reviewed edits to that file.
+     uv run book ingest RUN/reviewed/source.json --mode … --run-dir RUN/final
+     ```
 
-`book ingest` is the single combined entry point. Use `book crawl` to persist
-source JSON for later translation/preparation. The CLI requires a destination,
-or infers EPUB/TXT from explicit output paths.
+   - **Extras:** only chapters marked `role: "extra"` (provider classification, a
+     reviewed `--review`/`--chapter-layout` map, a TXT heading starting with 番外,
+     or an `append_extra` change) go to Notion's
+     [shared extras](../../../docs/fanwai-notion.md) database, after its duplicate
+     check; EPUB keeps them under a trailing 番外 heading. Normalization gathers
+     every other 番外-titled chapter not already under a 番外 heading into a
+     trailing volume 「番外」 in the book. To keep extras in the book, mark none
+     `role: "extra"`.
+   - **Failure:** destinations run in sequence. Inspect the completed files and the
+     Notion checkpoint, then resume that checkpoint
+     ([Notion login and recovery](../../../docs/notion-books.md)) instead of
+     recreating an uncertain Notion write. Use `--overwrite` only to replace
+     outputs the request covers.
 
-## Destinations and Recovery
+   Done when every selected destination is written.
+4. **Verify and report.** EPUB: the check the write prints (ZIP, chapter
+   numbering, nav/NCX), title, chapter order, and the delivered cover at full size
+   and as a 120–160 px thumbnail, restored per
+   [cover normalization](references/cover-normalization.md) if it fails. Notion:
+   the upload's verified checkpoint. TXT: its content and, for a training export,
+   its dataset manifest entry. Done when you have reported every actual path or
+   Notion destination, with failures kept apart from completed outputs.
 
-- Local EPUB: default path `books/<author>/<title>.epub`; override with `-o`.
-- TXT: default path `books/<author>/<title>.txt`; override with `--txt-output`.
-  Add `--dataset-root research/datasets` only for a requested training export;
-  this also upserts that book in the selected dataset manifest.
-- Notion: upload an editable draft and verify its readback. Authentication,
-  cover upload, schema and checkpoint recovery are documented in
-  [notion-books.md](../../../docs/notion-books.md). Shared extras use
-  [fanwai-notion.md](../../../docs/fanwai-notion.md).
+## Training Data
 
-A combination is processed sequentially. On failure, inspect the completed
-files and upload checkpoint before retrying; do not recreate an uncertain
-Notion write. Use `--overwrite` only for output replacement within the request.
-
-## Existing Training Data
-
-Training is a purpose for TXT output, not a separate crawler. Use targeted
-exports and manifest updates:
+Training is a purpose of TXT output, not a separate crawler. For a new crawl add
+`--mode txt --dataset-root research/datasets`, which also upserts the book in that
+dataset's manifest. For an existing book, export its EPUB or upsert its TXT:
 
 ```bash
 uv run book dataset export-txt --epub books/<author>/<title>.epub
 uv run book dataset upsert --txt research/datasets/raw/<author>/<title>.txt
 ```
 
-Respect the requested dataset path. Classification uses maintained Jinjiang
-metadata, then the configured fallback; apply explicit user category overrides.
-Bulk export requires an explicitly requested `--books-root` scope. Keep book
-text, generated EPUBs, upload checkpoints and credentials out of Git.
+Use the dataset path the user names and pass their category overrides as
+`--time-area`/`--genre`. Bulk export (`--books-root`) needs an explicitly
+requested scope.

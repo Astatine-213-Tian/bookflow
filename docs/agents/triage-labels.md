@@ -1,11 +1,6 @@
 # Triage labels
 
-| Canonical role | Tracker label | Meaning |
-| --- | --- | --- |
-| needs-triage | needs-triage | Maintainer evaluation needed |
-| needs-info | needs-info | More information needed |
-| ready-for-agent | ready-for-agent | Fully specified for agent implementation |
-| ready-for-human | ready-for-human | Human implementation required |
-| wontfix | wontfix | Will not be actioned |
-
-Use these mappings whenever an engineering skill refers to a triage role.
+Each canonical triage role uses the GitHub label of the same name:
+`needs-triage` (maintainer evaluation needed), `needs-info` (more information
+needed), `ready-for-agent` (fully specified for an agent), `ready-for-human`
+(needs a human implementer) and `wontfix` (will not be actioned).

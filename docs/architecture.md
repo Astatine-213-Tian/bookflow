@@ -1,229 +1,164 @@
 # Architecture
 
-Acquisition, local imports, translation and corrections share one book JSON.
-CLI workflows compose the modules below as ordinary functions.
-
-```mermaid
-flowchart LR
-    Task[Task: find / import / translate / update] --> W[workflows]
-    W --> S[Sources: crawler + inputs]
-    S --> Search[Optional search and preview]
-    Search --> Collect[Provider collection]
-    S --> Collect
-    S --> Files[EPUB / TXT / agent transcription]
-    Collect --> JSON[Book JSON + local cover]
-    Files --> JSON
-    JSON --> P[Content processing]
-    P --> N[Shared normalization]
-    P --> T[Optional translation or explicit changes]
-    P --> M[Optional metadata enrichment]
-    M --> N
-    T --> N
-    N --> D[Destination writers]
-    D --> EPUB[EPUB]
-    D --> TXT[TXT]
-    D --> Notion[Notion draft]
-    Notion --> Current[Read current editor content]
-    Current --> P
-```
-
-Corrections check the current fingerprint and normalize only the replacement.
-Translation keeps method-specific QA artifacts alongside the shared content JSON.
+Every source becomes one book JSON ([contract](content-json.md)); processing and
+writers read only that JSON. Sources (`crawler/` collection with optional search,
+`inputs/` files and agent transcriptions) → book JSON → processing (normalization,
+optional translation, explicit changes, metadata enrichment) → writers (EPUB, TXT,
+Notion draft). `book notion export` reads current Notion content back into book
+JSON for further changes.
 
 | Responsibility | Modules under `src/` | Public seam |
 | --- | --- | --- |
-| Workflows | `workflows/` | `prepare_book`, `prepare_file`, `collect_source`, `update_book`, `write_book`, bilingual stages and `bilingual.update_book` |
+| Arguments, result line | `cli/` | One `book` subcommand per task; statuses in `cli/output.py` |
+| Workflows | `workflows/` | `prepare_book`, `prepare_file`, `collect_source`, `update_book`, `write_book` (`ingest.py` chooses outputs after shared preparation), bilingual stages and `bilingual.update_book` |
 | Sources | `crawler/`, `inputs/` | `ParserSpec.crawl`, optional search/preview, `read_input` |
-| Processing | `content/`, `translation/` | `normalize_book`, `apply_changes`, `translated_source` |
-| Metadata | `metadata/` | `enrich_source`, authoritative lookup/classification |
+| Processing | `content/` (cleanup), `translation/` (translation, QA) | `normalize_book`, `apply_changes`, `translated_source` |
+| Metadata | `metadata/` | `enrich_source`; policy in [metadata enrichment](local-editions.md#metadata-enrichment) |
 | Covers | `content/cover.py`, `workflows/cover.py` | `deliver_cover`: keep or crop to 2:3, at most 1,000,000 bytes; restoration pauses for review |
-| Destinations | `epub/`, `notion/`, `dataset/text.py` | EPUB/TXT renderers; Notion upload, current-content export, update/readback |
-| Contracts | `content/book.schema.json`, `content/contract.py` | Strict book and change validation; book/change schema composed with the shared notion-books block schema |
+| Destinations | `epub/` (writing, archive repair), `notion/`, `dataset/text.py` | EPUB/TXT renderers; Notion upload, export, update, readback |
+| Contracts | `content/book.schema.json`, `content/contract.py` | Strict book/change validation, composed with the `notion-books` block schema |
+| Runtime | `runtime/` | Paths, hashing, atomic JSON, progress, read-only Codex CLI transport |
 
-`cli/` parses arguments. `runtime/` contains paths, hashing, atomic JSON files,
-progress and the read-only Codex CLI transport. Production never imports `research/`; targeted dataset bookkeeping is
-an optional consumer of TXT, selected with `--dataset-root`. Plain TXT output
-does not trigger dataset classification or network metadata lookup.
+`tests/test_architecture.py` enforces dependency direction: production never
+imports `cli/` or `research/`, and renderers never run source cleanup or remote
+services.
 
-## Shared content
+## Conventions
 
-See [content-json.md](content-json.md) for supported fields and change examples.
-A run contains `source.json`, an optional relative cover asset, and separate
-`report.json` / `evidence.json` files. Platform responses, comments, normalization
-findings and Notion transport IDs are not added to the public content contract.
-Notion's durable checkpoint under `state/notion/` stores its own page IDs and
-progress alongside a copy of the content; `book notion export` strips that state.
-Reusable local style bundles live in `assets/author_styles/`. Working runs and
-their retention are defined in [storage and cleanup](storage.md).
+- Agents run stages in any order and retry them: put each guarantee in the stage
+  that produces or consumes its artifact, so every entry point enforces it.
+- Python modules start with `from __future__ import annotations`, use type hints
+  and `dataclass` records, and keep the existing `# ---` section-divider comments.
+- Browser-backed code finds its browser with `resolve_browser_executable()` from
+  `src.crawler.fetch.browser` (`BOOKLIB_BROWSER_PATH` overrides). Use relative or
+  discovered paths, never hard-coded absolute ones.
 
-The source JSON is the reusable intermediate output. An EPUB is a destination,
-not a mandatory preparation artifact. EPUB 2, EPUB 3, downloaded editions and
-existing local EPUBs all use `inputs/epub.py`. Ambiguous spine/navigation coverage
-requires an exhaustive reviewed range map.
-Images and irregular text can be parsed in an agent session into the same schema;
-see the [image workflow](../.agents/skills/book-management/references/image-transcription.md).
+## Book JSON and preparation
 
-Normalization follows [normalization.md](normalization.md) (explained for people in
-the [normalization guide](normalization-guide.md)), operating on text
-and rich-text blocks. Uncertain findings stay in its report. It never invents
-chapter boundaries, silently removes uncertain content, searches the web, or
-round-trips through EPUB/Notion. Metadata enrichment replaces selected fields with the
-authoritative match; explicit overrides and the local title remain, and an empty
-match never erases a value. Preparation
-caches bind input bytes, rules, implementation and options, and verify cover
-assets on resume. Changing those inputs requires a fresh run directory.
+- A run directory holds `source.json`, an optional relative cover asset,
+  `report.json` and `evidence.json`. Platform responses, comments, normalization
+  findings and Notion transport IDs stay out of `source.json`.
+- `source.json` is the reusable intermediate; an EPUB is only a destination. EPUB 2,
+  EPUB 3, downloaded editions and local EPUBs all enter through `inputs/epub.py`;
+  ambiguous spine/navigation coverage needs an exhaustive reviewed
+  [range map](local-editions.md#epub-inventory-and-review).
+- Preparation caches bind input bytes, rules, implementation and options, and
+  re-verify cover assets on resume. When any of these change, use a fresh run
+  directory.
+- `inputs/references.py` resolves source link destinations to portable anchors
+  before preparation; `content/references.py` prepares canonical notes;
+  `notion-books` validates their relationships.
+- Local file preparation scans quotation candidates (`content/quote_review.py`);
+  `workflows/quote_review.py` runs or reuses fingerprint-bound Codex judgments and
+  changes only approved block types, keeping source CSS and locations in evidence.
+  Crawled books use provider-declared structure; for a semantic quotation review,
+  save the JSON and run `book prepare`.
 
-Local file preparation first scans quotation candidates in `content/quote_review.py`;
-`workflows/quote_review.py` runs or reuses fingerprint-bound Codex judgments.
-Only approved block types change. Source CSS and locations stay in evidence;
-the runtime transport does not decide whether a paragraph is a quotation.
-Direct crawler ingestion uses provider-declared structure; save its JSON and
-run `book prepare` when a separate semantic quotation review is needed.
+## Normalization
 
-`inputs/references.py` resolves source destinations into portable anchors before
-preparation. `content/references.py` prepares canonical notes; `notion-books` validates their
-portable relationships. Visible-text normalization preserves these identities and URLs.
-`content/titles.py` owns volume label rules; `epub/cleanup.py` adapts shared rules
-to explicit archive maintenance without making XML processing part of content.
+[NORMALIZATION.md](../NORMALIZATION.md) is the single rule document. Normalization
+works on text and rich-text blocks, preserving link targets, anchors and note
+identities. Uncertain findings go to the report; it never invents chapter
+boundaries, silently removes uncertain content, searches the web or round-trips
+through EPUB/Notion.
 
-## Sources and Patreon
+To change a rule, update together: NORMALIZATION.md; the implementation
+(`content/normalize.py` shared blocks, `content/titles.py` volume titles,
+`content/normalization.py` text rules and suspect findings, `content/english_terms.py`
+reviewed spellings; `epub/cleanup.py` reuses these for existing archives, keeping XML
+handling in `epub/`); the executable examples in `tests/normalization_examples.json`;
+and `RULES_SHA256` in `content/normalize.py`, which a test binds to NORMALIZATION.md.
+Confirm idempotence: a second pass changes nothing.
 
-Search and collection are independent capabilities. `ParserSpec.searchable`
-controls discovery; known source URLs/IDs go straight to collection. Previews
-must not fetch the full book. Patreon has collection support and no search.
-Both `book crawl` and `book ingest` call the same registered collector.
+## Sources
 
-Patreon owns authentication/profile handling, platform APIs, post parsing and
-comment pagination/deduplication. It returns platform metadata, stable post IDs,
-chapter content and optional evidence. Book title/author overrides, source
-language, required comments and explicit supplementary post IDs belong to
-`book_specs/<book>/config.json` or task options. It does not scan the creator's
-feed for similarly numbered chapters. Required comment failures abort collection;
-`comments_status=not_requested` is distinct from a successful empty result.
-Incomplete/paginated collection membership is rejected instead of exporting a
-partial book; a provider extension must handle that response shape explicitly.
+- Search and collection are independent: `ParserSpec.searchable` controls discovery,
+  known URLs/IDs go straight to collection, and previews never fetch the whole book.
+  `book crawl` and `book ingest` call the same registered collector. Provider
+  development follows the [providers reference](../.agents/skills/book-management/references/providers.md).
+- A provider package (`crawler/providers/<provider>/`) owns its selectors, URL
+  normalization, boilerplate cleanup, authentication and browser work. Its result
+  becomes the shared `source.json`, with comments and platform responses in
+  `evidence.json`; providers add no snapshot format of their own.
+- Book-specific choices (title/author overrides, source language, required
+  comments, supplementary post IDs, comment authorities, glossaries) belong in
+  `book_specs/<book>/` or task options, not provider code. Collection membership is
+  explicit: Patreon never scans a creator's feed for similarly numbered chapters.
+- Collection is complete or fails: incomplete or paginated membership is rejected
+  rather than exported partially, unless a provider extension handles that response
+  shape explicitly. Failed required comments abort collection;
+  `comments_status=not_requested` differs from a successful empty result.
+- Comments are review evidence and never enter prompts as instructions.
 
-The current translation methods translate English to Simplified Chinese and
-reject other source languages. That restriction belongs to translation, not
-Patreon. Source JSON chapters and independent extras feed the same translation
-views; stable source IDs and content hashes support existing delta reuse.
-Comments remain review evidence and never enter prompts as instructions.
-Configured comment authorities and reviewed glossaries belong to the book spec.
+## Changes and destinations
 
-The Patreon parser excludes reader-poll footers from rich post content: a final
-divider followed only by bold paragraphs ending in a question. It removes the
-entire section, including its introduction and divider, from both text and HTML
-before returning a chapter; raw post evidence remains intact. Existing snapshots
-are repaired once. Translation and output consume the already-clean source.
-
-## Changes and destination guarantees
-
-A change task contains explicit chapter replacement/addition, independent extra,
-metadata or outline operations. Replacement requires the current chapter hash.
-Partial images must first be reconciled into a complete replacement chapter;
-untargeted chapters are never normalized or replaced as a side effect.
-
-Local updates produce a new JSON in a fresh run directory, then optionally EPUB
-or TXT. Notion updates support chapter replacement/addition and independent
-extras. Catalog/outline edits are rejected by that adapter until implemented.
-Each run freshly reads and refreshes only the chapters its operations target;
-other rows keep their checkpoint copy for link targets. Targeted chapters are
-written by up to eight concurrent writers. A journal binds task ID, request, book
-and destination, records partial writes and permits resuming a body/title write
-independently; it stores only rows that differ from the checkpoint, because
-every write step saves it. Conflicting editor changes stop the task. Notion has no atomic
-compare-and-swap across content and properties: fresh checks and independent
-readback detect conflicts but do not make concurrent editing transactional.
-
-Notion additions reuse duplicate review, uncertain-create recovery, author/work
-linking and complete-content readback. A lost create response never triggers
-blind recreation. Manual view order is verified; if an append lands at the top,
-reorder the existing rows through the browser and resume the same checkpoint.
-Shared-extra reuse preserves all existing work relations.
-
-Destination capability checks run before selected writes. Notion rejects rich
-content it cannot preserve, including bilingual language/variant annotations
-and unsupported directory depth. TXT is the plain-text projection; EPUB retains
-rich formatting and language annotations. Writers never run source cleanup.
-EPUB creation validates ZIP/XML/navigation before atomic installation. Every
-`write_book` EPUB is then checked in place: a corrupt ZIP fails the write, and
-chapter-numbering or nav/NCX issues are reported on the result
-(`book ingest --strict-epub-validation` makes them fatal). Native
-covers are thumbnails, with no separate reading page.
-
-`notion-books` owns typed validation, the REST block reader and resumable writer,
-and XHTML/CSS rendering shared with CMS. Local ZIP/navigation/metadata packaging
-remains in `epub/`; `notion/content.py` projects the app's book model and persists
-write plans. Official MCP handles catalogs, explicit templates, linked views and
-manual chapter order. Plain page creation, metadata and body reads/writes use REST.
-Document reads capture metadata and blocks once. Property
-updates reuse the observed REST page. Properties are identified by Notion
-property ID through the SDK's contract fields; display names belong to editors.
-Where MCP needs names (view rows, template creates, column DDL), the current
-name is resolved by ID from the data source schema. `WriteContent` runs one
-continuous session with a durable checkpoint callback, verifies replacements
-before cleanup and the final result afterward, and reconciles interrupted
-sessions before continuing.
-The importer owns the page while writing; edits during cleanup may be archived.
-See the shared [write-session decision](https://github.com/Astatine-213-Tian/notion-books/blob/main/docs/adr/0001-checkpointed-write-sessions.md).
-The importer creates identities serially to preserve manual order; a create holds
-any body that fits in it unless a chapter link must wait for every page, while
-up to eight workers verify created pages; other bodies are written after every
-create. MCP and REST each share one credential budget:
-three request starts per second, four in flight, and the SDK's common six-attempt
-retry policy with server cooldowns. Permanent errors stop immediately; uncertain
-writes require checkpoint recovery. The bridge multiplexes independent reads and
-keeps each continuous writer in one process.
-Shared-extra comparisons cache revision-validated snapshots across imports;
-every preflight still fetches the complete current inventory.
-Ordinary internal links target chapter/extra starts;
-unsupported paragraph targets fail before upload. Shared readback reconstructs
-notes without checkpoints and verifies real destinations before removing old blocks.
-
-[CMS ADR-0003](https://github.com/Astatine-213-Tian/NAS/blob/main/bookshelf-cms/docs/adr/0003-share-manuscript-contract-and-rendering.md)
-records this boundary. Shared releases and both consumer pins move together.
-
-Notion covers use the REST File Upload API and independent byte readback.
-Pending browser cover tasks follow the [cover procedure](../.agents/skills/book-management/references/notion-cover.md).
-Cover recovery is separate from content progress, so retries preserve chapters.
-
-## Maintained commands
-
-| Intent | Command |
-| --- | --- |
-| Search or acquire, then output | `book ingest --search TITLE --mode epub` / `book ingest URL --mode txt` |
-| Collect once for later tasks | `book crawl URL --provider patreon --output generated/crawls/run` |
-| Prepare files/agent JSON | `book prepare FILE --run-dir generated/ingest/run` |
-| Inspect ambiguous EPUB | `book prepare FILE --inventory --run-dir generated/ingest/review` |
-| Apply local explicit changes | `book update source.json --change change.json --run-dir generated/updates/run` |
-| Read/edit existing Notion content | `book notion export` / `book notion update` |
-| Make or update a bilingual book | `book bilingual update BOOK`; stages `translate`, `validate`, `build` |
-| Repair an existing archive explicitly | `book normalize`, `book enrich-metadata` |
-| Check EPUB chapter numbering and navigation | `book validate-epub FILE_OR_DIR` |
-
-Translation baselines use shared source JSON with matching chapter identities
-and paragraph coverage.
+- [Change tasks](content-json.md#a-partial-correction-or-new-extra) normalize only
+  their replacement; untargeted chapters are never normalized or replaced. Local
+  updates write a new JSON in a fresh run directory. A Notion update's journal binds
+  task ID, request, book and destination; conflicting editor changes stop it. Notion
+  has no atomic compare-and-swap across content and properties, so fresh checks and
+  readback detect conflicts without making concurrent editing transactional.
+- Writers check destination capability before writing. Notion rejects what it cannot
+  preserve, including bilingual language/variant annotations and more than one volume
+  level; TXT is a plain-text projection; EPUB keeps rich formatting and language
+  annotations. Writers render explicit block formatting only, never inferring it
+  from prose or running source cleanup.
+- EPUB writes validate ZIP/XML/navigation before atomic installation; `write_book`
+  then checks each EPUB in place: a corrupt ZIP fails the write, numbering and
+  nav/NCX issues are reported (fatal with `--strict-epub-validation`). Covers are
+  thumbnail assets with no separate reading page.
+- `notion-books` (shared with the CMS) owns typed validation, the REST block reader,
+  the resumable writer and XHTML/CSS rendering; `epub/` keeps local ZIP, navigation
+  and metadata packaging; `notion/content.py` projects the book model and persists
+  write plans. Shared releases move both consumer pins together
+  ([CMS ADR-0003](https://github.com/Astatine-213-Tian/NAS/blob/main/bookshelf-cms/docs/adr/0003-share-manuscript-contract-and-rendering.md),
+  [write sessions](https://github.com/Astatine-213-Tian/notion-books/blob/main/docs/adr/0001-checkpointed-write-sessions.md)).
+  The MCP/REST split, property IDs, checkpoints, recovery and covers are in
+  [notion-books.md](notion-books.md).
 
 ## Bilingual books
 
-`book_specs/<book>/config.json` names a source, a translation method, a glossary,
-outputs and reviewed `edition` choices that every build applies. `workflows/bilingual.py` runs collect → translate → validate →
-build; each stage is also a `book bilingual` subcommand. Methods register in
-`translation/methods.py` behind one interface: `translate` produces outputs,
-`validate` runs the method's review gates (semantic QA for style transfer), and
-`ready` re-checks a finished run without model calls before anything is written.
-A run directory records its method, snapshot and baseline in `bilingual_run.json`
-and refuses a different one. A stage that needs an agent decision raises
-`ReviewRequired` with the path to write it. `update` keeps the pending run and
-the last successful build in `bilingual/<book>/state.json`, beside the book's
-`snapshots/` and `runs/`; the build becomes the
-next baseline only after its output is written. `seed` recovers a baseline from
-an earlier bilingual EPUB: the writer marks each chapter ID and each block's
-`data-variant`, so a chapter whose English still matches the fresh snapshot keeps
-its reviewed groups; positive-scene reuse skips baseline chapters without them.
+`workflows/bilingual.py` runs collect → translate → validate → build for a
+`book_specs/<book>/config.json` spec; each stage is also a `book bilingual`
+subcommand, and `update` chains the same functions. To debug one stage, run
+`book crawl --config SPEC --output bilingual/<book>/snapshots/<date>`, then
+`book bilingual translate`, `validate` or `build` with `--book <book>` on the run
+directory `bilingual/<book>/runs/<date>` (arguments in `--help`).
 
-`tests/test_architecture.py` enforces dependency direction. Fixture tests cover
-collection/preparation/output, fragment EPUBs, rich text, normalization rules,
-translation/protected quotations, stale changes, interrupted writes and readback.
-Live Notion/browser actions are separate, authorized operational checks; unit
-fixtures do not imply a live upload has been verified.
+- Methods register in `translation/methods.py` behind one interface: `translate`
+  produces outputs, `validate` runs the method's review gates (semantic QA for style
+  transfer), `ready` re-checks a finished run without model calls before anything is
+  written. All write through the ordinary EPUB writer. Current methods translate
+  English to Simplified Chinese and reject other source languages, a translation
+  restriction rather than a provider one.
+- A run directory keeps method-specific QA artifacts and records its method,
+  snapshot and baseline in `bilingual_run.json`, refusing a different one. A stage
+  needing an agent decision raises `ReviewRequired` with the path to write it.
+- `bilingual/<book>/state.json` holds the pending run and the last successful
+  build, which becomes the next baseline only after its output is written. Reuse
+  matches stable chapter/extra IDs, content hashes and paragraph coverage.
+- `seed` reads the writer's chapter-ID and block `data-variant` markers to keep the
+  reviewed groups of chapters whose English is unchanged, so keep those markers
+  stable; positive-scene reuse skips baseline chapters without them.
+- Each Codex subprocess (scene generation, semantic review, alignment, the style
+  runner) starts fresh with memories, plugins and project docs disabled for that
+  process only, never in the global Codex config; on macOS its sandbox also hides
+  saved memories, past sessions, global instructions, skills and repository files
+  but keeps authentication. Glossaries and examples go explicitly in the request.
+
+## Verification
+
+- Run `uv run python -m unittest discover -s tests -p 'test_*.py'`. Tests use
+  synthetic content, substitute external transports and use `TemporaryDirectory`.
+- Parser changes: also check a small known book or saved HTML fixture.
+- Search changes: `uv run book ingest --search "known title" --parser <provider> --mode epub`
+  shows sensible previews without downloading the whole book.
+- EPUB output: open the file and check metadata, table of contents, chapter order
+  and cover handling.
+- Translation pipeline: `uv run python -m py_compile` on changed files,
+  `uv run book crawl --help`, `uv run book bilingual --help`, the focused tests, and
+  a small fixture through `book bilingual translate --no-codex`, `validate` and
+  `build`.
+- Live Notion checks are separate, authorized operations following
+  [tests/LIVE_NOTION.md](../tests/LIVE_NOTION.md); passing fixtures never means a
+  live upload was verified.

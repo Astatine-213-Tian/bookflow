@@ -1,41 +1,35 @@
 # Live Notion upload test
 
-Run `tests/live_notion_upload.py` with the crawler environment after its ordinary
-unit tests pass. It injects a synthetic `CrawledBook` at the collection boundary,
-then executes the real source preparation, metadata mapping, duplicate scan,
-template application, chapter/extra upload, checkpoint persistence and resume.
-Live readback checks names and complete formatting/content. It uses the crawler's
-own MCP OAuth login and public `book_specs/notion/config.json` database settings.
-The REST integration needs access to the fixture databases.
+`tests/live_notion_upload.py` injects a synthetic `CrawledBook` at the collection
+boundary, then runs the real source preparation, metadata mapping, duplicate
+scan, template application, chapter/extra upload, checkpoint persistence, resume
+and full readback. Provider parsing is covered by fixtures, not here. It passes
+when the uploaded content matches the prepared source and resume preserves page
+identities. It never publishes; the synthetic book has no cover, so native cover
+upload needs its separate test.
 
-This tests the result-to-Notion path. Provider crawling/parsing remains covered
-by provider fixtures and the regular crawler suite. Success means the uploaded
-Notion content matches the prepared source and resume preserves page identities.
-
-With authorization to create and clean up live test pages, run from this repo:
+Prerequisites: the ordinary unit tests pass; the user has authorized creating and
+cleaning up live test pages; `book notion login` is done and the REST integration
+can access the databases in `book_specs/notion/config.json`, whose database and
+template must already exist.
 
 ```bash
 live_state=$(mktemp -d /private/tmp/crawler-notion-live.XXXXXX)
 uv run python tests/live_notion_upload.py import --state "$live_state"
 ```
 
-The configured database/template must already exist. The test creates uniquely
-marked authors/books/extras; it never publishes. The synthetic book has no cover,
-so native cover upload requires its separate test. State/checkpoints remain in
-`live_state` and can diagnose a failure; never retry an ambiguous creation by
-throwing away its checkpoint. Machine-wide unsupported SOCKS proxy settings may
-need to be unset for the command.
+Keep `live_state` to diagnose a failure; never retry an ambiguous creation by
+discarding its checkpoint. Unset unsupported machine-wide SOCKS proxy settings
+for the command if they break it.
 
-After success or failure, move only the test work (including its chapter database),
-author and created extra from `run.json` and its `import_state` (when present) to
-Notion Trash. If a create response was lost, locate the pages by the unique
-`marker` in their names; cleanup verification also checks those names. Use the
-Notion UI or REST page updates (`in_trash: true`).
-Then check the active inventories:
+After success or failure, move only the test work (including its chapter
+database), author and created extra listed in `run.json` and its `import_state`
+to Notion Trash, through the Notion UI or a REST page update (`in_trash: true`).
+If a create response was lost, find the pages by the unique `marker` in their
+names. Then check the active inventories:
 
 ```bash
 uv run python tests/live_notion_upload.py verify-cleanup --state "$live_state"
 ```
 
-Keep any useful report, then delete the isolated test state. Credentials remain
-in the crawler's own local credential store.
+Keep any useful report, then delete the isolated test state.

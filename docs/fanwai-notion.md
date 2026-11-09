@@ -1,61 +1,77 @@
-# 共享番外
+# Shared extras
 
-番外在 [Notion 书库](https://app.notion.com/p/3deca693996b810c8774f3658c89a423)
-的「共享番外」数据库维护正文与标题，用「涉及作品」关联一本或多本书。
-每本书使用只筛选自己的手动视图，顺序彼此独立。
+Only chapters explicitly marked `role: "extra"` go to the shared-extras database
+(`databases.extras`; displayed as 「共享番外」): provider classification, a
+reviewed EPUB range map (or the EPUB's own `data-book-role`), TXT headings
+starting with 番外, or an `append_extra` change. They live in the content JSON's
+`extras`, and only they get the duplicate check (`src/notion/duplicates.py`).
 
-爬虫上传前，通过 MCP 读取共享番外的完整列表及版本信息，再通过 REST 分页读取新增或变更的正文。
-跨书籍、跨续传复用已验证版本的比较快照。不依赖标题或关键词搜索的排名结果，避免重命名后漏检。
-只选择本地 EPUB/TXT 时不会连接 Notion，也不会运行此检查。
+Every other 番外 chapter stays in the book. A 番外卷 defined by the author or
+confirmed by the user keeps its source title, order and continuous chapter
+numbering; chapters titled with 番外 outside any 番外 heading are moved by
+normalization, in order, into a trailing 「番外」 volume (merged into an existing
+trailing 番外 volume). A volume named 番外 does not make its chapters shared
+extras. Before migrating an extra into the shared database, check the full
+text so the same content is not stored twice.
 
-比较忽略空白、标点、繁简、大小写和排版差异，以下任一条件命中就提示：
+The shared database lives in the
+[Notion library](https://app.notion.com/p/3deca693996b810c8774f3658c89a423) and
+links each extra to one or more books via `related_works` (displayed as
+「涉及作品」). Each book's extras view filters to that book with its own manual
+order. Upload, auth, recovery and formatting: [Notion output](notion-books.md).
 
-- 归一化正文完全相同。
-- **局部重合**：共同的连续片段每个至少 20 字，累计覆盖至少 60 字。全文占比再低
-  也提醒；段落的拆分、合并、换序不影响检查。两个约 30 字的重合段落就可能触发。
-  用共同的 20 字窗口定位，两侧分别合并相互重叠的区间，再取较小的覆盖字数；
-  同一位置不会重复计数，单侧重复复制也不会放大证据。
-- **整体相似**：两个版本都至少 80 字，四字片段重合度达到 70%。
-- **部分包含**：较短版本至少 80 字，四字片段包含率达到 60%。适用于精校、缺段、
-  补全和合集版本；这里的百分比是片段指标，不是相同字符的比例。
+## Duplicate check
 
-检测倾向多提醒：即使两篇各自有大量独有内容，只要共享足够长的片段也进入核对。
-标题和排版正文完全一致且只有一个候选，沿用原有的自动复用；其余候选需要手动确认。
-相似度只是核对线索，不能判断哪个版本更正确。
+The check runs only before a Notion upload; local EPUB/TXT-only output never
+connects to Notion and skips it.
 
-检查未完成、共享库视图被筛选或正文读取失败时停止，不把漏读当作“没有重复”。
-这不是语义检测：没有足够长的共同文字且整体重合偏低时，仍可能漏检。
-常见短句、零散人名不会单独触发局部重合提醒。首次检查需要读取全库正文；
-续传仍重新读取完整列表，以发现编辑、新收录及删除。版本缺失、不合法或快照读取时仍处于
-该版本的同一分钟内，均重新读取正文，避免 Notion 分钟级时间戳掩盖编辑。来源指纹、候选集合
-和手动决定每次重新核对。缓存位于 `state/notion/shared-extras/<data-source-id>/comparison.json`；
-进度分别报告复用与新读取数量，读取失败仍中止上传。
+- MCP reads the shared database's complete inventory and versions; REST reads
+  new or changed bodies. It never relies on title or keyword search, so renamed
+  extras are still caught. An incomplete check, a filtered shared view or a
+  failed body read aborts the upload; a missed read never counts as "no
+  duplicate".
+- Comparison ignores whitespace, punctuation, traditional/simplified script,
+  case and formatting. Any of these flags a candidate: identical normalized
+  text; local overlap (shared runs of at least 20 characters covering at least
+  60 in total, regardless of overall share); overall similarity (both at least
+  80 characters, 4-gram overlap at least 70%); partial containment (shorter
+  version at least 80 characters, containment at least 60%, for proofread,
+  incomplete, completed or anthology versions).
+- The check errs toward flagging; similarity is a review hint, not a judgment of
+  which version is better. It is not semantic: rewritten text without long
+  enough shared runs can still slip through.
+- A single candidate with identical title and formatted body is reused
+  automatically; every other candidate needs manual confirmation.
+- Comparison snapshots are cached in
+  `state/notion/shared-extras/<data-source-id>/comparison.json` and reused across
+  books and resumes; every run still reads the complete inventory and rereads
+  only new or changed bodies.
 
-疑似重复会在任何新上传写入前暂停，输出 `WARNING` 和检查点同目录的
-`extra-review.md`。报告包括新旧标题、已有页面链接、提醒原因、相似度、包含率、
-字数、局部重合覆盖字数及具体片段、原文差异摘要和每项可直接运行的确认命令。
-重合片段示例使用归一化文字，原文差异摘要保留标点和排版。例如：
+## Resolve suspected duplicates
+
+A suspected duplicate pauses upload before any new write, prints `WARNING` and
+writes `extra-review.md` next to the checkpoint, with each candidate's evidence
+and ready-to-run commands:
 
 ```bash
-# 复用报告中的第 1 篇候选，保留 Notion 已有标题和正文
-uv run book notion resolve-extra --state state/notion/<来源摘要>/import.json \
-  --extra 1 --use-existing <已有番外页面ID或URL>
+# Reuse candidate 1 from the report, keeping the existing Notion title and body
+uv run book notion resolve-extra --state state/notion/<source-digest>/import.json \
+  --extra 1 --use-existing <existing-extra-page-ID-or-URL>
 
-# 或者确认它是独立内容，应当新建
-uv run book notion resolve-extra --state state/notion/<来源摘要>/import.json \
+# Or confirm it is separate content to create
+uv run book notion resolve-extra --state state/notion/<source-digest>/import.json \
   --extra 1 --create-new
 
-uv run book notion resume --state state/notion/<来源摘要>/import.json
+uv run book notion resume --state state/notion/<source-digest>/import.json
 ```
 
-`resolve-extra` 只记录本地选择；`resume` 重新核对后才上传。
-复用只增加作品关联，保留其他作品关联，不覆盖用户校对与重命名。
-来源、候选内容或候选集合变化时，原确认失效并重新提示。
-已验证的正文不会被续传覆盖。
-上传、封面认证、恢复与统一格式见[爬取输出说明](notion-books.md)。
+`resolve-extra` only records the local choice; `resume` rechecks before
+uploading. Reuse only adds this book's relation, keeping other book relations
+and the user's proofreading and renames. A change in the source, candidate
+content or candidate set invalidates the choice and prompts again. Resume never
+overwrites verified bodies.
 
-作者定义或用户确认的「番外卷」属于正文，保留来源卷名、顺序和连续章节编号。
-独立番外才放共享库。迁移前先核对完整正文，避免同一内容重复收录。
-图片来源先按 [Codex 图片转录流程](../.agents/skills/book-management/references/image-transcription.md)
-完成并行独立识读、逐字核对和边界检查，保留原始转录；输出副本须经过共享格式规则
-（包括引号方向、中英文及数字间距），再写入可编辑正文并按格式化副本完整回读校验。
+Extras from images are transcribed per the
+[Codex image transcription workflow](../.agents/skills/book-management/references/image-transcription.md)
+and pass the shared formatting rules before being written as editable content,
+then fully read back against the formatted copy.

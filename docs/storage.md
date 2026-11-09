@@ -1,41 +1,39 @@
 # Local files and cleanup
 
-Paths below are relative to the checkout. Run maintained commands from its root.
+Paths are relative to the checkout root; run commands from there.
 
-| Location | Purpose | Retention |
+| Location | Holds | Retention |
 | --- | --- | --- |
-| `book_specs/` | Maintained configuration, glossaries, prompts and schemas | Version in Git. |
-| `assets/author_styles/` | Frozen style bundles referenced by configuration | Keep while referenced; local, outside Git. |
-| Original input location, or `assets/sources/<book>/` | Original images, unique source files and reviewed transcriptions | Keep the authoritative copy; avoid duplicating originals per task. |
-| `state/notion/<source-id>/` | Import identities, write journals, recovery state and covers | Keep for future updates and recovery, including after successful upload. |
-| `state/notion/shared-extras/<data-source-id>/comparison.json` | Shared-extra comparison snapshots with observed revisions | Retain across books and resumes; a fresh complete inventory validates reuse. Safe to remove to force a full scan. |
-| `generated/ingest/`, `generated/updates/` | Working content JSON and preparation/review results | Keep unfinished work and the only reviewed copy; retire intermediates after destination verification. |
-| `bilingual/<book>/state.json` | A bilingual book's pending run and last successful build | Keep; `book bilingual update` reads it to resume and to reuse the baseline. |
-| `bilingual/<book>/snapshots/<date>/`, `bilingual/<book>/runs/<date>/` | Collected sources, translations and QA evidence | Keep the baseline named in `state.json` with its matching snapshot and one rollback pair. A lost baseline can be recovered with `book bilingual seed` from the last bilingual EPUB. |
+| `book_specs/` | Per-book specs, glossaries, prompts and schemas | In Git. |
+| `assets/author_styles/` | Frozen style bundles referenced by specs | Local, outside Git; keep while referenced. |
+| Original input location, or `assets/sources/<book>/` | Original images, unique source files, reviewed transcriptions | Keep one authoritative copy; never duplicate originals per task. |
+| `state/notion/<source-id>/` | Import identities, write journals, recovery state, covers | Keep after success; future updates and recovery need it. |
+| `state/notion/shared-extras/<data-source-id>/comparison.json` | Shared-extra comparison snapshots with observed revisions | Keep across books and resumes (a fresh complete inventory validates reuse); delete to force a full scan. |
+| `generated/ingest/`, `generated/updates/` | Working book JSON and preparation/review results | Keep unfinished work and the only reviewed copy; retire intermediates once the destination is verified. |
+| `bilingual/<book>/state.json` | Pending run and last successful build | Keep; `book bilingual update` resumes and reuses the baseline from it. |
+| `bilingual/<book>/snapshots/<date>/`, `bilingual/<book>/runs/<date>/` | Collected sources, translations, QA evidence | Keep the baseline named in `state.json`, its snapshot and one rollback pair; `book bilingual seed` recovers a lost baseline from the last bilingual EPUB. |
 | `books/<author>/` | Final reader outputs | Keep until explicitly replaced or removed. |
-| System temporary directory, e.g. `/private/tmp/bookflow-<task>/` | One-off scripts, API probes, screenshots, crops and preview builds | Remove when the task is verified. |
+| System temporary directory, e.g. `/private/tmp/bookflow-<task>/` | One-off scripts, API probes, screenshots, crops, preview builds | Remove once the task is verified. |
+| `/private/tmp/bookflow-codex-backups/` | Archive repair backups | Keep until independent verification shows the installed book is correct. |
 
-`generated/` is a working area, not an archive of every agent action. Save artifacts
-there when a maintained workflow needs them for review, resume or reuse. Brief
-inspection results can stay in the session; tests use `TemporaryDirectory`.
-Research owns its separate `research/datasets/` and frozen `research/generated/`
-evidence under [its guidelines](../research/AGENTS.md).
+`generated/` is a working area, not an archive of agent actions: save there only
+what a maintained workflow needs for review, resume or reuse.
+`research/datasets/` and `research/generated/` follow the
+[research guidelines](../research/AGENTS.md).
 
 ## Finishing a task
 
-1. Verify the destination and save any identities or journals needed for recovery.
-2. Retain unique inputs and reviewed decisions. An EPUB/TXT import's temporary
-   inventory, duplicate content copies and diagnostic logs can then be removed.
+1. Verify the destination and save any identities or journals recovery needs.
+2. Keep unique inputs and reviewed decisions; then remove an EPUB/TXT import's
+   temporary inventory, duplicate content copies and diagnostic logs.
 3. For translation, validate the replacement baseline before retiring older runs.
-   Keep each retained run's complete provenance-bound files: removing individual
-   requests, reviews or translations can invalidate it. Check configuration and
-   test references before deleting a historical run.
-4. Remove derived crops when originals and reviewed transcriptions are preserved.
-   For completed audits, a compact result is usually sufficient; duplicate request
-   payloads and repeated page snapshots are temporary.
+   Keep each retained run whole (removing individual requests, reviews or
+   translations can invalidate its provenance), and check configuration and test
+   references before deleting a historical run.
+4. Remove derived crops once originals and reviewed transcriptions are preserved.
+   A finished audit keeps a compact result; duplicate request payloads and repeated
+   page snapshots are temporary.
 
-Cleanup uses an explicit file list and checks for changes since inspection. It
-preserves unfinished work and referenced assets; age alone does not prove a file
-is disposable. Do not copy discarded working trees elsewhere indefinitely.
-Archive repair backups use `/private/tmp/bookflow-codex-backups/` until independent
-verification establishes that the installed book is correct.
+Clean up from an explicit file list, re-checked for changes since inspection.
+Unfinished work and referenced assets stay; age alone never makes a file
+disposable. Delete discarded working trees rather than copying them elsewhere.
