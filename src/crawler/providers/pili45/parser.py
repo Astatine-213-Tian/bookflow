@@ -69,6 +69,17 @@ class Fetcher:
             if ready:
                 break
             await asyncio.sleep(0.5)
+        else:
+            # A verification page would otherwise parse as a book with no chapters.
+            title = await page.evaluate("document.title")
+            hint = (
+                "; the site verifies headless browsers, retry without --headless"
+                if self.headless
+                else ""
+            )
+            raise RuntimeError(
+                f"pili45 content did not load at {url} (page title: {title!r}){hint}"
+            )
         await asyncio.sleep(self.delay)
         return await page.get_content()
 
