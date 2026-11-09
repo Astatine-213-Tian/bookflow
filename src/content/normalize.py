@@ -28,7 +28,7 @@ from src.content.numerals import format_chinese_numeral
 from src.content.outline import group_fanwai
 from src.content.titles import normalize_outline, normalize_volume_colors
 
-RULES_SHA256 = "a45dc4825ba174529114ee8526f0c7cef6540389a7cee0fd24da592cbdc07669"
+RULES_SHA256 = "d423a98d6338a7748c5f59c1c06bd2234dccbdb4bb7d98a573cf61984d2ac688"
 
 SECTION_NUMBER = r"(?:[0-9０-９]{1,3}|[一二三四五六七八九十百零〇]+)"
 SECTION_LABEL_RE = re.compile(
@@ -331,10 +331,13 @@ def normalize_text(
     text: str,
     *,
     title: bool = False,
+    book_title: bool = False,
     member: str = "text",
     report: NormalizationReport | None = None,
     term_protected_ranges: list[tuple[int, int]] | None = None,
 ) -> str:
+    """``book_title`` keeps a work's name as published: no inserted mixed-width spaces."""
+    title = title or book_title
     return _normalize_plain_text(
         text.replace("\u2028", "\n").replace("\u2029", "\n"),
         preserve_ordinals=title,
@@ -342,6 +345,7 @@ def normalize_text(
         title_punctuation=title,
         end_marker=not title,
         force_fanwai_title=False,
+        mixed_width_spacing=not book_title,
         member=member,
         report=report or NormalizationReport(path=Path("content"), applied=True),
         term_protected_ranges=term_protected_ranges,
@@ -519,7 +523,7 @@ def normalize_book(source: dict) -> tuple[dict, dict]:
     for key in ("title", "description"):
         if book["metadata"].get(key):
             book["metadata"][key] = normalize_text(
-                book["metadata"][key], title=key == "title", report=report
+                book["metadata"][key], book_title=key == "title", report=report
             )
 
     book["sections"] = normalize_outline(book["sections"], report=report)

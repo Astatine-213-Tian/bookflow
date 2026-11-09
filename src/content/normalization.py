@@ -1619,6 +1619,7 @@ def _normalize_plain_text(
     member: str,
     report: NormalizationReport,
     term_protected_ranges: list[tuple[int, int]] | None = None,
+    mixed_width_spacing: bool = True,
 ) -> str:
     text = _normalize_fullwidth_alphanumeric(text, member=member, report=report)
     text = _normalize_halfwidth_tilde(text, member=member, report=report)
@@ -1786,6 +1787,8 @@ def _normalize_plain_text(
             report=report,
         )
     text = _normalize_code_commas(text, member=member, report=report)
+    if not mixed_width_spacing:
+        return text
     return _insert_mixed_width_spaces(
         text,
         preserve_ordinals=preserve_ordinals,

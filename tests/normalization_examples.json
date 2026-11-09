@@ -4,6 +4,7 @@
     {"input": "第94-95章 2008年的故事", "expected": "第94-95章 2008 年的故事", "title": true},
     {"input": "第一章", "expected": "第1章", "title": true},
     {"input": "第12章 番外卷·旅途", "expected": "第12章 番外卷·旅途", "title": true},
+    {"input": "C语言修仙２０２０", "expected": "C语言修仙2020", "title": true, "book_title": true},
     {"input": "中文English１２３测试。", "expected": "中文 English123 测试。"},
     {"input": "作者有话说 谢谢大家今天也来了，好。", "expected": "作者有话说 谢谢大家今天也来了，好。"},
     {"input": "A sentence, with words.", "expected": "A sentence, with words."},

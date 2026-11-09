@@ -254,6 +254,27 @@ class ContentPipelineTests(unittest.TestCase):
         self.assertEqual(normalize_book(result)[0], result)
         self.assertGreater(report["total_changes"], 0)
 
+    def test_book_title_keeps_its_own_mixed_width_spacing(self):
+        source = {
+            "version": 3,
+            "identifier": "book",
+            "metadata": {"title": "C语言修仙", "creator": "作者", "language": "zh-CN"},
+            "sections": [{"member": "chapter-1"}],
+            "extras": [],
+            "chapters": {
+                "chapter-1": {
+                    "title": "第1章 Hello世界",
+                    "role": "chapter",
+                    "blocks": [{"kind": "paragraph", "runs": [{"text": "学C语言。", "styles": []}]}],
+                }
+            },
+        }
+        result, _ = normalize_book(source)
+        self.assertEqual(result["metadata"]["title"], "C语言修仙")
+        chapter = result["chapters"]["chapter-1"]
+        self.assertEqual(chapter["title"], "第1章 Hello 世界")
+        self.assertEqual(chapter["blocks"][0]["runs"][0]["text"], "学 C 语言。")
+
     def test_markdown_rules_are_bound_to_code_and_examples_execute(self):
         import hashlib
         import json
@@ -275,13 +296,13 @@ class ContentPipelineTests(unittest.TestCase):
         )
         for example in examples["text"]:
             with self.subTest(example=example):
-                actual = normalize_text(
-                    example["input"], title=example.get("title", False)
-                )
+                options = {
+                    "title": example.get("title", False),
+                    "book_title": example.get("book_title", False),
+                }
+                actual = normalize_text(example["input"], **options)
                 self.assertEqual(actual, example["expected"])
-                self.assertEqual(
-                    normalize_text(actual, title=example.get("title", False)), actual
-                )
+                self.assertEqual(normalize_text(actual, **options), actual)
         for example in examples["blocks"]:
             with self.subTest(example=example):
                 actual = normalize_chapter(
