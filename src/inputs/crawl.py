@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from uuid import NAMESPACE_URL, uuid5
 
 from src.content.contract import metadata_defaults
@@ -9,6 +10,9 @@ from src.content.html import escape_text
 from src.content.models import Volume
 from src.inputs.html import read_html_blocks
 from src.inputs.references import resolve_book_references
+
+# XML 1.0 cannot represent these C0 controls, so no XHTML/EPUB output can hold them.
+XML_INVALID_CONTROLS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 
 def extract_crawl(
@@ -47,6 +51,7 @@ def extract_crawl(
         member = f"chapters/{key}.xhtml"
         if member in inventory["pages"]:
             raise ValueError(f"Duplicate source chapter ID: {key}")
+        body = XML_INVALID_CONTROLS.sub("", body)
         document = f'<html xmlns="http://www.w3.org/1999/xhtml"><head/><body>{body}</body></html>'.encode()
         anchors = {}
         blocks = read_html_blocks(

@@ -28,6 +28,20 @@ def links(chapter: dict) -> list[str]:
 
 
 class CrawlReferenceTests(unittest.TestCase):
+    def test_xml_invalid_control_characters_do_not_abort_conversion(self):
+        book = crawl(
+            [
+                Chapter("Markup", html_blocks=["<p>前\x08后\x0b。</p>"]),
+                Chapter("Plain", paragraphs=["左\x1f右\t。"]),
+            ]
+        )
+        validate_book(book)
+        texts = [
+            "".join(run["text"] for run in chapter["blocks"][0]["runs"])
+            for chapter in book["chapters"].values()
+        ]
+        self.assertEqual(texts, ["前后。", "左右\t。"])
+
     def test_relative_links_use_chapter_url_and_keep_external_destinations(self):
         book = crawl(
             [
