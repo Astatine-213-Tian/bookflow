@@ -18,6 +18,7 @@ COMMANDS: dict[str, tuple[str, str]] = {
     "update": ("src.cli.update_book", "Apply an explicit change to local book JSON"),
     "compare": ("src.cli.compare_editions", "Compare two local editions"),
     "proofread": ("src.cli.proofread", "Proofread an edition against Jinjiang"),
+    "jjwxc": ("src.cli.jjwxc", "Show a work's Jinjiang metadata and official directory"),
     "bilingual": ("src.cli.bilingual", "Make or update a bilingual book from its spec"),
     "dataset": ("src.cli.dataset", "Export TXT and maintain a training dataset"),
     "normalize": ("src.cli.normalize_epub", "Normalize and review an existing EPUB"),
