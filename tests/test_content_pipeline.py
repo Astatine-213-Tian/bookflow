@@ -257,7 +257,6 @@ class ContentPipelineTests(unittest.TestCase):
     def test_markdown_rules_are_bound_to_code_and_examples_execute(self):
         import hashlib
         import json
-        import re
         from pathlib import Path
 
         from src.content.normalize import (
@@ -267,16 +266,14 @@ class ContentPipelineTests(unittest.TestCase):
         )
         from src.content.titles import normalize_volume_title
 
-        document = (
-            Path(__file__).resolve().parents[1] / "docs/normalization.md"
-        ).read_bytes()
+        root = Path(__file__).resolve().parents[1]
+        # A rule change in the human document must come with a reviewed code change.
+        document = (root / "NORMALIZATION.md").read_bytes()
         self.assertEqual(hashlib.sha256(document).hexdigest(), RULES_SHA256)
         examples = json.loads(
-            re.search(
-                r"```normalization-examples\n(.*?)\n```", document.decode(), re.S
-            )[1]
+            (root / "tests/normalization_examples.json").read_text()
         )
-        for example in examples:
+        for example in examples["text"]:
             with self.subTest(example=example):
                 actual = normalize_text(
                     example["input"], title=example.get("title", False)
@@ -285,23 +282,14 @@ class ContentPipelineTests(unittest.TestCase):
                 self.assertEqual(
                     normalize_text(actual, title=example.get("title", False)), actual
                 )
-        block_examples = json.loads(
-            re.search(
-                r"```normalization-block-examples\n(.*?)\n```", document.decode(), re.S
-            )[1]
-        )
-        for example in block_examples:
+        for example in examples["blocks"]:
             with self.subTest(example=example):
                 actual = normalize_chapter(
                     {"title": "篇目", "blocks": example["input"]}
                 )
                 self.assertEqual(actual["blocks"], example["expected"])
                 self.assertEqual(normalize_chapter(actual), actual)
-        for example in json.loads(
-            re.search(
-                r"```normalization-volume-examples\n(.*?)\n```", document.decode(), re.S
-            )[1]
-        ):
+        for example in examples["volumes"]:
             with self.subTest(volume=example):
                 actual = normalize_volume_title(example["input"])
                 self.assertEqual(actual, example["expected"])

@@ -77,8 +77,8 @@ def preparation_fingerprint() -> str:
     from src.runtime.files import digest
 
     root = Path(__file__).resolve().parents[2]
+    # Rule wording reaches this through RULES_SHA256 in src/content/normalize.py.
     paths = [
-        root / "docs/normalization.md",
         SCHEMA_PATH,
         *sorted((root / "src/content").glob("*.py")),
         *sorted((root / "src/inputs").glob("*.py")),

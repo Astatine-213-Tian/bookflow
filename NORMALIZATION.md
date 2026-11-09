@@ -1,9 +1,9 @@
 # 内容规范化规则
 
-本文是内容 normalization 的唯一规则来源，适用于 EPUB、TXT、爬虫、图片转录和译文。
-各输入先转为共享 JSON，再清洗；Notion、EPUB、TXT writer 只渲染已确定的结构。
-保留原始来源和完整正文。不猜字、不改写、不凭格式删除有意义的重复段落。
-用户明确指定的本次范围和格式优先；既有 Notion 内容以新鲜回读为准，只应用审查后的差异。
+本文说明 bookflow 在写出 EPUB、Notion 或 TXT 之前如何统一书籍正文，是规范化规则的唯一来源。
+规则同样适用于网站爬取、本地 EPUB/TXT、图片转录和译文。
+原文和完整正文始终保留：不猜字、不改写，也不因为格式删除有意义的重复段落。
+用户对某本书明确指定的范围和格式优先于这些规则。
 
 ## 范围与规则优先级
 
@@ -11,9 +11,9 @@
 - **卷名、章名、章内小标题、正文列表是四种不同的字段/结构**，不能用一个编号规则替代。
   卷名的无空格规则优先于通用中西文空格；小标题和列表规则不影响脚注标记。
 - 链接目标、锚点、脚注身份和样式必须保留；只清洗可见文字，不改 URL 或属性。
-- `variant: original` 的双语原文块保持原样；译文可清洗文字，但不跨对齐段落合并。
-- 搜索、元数据补全、章节选择、卷边界和拆合章不属于 normalization。
-  由[输入审查与书籍维护](local-editions.md)提供明确结构；正文出现“卷一”不等于新增一卷。
+- 双语书的原文段落保持原样；译文可清洗文字，但不跨对齐段落合并。
+- 搜索、元数据补全、章节选择、卷边界和拆合章不属于规范化，由导入时的审查决定；
+  正文出现“卷一”不等于新增一卷。
 
 ## 字符、空格与标点
 
@@ -26,7 +26,7 @@
   标题的编号标记内部不拆开，卷名的空格另按卷名规则处理。
 - 拉丁词或数字之间的全角空格改为一个普通空格：`NICE　DOGS` → `NICE DOGS`。
   清除段首排版缩进；保留段内换行，不把词间空格删成连写。
-- 常见英文名称按下表统一大小写，词表维护在 `src/content/english_terms.py`。
+- 常见英文名称按下表统一大小写。
   只匹配完整英文词（允许紧邻汉字），`iphone` / `IPHONE` / `iPhOnE` → `iPhone`；
   不猜拼写、不模糊匹配，`IPONE` 保留原样；只有审定的异写会改写，`wifi` / `Wifi` → `Wi-Fi`。
   `iPhone15` 等明确产品的纯数字后缀保留。
@@ -99,7 +99,7 @@
 
 ## 章内结构与空白
 
-- 已确定的章内小标题使用 H3（EPUB 为 `1.1em`），大小与对齐独立。
+- 已确定的章内小标题使用三级标题，大小与对齐独立。
   编号小标题居中，编号统一为普通中文数字：`（1）` → `（一）`、`2、标题` → `二、标题`、
   H3 中的 `第一章` → `第1章`（与目录章号同样使用阿拉伯数字）；
   保留括号、标题措辞和标题中其他数字，不改成“壹、贰、叁”。无编号小标题保留明确对齐。
@@ -112,14 +112,14 @@
 - `作者有话说：` / `作者有话要说：` 独立成段；正文中偶然提到这些词不算标题。
   段落以标签开头，标签后接冒号、空格或段落结束（`作者有话说：谢谢`、
   `作者有话说 谢谢`，不含 `作者有话说谢谢`），前面是正文段落（可隔空段）
-  且作话有内容时，在标签前补一条 `divider`，
+  且作话有内容时，在标签前补一条分割线，
   使 Notion 和 EPUB 按章末作话排版；已有分割线、章首作话、空作话、
-  双语或带引用身份的段落不补。EPUB 归档中标签与正文须为相邻的 `<p>`。
+  双语或带引用身份的段落不补。
   段首标签后的空格是标签标记，汉字间去空格时保留。
   明确的错误断段可合并：孤立的闭引号，或逗号结尾后紧接的连续正文。
   不跨空段、作者的话、场景标记、对齐段落或引用身份边界合并；不能复制或丢掉锚点。
 - 独立 `***` 场景标记居中。独立一行、只由至少三个横线字符（`-`、`—`、`–`、`－`）
-  组成的分隔标记转成结构化 `divider`：Notion 原生分割线、EPUB 的 `<hr />`。
+  组成的分隔标记转成分割线（Notion 原生分割线、EPUB 水平线）。
   保留锚点；带链接或脚注身份的文字不转成分割线。正文内的破折号不变。
 - 独立结束标记统一为 `——结束文字——` 并居中，前后各两个中文破折号字符。
   包括 `全文完`、`本卷完`、`END`、`The End`、`The End of Book of Lucifel`、
@@ -132,110 +132,12 @@
 ## 链接、脚注与引用块
 
 - 保留超链接显示文字、样式及目标；正文引用 `[1]` 与章末 `[1] 注释 ↩1` 明确配对。
-  多次引用保留各自回链。结构由共享 JSON 表达，见[内容契约](content-json.md)。
-- 引文不是代码块。明确的 quote 保留；仅凭字体、缩进或引号无法确定时，先筛选候选，
-  再由 Codex 审查。只有高置信度结论能改变块类型，不改原文，见[引用审查](local-editions.md#review-possible-quotations)。
+  多次引用保留各自回链。
+- 引文不是代码块。明确的引用块保留；仅凭字体、缩进或引号无法确定时，先筛选候选，
+  再由代理审查。只有高置信度结论能改变块类型，不改原文。
 - 章首题记 `引文——出处` 转为引用块：引文作引用块正文，出处（含破折号）作右对齐子段落，
   Notion 显示为引用块内的三栏右对齐行。出处是 `——` 后不超过 30 字、不含句读和引号的
   人名或 `《作品》`（`》` 后可带句号）；引文与出处也可以是章首相邻的两段。没有书名号时，
   引文须以句末标点或闭引号结尾，出处不含数字，以免把正文破折号、日期落款当作出处。
   只处理章节第一个非空块，不改原文，带链接、脚注或双语标记的段落不变。
-- Notion 的对齐和脚注往返表示见[Notion 排版约定](notion-books.md#排版约定)。
-  渲染器不再靠匹配正文猜结构；TXT 是保留链接文字/URL 和注释内容的纯文本投影。
-
-## 实现与验收
-
-- `src/content/normalize.py` 处理共享块；`titles.py` 处理卷名；`normalization.py` 处理文字与可疑项。
-  `src/epub/cleanup.py` 只处理既有档案的 XHTML 适配，调用同一套文字和卷名规则。
-- 每次改规则同步修改实现和下面的可执行示例，并更新 `normalize.py` 的 `RULES_SHA256`。
-  Markdown 是规则来源；Python 是受测试约束的实现，不在运行时从文字自动生成代码。
-- 验证完整前后差异、原文/链接身份保留和幂等性（第二次清洗不再改变内容）。
-  写入后回读完整正文、结构、标题和链接；可疑项须记录处理或保留理由。
-- 目录移动、拆合章、出版信息查证及原地 EPUB 修复按[书籍维护流程](local-editions.md#existing-epub-maintenance)执行，
-  不把这些操作隐含在普通导入的文字清洗中。
-
-## 可执行示例
-
-```normalization-examples
-[
-  {"input":"他说ＭＳＮ，ＱＱ都是１００分。","expected":"他说 MSN，QQ 都是 100 分。"},
-  {"input":"第94-95章 2008年的故事","expected":"第94-95章 2008 年的故事","title":true},
-  {"input":"第一章","expected":"第1章","title":true},
-  {"input":"第12章 番外卷·旅途","expected":"第12章 番外卷·旅途","title":true},
-  {"input":"中文English１２３测试。","expected":"中文 English123 测试。"},
-  {"input":"作者有话说 谢谢大家今天也来了，好。","expected":"作者有话说 谢谢大家今天也来了，好。"},
-  {"input":"A sentence, with words.","expected":"A sentence, with words."},
-  {"input":"“ＮＩＣＥ　ＤＯＧＳ！”","expected":"“NICE DOGS！”"},
-  {"input":"BOYS　DONT　CRY","expected":"BOYS DONT CRY"},
-  {"input":"①与Ⅳ不是全角英数字。","expected":"①与Ⅳ不是全角英数字。"},
-  {"input":"作话：10月用IPHONE和github发文。","expected":"作话：10 月用 iPhone 和 GitHub 发文。"},
-  {"input":"IPHONE iPhOnE IPONE IPHONE15","expected":"iPhone iPhone IPONE iPhone15"},
-  {"input":"家里的wifi和Wifi都连不上。","expected":"家里的 Wi-Fi 和 Wi-Fi 都连不上。"},
-  {"input":"MAC地址与MAC电脑，apple和python保留。","expected":"MAC 地址与 Mac 电脑，apple 和 python 保留。"},
-  {"input":"\"……\"他沉默了一会儿，说，\"你这么笨？\"","expected":"“……”他沉默了一会儿，说，“你这么笨？”"},
-  {"input":"\"你说那个人？”","expected":"“你说那个人？”"},
-  {"input":"梁池：\"QAQ\"","expected":"梁池：“QAQ”"},
-  {"input":"好呀~~我答应~ ~","expected":"好呀～～我答应～ ～"},
-  {"input":"“OK~”","expected":"“OK～”"},
-  {"input":"\"庭远，你最近还好吗？","expected":"“庭远，你最近还好吗？"},
-  {"input":"“你想学我教你，免费~“","expected":"“你想学我教你，免费～”"},
-  {"input":"“王若飞！”他把我拉到外面，”你去哪儿了？！”","expected":"“王若飞！”他把我拉到外面，“你去哪儿了？！”"},
-  {"input":"“哦~“乌烟瘴气”的地方~那还有什么？”","expected":"“哦～“乌烟瘴气”的地方～那还有什么？”"},
-  {"input":"颜文字 /(ㄒoㄒ)/~~ 和 https://example.com/~me 保留。","expected":"颜文字 /(ㄒoㄒ)/~~ 和 https://example.com/~me 保留。"}
-]
-```
-
-```normalization-block-examples
-[
-  {
-    "input": [{"kind":"paragraph","runs":[{"text":"１，第一项。","styles":[]}]},{"kind":"paragraph","runs":[{"text":"２，第二项。","styles":[]}]}],
-    "expected": [{"kind":"paragraph","runs":[{"text":"1. 第一项。","styles":[]}]},{"kind":"paragraph","runs":[{"text":"2. 第二项。","styles":[]}]}]
-  },
-  {
-    "input": [{"kind":"heading","level":3,"runs":[{"text":"（１）开场","styles":[]}]}],
-    "expected": [{"kind":"heading","level":3,"alignment":"center","runs":[{"text":"（一）开场","styles":[]}]}]
-  },
-  {
-    "input": [{"kind":"heading","level":3,"runs":[{"text":"第一章 Part 1","styles":[]}]}],
-    "expected": [{"kind":"heading","level":3,"alignment":"center","runs":[{"text":"第1章 Part 1","styles":[]}]}]
-  },
-  {
-    "input": [{"kind":"paragraph","runs":[{"text":"一","styles":[]}]},{"kind":"paragraph","runs":[{"text":"起。","styles":[]}]},{"kind":"paragraph","runs":[{"text":"二","styles":[]}]},{"kind":"paragraph","runs":[{"text":"承。","styles":[]}]}],
-    "expected": [{"kind":"heading","level":3,"alignment":"center","runs":[{"text":"一","styles":[]}]},{"kind":"paragraph","runs":[{"text":"起。","styles":[]}]},{"kind":"heading","level":3,"alignment":"center","runs":[{"text":"二","styles":[]}]},{"kind":"paragraph","runs":[{"text":"承。","styles":[]}]}]
-  },
-  {
-    "input": [{"kind":"paragraph","runs":[{"text":"The End of Book of Lucifel","styles":[]}]}],
-    "expected": [{"kind":"paragraph","alignment":"center","runs":[{"text":"——The End of Book of Lucifel——","styles":[]}]}]
-  },
-  {
-    "input": [{"kind":"paragraph","runs":[{"text":"全文完","styles":[]}]},{"kind":"paragraph","runs":[{"text":"------------","styles":[]}]}],
-    "expected": [{"kind":"paragraph","alignment":"center","runs":[{"text":"——全文完——","styles":[]}]},{"kind":"divider","runs":[]}]
-  },
-  {
-    "input": [{"kind":"paragraph","runs":[{"text":"真实，这残酷的真实。——《红与黑》","styles":[]}]},{"kind":"paragraph","runs":[{"text":"正文。","styles":[]}]}],
-    "expected": [{"kind":"quote","runs":[{"text":"真实，这残酷的真实。","styles":[]}],"children":[{"kind":"paragraph","alignment":"right","runs":[{"text":"——《红与黑》","styles":[]}]}]},{"kind":"paragraph","runs":[{"text":"正文。","styles":[]}]}]
-  },
-  {
-    "input": [{"kind":"paragraph","runs":[{"text":"“自由不是财富。”","styles":["italic"]}]},{"kind":"paragraph","runs":[{"text":"——路西斐尔","styles":[]}]}],
-    "expected": [{"kind":"quote","runs":[{"text":"“自由不是财富。”","styles":["italic"]}],"children":[{"kind":"paragraph","alignment":"right","runs":[{"text":"——路西斐尔","styles":[]}]}]}]
-  },
-  {
-    "input": [{"kind":"paragraph","runs":[{"text":"第二医院，半个小时前——","styles":[]}]},{"kind":"paragraph","runs":[{"text":"他走了——没有回头","styles":[]}]}],
-    "expected": [{"kind":"paragraph","runs":[{"text":"第二医院，半个小时前——","styles":[]}]},{"kind":"paragraph","runs":[{"text":"他走了——没有回头","styles":[]}]}]
-  }
-]
-```
-
-```normalization-volume-examples
-[
-  {"input":"卷一 初识","expected":"卷一·初识"},
-  {"input":"第一卷：初识","expected":"卷一·初识"},
-  {"input":"卷１·初识","expected":"卷一·初识"},
-  {"input":"第十二卷 新的 世界","expected":"卷十二·新的·世界"},
-  {"input":"第零卷","expected":"卷零"},
-  {"input":"续卷 新的开始","expected":"续卷·新的开始"},
-  {"input":"中卷","expected":"中卷"},
-  {"input":"正文 上（2008）","expected":"正文·上（2008）"},
-  {"input":"2015 年续篇","expected":"2015·年续篇"}
-]
-```
+- TXT 是纯文本版本，保留链接文字、网址和注释内容。

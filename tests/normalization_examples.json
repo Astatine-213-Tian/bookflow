@@ -1,0 +1,50 @@
+{
+  "text": [
+    {"input": "他说ＭＳＮ，ＱＱ都是１００分。", "expected": "他说 MSN，QQ 都是 100 分。"},
+    {"input": "第94-95章 2008年的故事", "expected": "第94-95章 2008 年的故事", "title": true},
+    {"input": "第一章", "expected": "第1章", "title": true},
+    {"input": "第12章 番外卷·旅途", "expected": "第12章 番外卷·旅途", "title": true},
+    {"input": "中文English１２３测试。", "expected": "中文 English123 测试。"},
+    {"input": "作者有话说 谢谢大家今天也来了，好。", "expected": "作者有话说 谢谢大家今天也来了，好。"},
+    {"input": "A sentence, with words.", "expected": "A sentence, with words."},
+    {"input": "“ＮＩＣＥ　ＤＯＧＳ！”", "expected": "“NICE DOGS！”"},
+    {"input": "BOYS　DONT　CRY", "expected": "BOYS DONT CRY"},
+    {"input": "①与Ⅳ不是全角英数字。", "expected": "①与Ⅳ不是全角英数字。"},
+    {"input": "作话：10月用IPHONE和github发文。", "expected": "作话：10 月用 iPhone 和 GitHub 发文。"},
+    {"input": "IPHONE iPhOnE IPONE IPHONE15", "expected": "iPhone iPhone IPONE iPhone15"},
+    {"input": "家里的wifi和Wifi都连不上。", "expected": "家里的 Wi-Fi 和 Wi-Fi 都连不上。"},
+    {"input": "MAC地址与MAC电脑，apple和python保留。", "expected": "MAC 地址与 Mac 电脑，apple 和 python 保留。"},
+    {"input": "\"……\"他沉默了一会儿，说，\"你这么笨？\"", "expected": "“……”他沉默了一会儿，说，“你这么笨？”"},
+    {"input": "\"你说那个人？”", "expected": "“你说那个人？”"},
+    {"input": "梁池：\"QAQ\"", "expected": "梁池：“QAQ”"},
+    {"input": "好呀~~我答应~ ~", "expected": "好呀～～我答应～ ～"},
+    {"input": "“OK~”", "expected": "“OK～”"},
+    {"input": "\"庭远，你最近还好吗？", "expected": "“庭远，你最近还好吗？"},
+    {"input": "“你想学我教你，免费~“", "expected": "“你想学我教你，免费～”"},
+    {"input": "“王若飞！”他把我拉到外面，”你去哪儿了？！”", "expected": "“王若飞！”他把我拉到外面，“你去哪儿了？！”"},
+    {"input": "“哦~“乌烟瘴气”的地方~那还有什么？”", "expected": "“哦～“乌烟瘴气”的地方～那还有什么？”"},
+    {"input": "颜文字 /(ㄒoㄒ)/~~ 和 https://example.com/~me 保留。", "expected": "颜文字 /(ㄒoㄒ)/~~ 和 https://example.com/~me 保留。"}
+  ],
+  "blocks": [
+    {"input": [{"kind": "paragraph", "runs": [{"text": "１，第一项。", "styles": []}]}, {"kind": "paragraph", "runs": [{"text": "２，第二项。", "styles": []}]}], "expected": [{"kind": "paragraph", "runs": [{"text": "1. 第一项。", "styles": []}]}, {"kind": "paragraph", "runs": [{"text": "2. 第二项。", "styles": []}]}]},
+    {"input": [{"kind": "heading", "level": 3, "runs": [{"text": "（１）开场", "styles": []}]}], "expected": [{"kind": "heading", "level": 3, "alignment": "center", "runs": [{"text": "（一）开场", "styles": []}]}]},
+    {"input": [{"kind": "heading", "level": 3, "runs": [{"text": "第一章 Part 1", "styles": []}]}], "expected": [{"kind": "heading", "level": 3, "alignment": "center", "runs": [{"text": "第1章 Part 1", "styles": []}]}]},
+    {"input": [{"kind": "paragraph", "runs": [{"text": "一", "styles": []}]}, {"kind": "paragraph", "runs": [{"text": "起。", "styles": []}]}, {"kind": "paragraph", "runs": [{"text": "二", "styles": []}]}, {"kind": "paragraph", "runs": [{"text": "承。", "styles": []}]}], "expected": [{"kind": "heading", "level": 3, "alignment": "center", "runs": [{"text": "一", "styles": []}]}, {"kind": "paragraph", "runs": [{"text": "起。", "styles": []}]}, {"kind": "heading", "level": 3, "alignment": "center", "runs": [{"text": "二", "styles": []}]}, {"kind": "paragraph", "runs": [{"text": "承。", "styles": []}]}]},
+    {"input": [{"kind": "paragraph", "runs": [{"text": "The End of Book of Lucifel", "styles": []}]}], "expected": [{"kind": "paragraph", "alignment": "center", "runs": [{"text": "——The End of Book of Lucifel——", "styles": []}]}]},
+    {"input": [{"kind": "paragraph", "runs": [{"text": "全文完", "styles": []}]}, {"kind": "paragraph", "runs": [{"text": "------------", "styles": []}]}], "expected": [{"kind": "paragraph", "alignment": "center", "runs": [{"text": "——全文完——", "styles": []}]}, {"kind": "divider", "runs": []}]},
+    {"input": [{"kind": "paragraph", "runs": [{"text": "真实，这残酷的真实。——《红与黑》", "styles": []}]}, {"kind": "paragraph", "runs": [{"text": "正文。", "styles": []}]}], "expected": [{"kind": "quote", "runs": [{"text": "真实，这残酷的真实。", "styles": []}], "children": [{"kind": "paragraph", "alignment": "right", "runs": [{"text": "——《红与黑》", "styles": []}]}]}, {"kind": "paragraph", "runs": [{"text": "正文。", "styles": []}]}]},
+    {"input": [{"kind": "paragraph", "runs": [{"text": "“自由不是财富。”", "styles": ["italic"]}]}, {"kind": "paragraph", "runs": [{"text": "——路西斐尔", "styles": []}]}], "expected": [{"kind": "quote", "runs": [{"text": "“自由不是财富。”", "styles": ["italic"]}], "children": [{"kind": "paragraph", "alignment": "right", "runs": [{"text": "——路西斐尔", "styles": []}]}]}]},
+    {"input": [{"kind": "paragraph", "runs": [{"text": "第二医院，半个小时前——", "styles": []}]}, {"kind": "paragraph", "runs": [{"text": "他走了——没有回头", "styles": []}]}], "expected": [{"kind": "paragraph", "runs": [{"text": "第二医院，半个小时前——", "styles": []}]}, {"kind": "paragraph", "runs": [{"text": "他走了——没有回头", "styles": []}]}]}
+  ],
+  "volumes": [
+    {"input": "卷一 初识", "expected": "卷一·初识"},
+    {"input": "第一卷：初识", "expected": "卷一·初识"},
+    {"input": "卷１·初识", "expected": "卷一·初识"},
+    {"input": "第十二卷 新的 世界", "expected": "卷十二·新的·世界"},
+    {"input": "第零卷", "expected": "卷零"},
+    {"input": "续卷 新的开始", "expected": "续卷·新的开始"},
+    {"input": "中卷", "expected": "中卷"},
+    {"input": "正文 上（2008）", "expected": "正文·上（2008）"},
+    {"input": "2015 年续篇", "expected": "2015·年续篇"}
+  ]
+}
